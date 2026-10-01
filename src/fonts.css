@@ -1,0 +1,8 @@
+/* The site's faces. Imported before Tailwind because CSS requires a remote
+   @import at the top of the bundled sheet. Changing a face means changing this
+   import and the --font-* values in theme.css together.
+
+   Two families, three jobs: Archivo Narrow is a condensed, slightly industrial
+   display face that reads like a banner over a gate; Public Sans is a plain
+   civic text face for details and form labels. */
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&display=swap');

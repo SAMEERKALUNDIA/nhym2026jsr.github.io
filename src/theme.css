@@ -1,0 +1,99 @@
+/* The token contract, and the whole of this site's art direction: :root holds
+   the values, @theme inline turns them into utilities. One colour scheme,
+   deliberately — this design is a warm, light one. */
+:root {
+  /* Ground: warm paper, the colour of a printed invitation. */
+  --background: oklch(0.972 0.014 84);
+  --foreground: oklch(0.245 0.055 34);
+  --card: oklch(0.995 0.006 84);
+  --card-foreground: oklch(0.245 0.055 34);
+  --popover: oklch(0.995 0.006 84);
+  --popover-foreground: oklch(0.245 0.055 34);
+
+  /* Ink: deep mahogany-maroon, the colour of the mark and the dark bands. */
+  --primary: oklch(0.318 0.089 27);
+  --primary-foreground: oklch(0.975 0.018 84);
+
+  --secondary: oklch(0.936 0.022 78);
+  --secondary-foreground: oklch(0.245 0.055 34);
+  --muted: oklch(0.938 0.02 78);
+  --muted-foreground: oklch(0.452 0.036 40);
+  --accent: oklch(0.938 0.02 78);
+  --accent-foreground: oklch(0.245 0.055 34);
+
+  /* The one loud colour: terracotta, for the register action and the price. */
+  --brand: oklch(0.545 0.155 33);
+  --brand-foreground: oklch(0.99 0.008 84);
+  /* Leaf green, kept for confirmation and success only. */
+  --success: oklch(0.46 0.093 155);
+  --success-foreground: oklch(0.98 0.012 150);
+  --destructive: oklch(0.505 0.19 27);
+
+  --border: oklch(0.878 0.026 76);
+  --input: oklch(0.855 0.028 76);
+  --ring: oklch(0.545 0.155 33);
+
+  --font-heading: 'Archivo Narrow', 'Arial Narrow', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-label: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+
+  --radius: 0.5rem;
+  /* A pill radius is for controls. Panels take the same corner up to a bound. */
+  --radius-panel: min(var(--radius), 1.25rem);
+  --shadow: 0 1px 2px oklch(0.318 0.089 27 / 0.06), 0 10px 30px oklch(0.318 0.089 27 / 0.07);
+
+  --hero-size: clamp(2.6rem, 5.4vw, 5rem);
+  --heading-tracking: -0.01em;
+  --heading-line: 1.06;
+  --heading-weight: 700;
+  --body-size: 1rem;
+  --body-line: 1.65;
+
+  --content-width: 1160px;
+  --gutter: clamp(1.25rem, 4vw, 3rem);
+  --section-space: clamp(3.5rem, 7vw, 5.5rem);
+  --layout-gap: 2rem;
+  --motion-fast: 180ms;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-body);
+  --font-display: var(--font-heading);
+  --font-label: var(--font-label);
+  --font-mono: ui-monospace, SFMono-Regular, monospace;
+
+  /* shadcn's own mapping: rounded-md is the control, rounded-xl the panel. */
+  --radius-sm: max(0px, calc(var(--radius-panel) - 4px));
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-panel);
+  --radius-xl: calc(var(--radius-panel) + 4px);
+
+  --shadow-raised: var(--shadow);
+  --spacing-gutter: var(--gutter);
+  --spacing-section: var(--section-space);
+  --spacing-layout: var(--layout-gap);
+  --container-content: var(--content-width);
+}
