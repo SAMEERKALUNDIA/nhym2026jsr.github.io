@@ -257,6 +257,10 @@ export default function Home() {
   /* The address the approval message is sent to. It belongs to the submission
      rather than to a row, because the desk writes once for the whole list. */
   const [email, setEmail] = useState('')
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('upi')
+  const [paymentReference, setPaymentReference] = useState('')
+  const [registrationId, setRegistrationId] = useState('')
+  const [sending, setSending] = useState(false)
 
   /* The declarations are one gate for the whole submission, so they are checked
      once and the ones still unticked are named back. */
@@ -374,18 +378,36 @@ export default function Home() {
         return { ...row, error: undefined }
       }),
     )
+    if (!EMAIL.test(email.trim())) { ok = false; problem = 'Enter a valid email address.' }
+    if (!referenceOk(paymentReference)) { ok = false; problem = 'Enter the UPI transaction ID, bank reference or receipt number for this registration.' }
     if (ok) setFormError('')
     else if (problem) setFormError(problem)
     else setFormError('A few entries still need attention. They are marked below.')
     return ok
   }
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault()
-    if (validate()) {
+    if (!validate() || sending) return
+    setSending(true)
+    setFormError('')
+    try {
+      const response = await fetch('/api/registrations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(), total, paymentMode, paymentReference: paymentReference.trim(), agreed,
+          declarations: agreed,
+          participants: rows.map((row) => ({ ...row, fee: feeOf(row) ?? 0 })),
+        }),
+      })
+      const result = await response.json() as { registrationId?: string; error?: string }
+      if (!response.ok || !result.registrationId) throw new Error(result.error || 'Registration could not be saved.')
+      setRegistrationId(result.registrationId)
       setSubmitted(true)
-      setFormError('')
-    }
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Registration could not be saved. Please try again.')
+    } finally { setSending(false) }
   }
 
   return (
@@ -726,6 +748,9 @@ export default function Home() {
                   <Confirmation
                     rows={rows}
                     email={email}
+                    registrationId={registrationId}
+                    paymentMode={paymentMode}
+                    paymentReference={paymentReference}
                     onEdit={() => setSubmitted(false)}
                   />
                 ) : (
@@ -1167,6 +1192,15 @@ export default function Home() {
                     </fieldset>
 
                     <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
+                      <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">Payment reference</legend>
+                      <p className="max-w-lg text-sm text-muted-foreground">Pay the total using the bank/UPI details shown on this page, then enter the reference below. The committee will verify it before approval.</p>
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <div><Label>Payment method</Label><Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /></div>
+                      </div>
+                    </fieldset>
+
+                    <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
                       <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
                         Declarations
                       </legend>
@@ -1231,7 +1265,7 @@ export default function Home() {
                         size="lg"
                         className="h-12 bg-brand px-7 text-base text-brand-foreground hover:bg-brand/90"
                       >
-                        Send this registration
+                        {sending ? 'Saving registration…' : 'Submit registration'}
                       </Button>
                       <p className="text-sm text-muted-foreground">
                         {rows.length} {rows.length === 1 ? 'participant' : 'participants'} ·{' '}
@@ -1551,14 +1585,8 @@ function YesNoRow({
    server and nothing is sent anywhere. The one thing it cannot do on its own is
    send the approval message, so it says who does and to where. */
 function Confirmation({
-  rows,
-  email,
-  onEdit,
-}: {
-  rows: Draft[]
-  email: string
-  onEdit: () => void
-}) {
+  rows, email, registrationId, paymentMode, paymentReference, onEdit,
+}: { rows: Draft[]; email: string; registrationId: string; paymentMode: PaymentMode; paymentReference: string; onEdit: () => void }) {
   const total = rows.reduce((sum, row) => sum + (feeOf(row) ?? 0), 0)
 
   return (
@@ -1569,11 +1597,10 @@ function Confirmation({
         </span>
         <div>
           <h3 className="font-display text-2xl font-bold">
-            {rows.length} {rows.length === 1 ? 'participant' : 'participants'} prepared
+            Registration saved — {registrationId}
           </h3>
           <p className="mt-2 text-muted-foreground">
-            {inr(total)} is due at the registration desk at Birsa Munda Town Hall on 28 or 29
-            November.
+            Your registration is now stored with status Pending Verification. Total: {inr(total)}.
           </p>
         </div>
       </div>
@@ -1729,12 +1756,7 @@ function Confirmation({
       <Separator className="my-5" />
 
       <p className="text-sm text-muted-foreground">
-        {EVENT.subject} This is a confirmation on screen, not yet a booking — this site has no
-        server, so nothing was sent. To hold the places, send the total to the treasurer,{' '}
-        {TREASURER.name}, on {displayPhone(TREASURER.phones[0])}, or call the president,{' '}
-        {PRESIDENT.name}, on {displayPhone(PRESIDENT.phones[0])}, and read this list out. Take a
-        screenshot or print this page before you close it; the payment and the call are what hold
-        the places.
+        Registration ID: <strong>{registrationId}</strong>. Payment reference: <strong>{paymentReference}</strong> ({labelOfMode(paymentMode)}). Your registration has been saved and is pending payment verification and organiser approval. Keep this registration ID for follow-up.
       </p>
 
       <Button type="button" variant="outline" className="mt-6 h-11" onClick={onEdit}>
