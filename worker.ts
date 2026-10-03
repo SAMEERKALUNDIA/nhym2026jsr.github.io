@@ -91,7 +91,8 @@ export default {
           total_amount,
           payment_mode,
           payment_reference,
-          status
+          status,
+          approval_email_sent_at
         FROM registrations
         WHERE id = ?
       `)
@@ -104,6 +105,7 @@ export default {
           payment_mode: string
           payment_reference: string
           status: string
+          approval_email_sent_at: string | null
         }>()
 
       if (!registration) {
@@ -122,7 +124,10 @@ export default {
       }
 
       // Send approval email before changing the final status.
-      if (body.status === 'APPROVED') {
+      if ( 
+        body.status === 'APPROVED' &&
+          !registration.approval_email_sent_at
+       ) {
         const participantResult = await env.DB.prepare(`
           SELECT name
           FROM participants
@@ -189,24 +194,49 @@ export default {
         }
       }
 
-      await env.DB.prepare(`
-        UPDATE registrations
-        SET status = ?, updated_at = ?
-        WHERE id = ?
-      `)
-        .bind(
-          body.status,
-          new Date().toISOString(),
-          id
-        )
-        .run()
+      const updatedAt = new Date().toISOString()
+
+      const shouldSendApprovalEmail =
+        body.status === 'APPROVED' &&
+        !registration.approval_email_sent_at
+
+      if (shouldSendApprovalEmail) {
+        await env.DB.prepare(`
+          UPDATE registrations
+          SET status = ?,
+              updated_at = ?,
+              approval_email_sent_at = ?
+          WHERE id = ?
+        `)
+          .bind(
+            body.status,
+            updatedAt,
+            updatedAt,
+            id
+          )
+          .run()
+      } else {
+        await env.DB.prepare(`
+          UPDATE registrations
+          SET status = ?,
+              updated_at = ?
+          WHERE id = ?
+        `)
+          .bind(
+            body.status,
+            updatedAt,
+            id
+          )
+          .run()
+      }
 
       return json({
         ok: true,
         status: body.status,
-        emailSent: body.status === 'APPROVED'
+        emailSent: shouldSendApprovalEmail
       })
     }
+
     return env.ASSETS.fetch(request)
   },
 }
