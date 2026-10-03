@@ -2,6 +2,8 @@ export interface Env {
   DB: D1Database
   ASSETS: Fetcher
   ADMIN_TOKEN: string
+  EMAIL_SERVICE_URL: string
+  NHYM_EMAIL_SECRET: string
 }
 
 type RegistrationPayload = {
@@ -62,15 +64,149 @@ export default {
 
     const match = url.pathname.match(/^\/api\/admin\/registrations\/(\d+)$/)
     if (match && request.method === 'PATCH') {
-      if (!authorised(request, env)) return json({ error: 'Unauthorized' }, 401)
-      const body = await request.json() as { status?: string }
-      const allowed = ['PENDING', 'PAYMENT_VERIFIED', 'APPROVED', 'REJECTED']
-      if (!body.status || !allowed.includes(body.status)) return json({ error: 'Invalid status.' }, 400)
-      await env.DB.prepare('UPDATE registrations SET status = ?, updated_at = ? WHERE id = ?')
-        .bind(body.status, new Date().toISOString(), Number(match[1])).run()
-      return json({ ok: true })
-    }
+      if (!authorised(request, env)) {
+        return json({ error: 'Unauthorised' }, 401)
+      }
 
+      const body = await request.json() as { status?: string }
+
+      const allowed = [
+        'PENDING',
+        'PAYMENT_VERIFIED',
+        'APPROVED',
+        'REJECTED'
+      ]
+
+      if (!body.status || !allowed.includes(body.status)) {
+        return json({ error: 'Invalid status.' }, 400)
+      }
+
+      const id = Number(match[1])
+
+      const registration = await env.DB.prepare(`
+        SELECT
+          id,
+          registration_id,
+          email,
+          total_amount,
+          payment_mode,
+          payment_reference,
+          status
+        FROM registrations
+        WHERE id = ?
+      `)
+        .bind(id)
+        .first<{
+          id: number
+          registration_id: string
+          email: string
+          total_amount: number
+          payment_mode: string
+          payment_reference: string
+          status: string
+        }>()
+
+      if (!registration) {
+        return json({ error: 'Registration not found.' }, 404)
+      }
+
+      // Require payment verification before final approval.
+      if (
+        body.status === 'APPROVED' &&
+        registration.status !== 'PAYMENT_VERIFIED'
+      ) {
+        return json(
+          { error: 'Payment must be verified before approval.' },
+          400
+        )
+      }
+
+      // Send approval email before changing the final status.
+      if (body.status === 'APPROVED') {
+        const participantResult = await env.DB.prepare(`
+          SELECT name
+          FROM participants
+          WHERE registration_id = ?
+          ORDER BY participant_no
+        `)
+          .bind(id)
+          .all<{ name: string }>()
+
+        const participantNames =
+          participantResult.results.map((participant) => participant.name)
+
+        if (!env.EMAIL_SERVICE_URL || !env.NHYM_EMAIL_SECRET) {
+          return json(
+            { error: 'Email service is not configured.' },
+            500
+          )
+        }
+
+        try {
+          const emailResponse = await fetch(env.EMAIL_SERVICE_URL, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+              secret: env.NHYM_EMAIL_SECRET,
+              email: registration.email,
+              registrationId: registration.registration_id,
+              participants: participantNames,
+              totalAmount: registration.total_amount,
+              paymentMode: registration.payment_mode,
+              paymentReference: registration.payment_reference
+            })
+          })
+
+          if (!emailResponse.ok) {
+            return json(
+              { error: 'Approval email could not be sent.' },
+              502
+            )
+          }
+
+          const emailResult = await emailResponse.json() as {
+            ok?: boolean
+            error?: string
+          }
+
+          if (!emailResult.ok) {
+            return json(
+              {
+                error:
+                  emailResult.error ||
+                  'Approval email could not be sent.'
+              },
+              502
+            )
+          }
+        } catch {
+          return json(
+            { error: 'Unable to contact the email service.' },
+            502
+          )
+        }
+      }
+
+      await env.DB.prepare(`
+        UPDATE registrations
+        SET status = ?, updated_at = ?
+        WHERE id = ?
+      `)
+        .bind(
+          body.status,
+          new Date().toISOString(),
+          id
+        )
+        .run()
+
+      return json({
+        ok: true,
+        status: body.status,
+        emailSent: body.status === 'APPROVED'
+      })
+    }
     return env.ASSETS.fetch(request)
   },
 }
