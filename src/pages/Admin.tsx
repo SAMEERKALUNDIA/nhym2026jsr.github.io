@@ -496,85 +496,71 @@ export default function Admin() {
         )}
 
         <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[1250px] text-sm">
+  <table className="w-full min-w-[850px] text-sm">
 
-            <thead>
-              <tr className="border-b text-left">
-                <th className="p-2">Registration ID</th>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Participants</th>
-                <th>Total</th>
-                <th>Payment</th>
-                <th>Status</th>
-                <th>Action</th>
-                <th>Submitted</th>
-                <th>Details</th>
-              </tr>
-            </thead>
+    <thead>
+      <tr className="border-b text-left">
+        <th className="p-3">Registration ID</th>
+        <th className="p-3">Name</th>
+        <th className="p-3 text-center">Participants</th>
+        <th className="p-3">Amount</th>
+        <th className="p-3">Status</th>
+        <th className="p-3">Action</th>
+        <th className="p-3">Details</th>
+      </tr>
+    </thead>
 
-            <tbody>
-              {filteredRows.map(row => (
-                <tr
-                  key={row.id}
-                  className="border-b align-top"
-                >
-                  <td className="p-2 font-mono">
-                    {row.registration_id}
-                  </td>
+    <tbody>
+      {filteredRows.map(row => (
+        <tr
+          key={row.id}
+          className="border-b align-middle"
+        >
+          <td className="p-3 font-mono whitespace-nowrap">
+            {row.registration_id}
+          </td>
 
-                  <td>
-                    {row.participants?.[0]?.name || '—'}
-                  </td>
+          <td className="p-3 font-medium">
+            {row.participants?.[0]?.name || '—'}
 
-                  <td>
-                    {row.email}
-                  </td>
+            {row.participant_count > 1 && (
+              <div className="mt-1 text-xs text-muted-foreground">
+                +{row.participant_count - 1} more participant
+                {row.participant_count > 2 ? 's' : ''}
+              </div>
+            )}
+          </td>
 
-                  <td>
-                    {row.participant_count}
-                  </td>
+          <td className="p-3 text-center">
+            {row.participant_count}
+          </td>
 
-                  <td>
-                    ₹{row.total_amount.toLocaleString('en-IN')}
-                  </td>
+          <td className="p-3 whitespace-nowrap font-medium">
+            ₹{row.total_amount.toLocaleString('en-IN')}
+          </td>
 
-                  <td>
-                    <div>{row.payment_mode}</div>
+          <td className="p-3">
+            {statusBadge(row.status)}
+          </td>
 
-                    <div className="text-xs text-muted-foreground">
-                      {row.payment_reference}
-                    </div>
-                  </td>
+          <td className="p-3">
+            {actionButtons(row)}
+          </td>
 
-                  <td>
-                    {statusBadge(row.status)}
-                  </td>
+          <td className="p-3">
+            <Button
+              variant="outline"
+              onClick={() => setSelected(row)}
+            >
+              View Details
+            </Button>
+          </td>
+        </tr>
+      ))}
+    </tbody>
 
-                  <td>
-                    {actionButtons(row)}
-                  </td>
-
-                  <td>
-                    {new Date(
-                      row.created_at
-                    ).toLocaleString('en-IN')}
-                  </td>
-
-                  <td>
-                    <Button
-                      variant="outline"
-                      onClick={() => setSelected(row)}
-                    >
-                      View Details
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-
-          </table>
-        </div>
+  </table>
+</div>
 
         {selected && (
           <div className="mt-10 rounded-lg border p-6">
