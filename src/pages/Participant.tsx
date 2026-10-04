@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { jsPDF } from 'jspdf'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -222,6 +223,291 @@ export default function Participant() {
       setLoading(false)
     }
   }
+
+function downloadRegistrationPdf() {
+  if (!registration) return
+
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  })
+
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const left = 18
+  const right = 18
+  const contentWidth = pageWidth - left - right
+
+  let y = 20
+
+  function checkPageSpace(required = 20) {
+    if (y + required <= pageHeight - 18) return
+
+    pdf.addPage()
+    y = 20
+  }
+
+  function addLabelValue(label: string, value: string) {
+    checkPageSpace(14)
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(9)
+    pdf.setTextColor(100)
+    pdf.text(label, left, y)
+
+    y += 5
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(11)
+    pdf.setTextColor(20)
+
+    const lines = pdf.splitTextToSize(
+      value || '—',
+      contentWidth
+    )
+
+    pdf.text(lines, left, y)
+    y += lines.length * 5 + 4
+  }
+
+  // Header
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(18)
+  pdf.setTextColor(20)
+  pdf.text(
+    'NATIONAL HO YOUTH MEET 2026',
+    pageWidth / 2,
+    y,
+    { align: 'center' }
+  )
+
+  y += 8
+
+  pdf.setFontSize(13)
+  pdf.text(
+    'Registration Confirmation',
+    pageWidth / 2,
+    y,
+    { align: 'center' }
+  )
+
+  y += 7
+
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(9)
+  pdf.setTextColor(100)
+  pdf.text(
+    'Jamshedpur',
+    pageWidth / 2,
+    y,
+    { align: 'center' }
+  )
+
+  y += 8
+
+  pdf.setDrawColor(180)
+  pdf.line(left, y, pageWidth - right, y)
+
+  y += 10
+
+  // Registration information
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(13)
+  pdf.setTextColor(20)
+  pdf.text('Registration Details', left, y)
+
+  y += 8
+
+  addLabelValue(
+    'Registration ID',
+    registration.registrationId
+  )
+
+  addLabelValue(
+    'Status',
+    statusLabel(registration.status)
+  )
+
+  addLabelValue(
+    'Registered Email',
+    maskEmail(registration.email)
+  )
+
+  addLabelValue(
+    'Total Registration Amount',
+    `INR ${Number(
+      registration.totalAmount
+    ).toLocaleString('en-IN')}`
+  )
+
+  addLabelValue(
+    'Payment Method',
+    registration.paymentMode?.toUpperCase() || '—'
+  )
+
+  addLabelValue(
+    'Submitted',
+    formatDate(registration.createdAt)
+  )
+
+  addLabelValue(
+    'Approval Email',
+    registration.approvalEmailSent
+      ? 'Sent'
+      : 'Not sent yet'
+  )
+
+  // Participants
+  checkPageSpace(20)
+
+  y += 3
+
+  pdf.setDrawColor(200)
+  pdf.line(left, y, pageWidth - right, y)
+
+  y += 9
+
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(13)
+  pdf.setTextColor(20)
+  pdf.text('Participant Details', left, y)
+
+  y += 9
+
+  registration.participants.forEach(
+    (participant, index) => {
+      checkPageSpace(60)
+
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(12)
+      pdf.setTextColor(20)
+
+      pdf.text(
+        `Participant ${participant.participant_no}: ${participant.name}`,
+        left,
+        y
+      )
+
+      y += 7
+
+      addLabelValue(
+        'Category',
+        categoryLabel(participant.category)
+      )
+
+      addLabelValue(
+        'Date of Birth',
+        participant.dob || '—'
+      )
+
+      addLabelValue(
+        'Gender',
+        participant.gender || '—'
+      )
+
+      addLabelValue(
+        'District / State',
+        [
+          participant.district,
+          participant.state,
+        ]
+          .filter(Boolean)
+          .join(', ') || '—'
+      )
+
+      addLabelValue(
+        'Participant Fee',
+        `INR ${Number(
+          participant.fee || 0
+        ).toLocaleString('en-IN')}`
+      )
+
+      addLabelValue(
+        'Activities',
+        activities(participant.activities_json)
+      )
+
+      addLabelValue(
+        'Accommodation Required',
+        yesNo(participant.accommodation)
+      )
+
+      addLabelValue(
+        'Travelling From Outside Jamshedpur',
+        yesNo(participant.from_outside)
+      )
+
+      if (
+        index <
+        registration.participants.length - 1
+      ) {
+        checkPageSpace(10)
+
+        pdf.setDrawColor(220)
+        pdf.line(
+          left,
+          y,
+          pageWidth - right,
+          y
+        )
+
+        y += 8
+      }
+    }
+  )
+
+  // Footer note
+  checkPageSpace(24)
+
+  y += 4
+
+  pdf.setDrawColor(180)
+  pdf.line(left, y, pageWidth - right, y)
+
+  y += 8
+
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(8)
+  pdf.setTextColor(100)
+
+  const note =
+    'This is a computer-generated registration document for National Ho Youth Meet 2026.'
+
+  const noteLines = pdf.splitTextToSize(
+    note,
+    contentWidth
+  )
+
+  pdf.text(noteLines, left, y)
+
+  // Page numbers
+  const pageCount =
+    pdf.getNumberOfPages()
+
+  for (
+    let pageNumber = 1;
+    pageNumber <= pageCount;
+    pageNumber++
+  ) {
+    pdf.setPage(pageNumber)
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(8)
+    pdf.setTextColor(120)
+
+    pdf.text(
+      `Page ${pageNumber} of ${pageCount}`,
+      pageWidth / 2,
+      pageHeight - 8,
+      { align: 'center' }
+    )
+  }
+
+  pdf.save(
+    `${registration.registrationId}-Registration.pdf`
+  )
+}
 
   function clearLookup() {
     setRegistration(null)
@@ -601,14 +887,24 @@ export default function Participant() {
                 </div>
               </section>
 
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11"
-                onClick={clearLookup}
-              >
-                Check another registration
-              </Button>
+              <div className="flex flex-wrap gap-3">
+  <Button
+    type="button"
+    className="h-11 bg-brand text-brand-foreground hover:bg-brand/90"
+    onClick={downloadRegistrationPdf}
+  >
+    Download Registration PDF
+  </Button>
+
+  <Button
+    type="button"
+    variant="outline"
+    className="h-11"
+    onClick={clearLookup}
+  >
+    Check another registration
+  </Button>
+</div>
             </div>
           )}
 
