@@ -224,7 +224,7 @@ export default function Participant() {
     }
   }
 
-function downloadRegistrationPdf() {
+async function downloadRegistrationPdf() {
   if (!registration) return
 
   const pdf = new jsPDF({
@@ -235,253 +235,486 @@ function downloadRegistrationPdf() {
 
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
-  const left = 18
-  const right = 18
-  const contentWidth = pageWidth - left - right
+  const margin = 15
+  const contentWidth = pageWidth - margin * 2
 
-  let y = 20
+  // Load NHYM logo
+  let logoData: string | null = null
 
-  function checkPageSpace(required = 20) {
-    if (y + required <= pageHeight - 18) return
+  try {
+    const response = await fetch('/nhym-logo.jpeg')
 
-    pdf.addPage()
-    y = 20
-  }
+    if (!response.ok) {
+      throw new Error('Logo could not be loaded.')
+    }
 
-  function addLabelValue(label: string, value: string) {
-    checkPageSpace(14)
+    const blob = await response.blob()
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(9)
-    pdf.setTextColor(100)
-    pdf.text(label, left, y)
+    logoData = await new Promise<string>(
+      (resolve, reject) => {
+        const reader = new FileReader()
 
-    y += 5
+        reader.onloadend = () => {
+          resolve(reader.result as string)
+        }
 
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(11)
-    pdf.setTextColor(20)
-
-    const lines = pdf.splitTextToSize(
-      value || '—',
-      contentWidth
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      }
     )
-
-    pdf.text(lines, left, y)
-    y += lines.length * 5 + 4
+  } catch (error) {
+    console.error('Unable to load NHYM logo:', error)
   }
 
+  let y = 48
+
+  // -----------------------------
   // Header
+  // -----------------------------
+  if (logoData) {
+    pdf.addImage(
+      logoData,
+      'JPEG',
+      margin,
+      8,
+      28,
+      28
+    )
+  }
+
   pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(18)
-  pdf.setTextColor(20)
+  pdf.setFontSize(17)
+  pdf.setTextColor(72, 30, 20)
+
   pdf.text(
     'NATIONAL HO YOUTH MEET 2026',
-    pageWidth / 2,
-    y,
-    { align: 'center' }
+    48,
+    17
   )
 
-  y += 8
+  pdf.setFontSize(12)
+  pdf.setTextColor(40)
 
-  pdf.setFontSize(13)
   pdf.text(
     'Registration Confirmation',
-    pageWidth / 2,
-    y,
-    { align: 'center' }
+    48,
+    24
   )
-
-  y += 7
 
   pdf.setFont('helvetica', 'normal')
   pdf.setFontSize(9)
   pdf.setTextColor(100)
-  pdf.text(
-    'Jamshedpur',
-    pageWidth / 2,
-    y,
-    { align: 'center' }
-  )
 
-  y += 8
+  pdf.text(
+    'Jamshedpur, Jharkhand',
+    48,
+    30
+  )
 
   pdf.setDrawColor(180)
-  pdf.line(left, y, pageWidth - right, y)
 
-  y += 10
+  pdf.line(
+    margin,
+    40,
+    pageWidth - margin,
+    40
+  )
 
-  // Registration information
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(13)
-  pdf.setTextColor(20)
-  pdf.text('Registration Details', left, y)
+  // -----------------------------
+  // Helper functions
+  // -----------------------------
+  function sectionTitle(title: string) {
+    pdf.setFillColor(245, 241, 234)
 
-  y += 8
+    pdf.roundedRect(
+      margin,
+      y - 5,
+      contentWidth,
+      9,
+      1.5,
+      1.5,
+      'F'
+    )
 
-  addLabelValue(
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(11)
+    pdf.setTextColor(72, 30, 20)
+
+    pdf.text(
+      title,
+      margin + 3,
+      y + 1
+    )
+
+    y += 10
+  }
+
+  function field(
+    label: string,
+    value: string,
+    x: number,
+    width: number
+  ) {
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(110)
+
+    pdf.text(
+      label.toUpperCase(),
+      x,
+      y
+    )
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(9.5)
+    pdf.setTextColor(25)
+
+    const lines = pdf.splitTextToSize(
+      value || '—',
+      width
+    )
+
+    pdf.text(
+      lines,
+      x,
+      y + 4
+    )
+
+    return Math.max(
+      8,
+      lines.length * 4 + 5
+    )
+  }
+
+  function addContinuationPage() {
+    pdf.addPage()
+
+    if (logoData) {
+      pdf.addImage(
+        logoData,
+        'JPEG',
+        margin,
+        8,
+        18,
+        18
+      )
+    }
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(13)
+    pdf.setTextColor(72, 30, 20)
+
+    pdf.text(
+      'NATIONAL HO YOUTH MEET 2026',
+      logoData ? 38 : margin,
+      15
+    )
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(8)
+    pdf.setTextColor(100)
+
+    pdf.text(
+      `Registration ID: ${registration!.registrationId}`,
+      logoData ? 38 : margin,
+      21
+    )
+
+    pdf.setDrawColor(190)
+
+    pdf.line(
+      margin,
+      30,
+      pageWidth - margin,
+      30
+    )
+
+    y = 38
+  }
+
+  function ensureSpace(required: number) {
+    if (y + required > pageHeight - 23) {
+      addContinuationPage()
+    }
+  }
+
+  const columnGap = 10
+
+  const columnWidth =
+    (contentWidth - columnGap) / 2
+
+  const column1 = margin
+
+  const column2 =
+    margin + columnWidth + columnGap
+
+  // -----------------------------
+  // Registration Details
+  // -----------------------------
+  sectionTitle('Registration Details')
+
+  let height1 = field(
     'Registration ID',
-    registration.registrationId
+    registration.registrationId,
+    column1,
+    columnWidth
   )
 
-  addLabelValue(
+  let height2 = field(
     'Status',
-    statusLabel(registration.status)
+    statusLabel(registration.status),
+    column2,
+    columnWidth
   )
 
-  addLabelValue(
+  y += Math.max(height1, height2)
+
+  height1 = field(
     'Registered Email',
-    maskEmail(registration.email)
+    maskEmail(registration.email),
+    column1,
+    columnWidth
   )
 
-  addLabelValue(
-    'Total Registration Amount',
+  height2 = field(
+    'Total Amount',
     `INR ${Number(
       registration.totalAmount
-    ).toLocaleString('en-IN')}`
+    ).toLocaleString('en-IN')}`,
+    column2,
+    columnWidth
   )
 
-  addLabelValue(
+  y += Math.max(height1, height2)
+
+  height1 = field(
     'Payment Method',
-    registration.paymentMode?.toUpperCase() || '—'
+    registration.paymentMode?.toUpperCase() ||
+      '—',
+    column1,
+    columnWidth
   )
 
-  addLabelValue(
-    'Submitted',
-    formatDate(registration.createdAt)
-  )
-
-  addLabelValue(
+  height2 = field(
     'Approval Email',
     registration.approvalEmailSent
       ? 'Sent'
-      : 'Not sent yet'
+      : 'Not sent yet',
+    column2,
+    columnWidth
   )
 
-  // Participants
-  checkPageSpace(20)
+  y += Math.max(height1, height2)
 
-  y += 3
+  height1 = field(
+    'Submitted',
+    formatDate(registration.createdAt),
+    column1,
+    contentWidth
+  )
 
-  pdf.setDrawColor(200)
-  pdf.line(left, y, pageWidth - right, y)
+  y += height1 + 3
 
-  y += 9
-
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(13)
-  pdf.setTextColor(20)
-  pdf.text('Participant Details', left, y)
-
-  y += 9
-
+  // -----------------------------
+  // Participant Details
+  // -----------------------------
   registration.participants.forEach(
     (participant, index) => {
-      checkPageSpace(60)
+      ensureSpace(80)
+
+      sectionTitle(
+        registration.participants.length === 1
+          ? 'Participant Details'
+          : `Participant ${participant.participant_no} Details`
+      )
 
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(12)
-      pdf.setTextColor(20)
+      pdf.setTextColor(25)
+
+      const nameLines =
+        pdf.splitTextToSize(
+          participant.name || '—',
+          contentWidth
+        )
 
       pdf.text(
-        `Participant ${participant.participant_no}: ${participant.name}`,
-        left,
+        nameLines,
+        margin,
         y
       )
 
-      y += 7
+      y += nameLines.length * 5 + 4
 
-      addLabelValue(
+      height1 = field(
         'Category',
-        categoryLabel(participant.category)
+        categoryLabel(
+          participant.category
+        ),
+        column1,
+        columnWidth
       )
 
-      addLabelValue(
-        'Date of Birth',
-        participant.dob || '—'
-      )
-
-      addLabelValue(
-        'Gender',
-        participant.gender || '—'
-      )
-
-      addLabelValue(
-        'District / State',
-        [
-          participant.district,
-          participant.state,
-        ]
-          .filter(Boolean)
-          .join(', ') || '—'
-      )
-
-      addLabelValue(
+      height2 = field(
         'Participant Fee',
         `INR ${Number(
           participant.fee || 0
-        ).toLocaleString('en-IN')}`
+        ).toLocaleString('en-IN')}`,
+        column2,
+        columnWidth
       )
 
-      addLabelValue(
-        'Activities',
-        activities(participant.activities_json)
+      y += Math.max(height1, height2)
+
+      height1 = field(
+        'Date of Birth',
+        participant.dob || '—',
+        column1,
+        columnWidth
       )
 
-      addLabelValue(
+      height2 = field(
+        'Gender',
+        participant.gender || '—',
+        column2,
+        columnWidth
+      )
+
+      y += Math.max(height1, height2)
+
+      height1 = field(
+        'District',
+        participant.district || '—',
+        column1,
+        columnWidth
+      )
+
+      height2 = field(
+        'State',
+        participant.state || '—',
+        column2,
+        columnWidth
+      )
+
+      y += Math.max(height1, height2)
+
+      height1 = field(
         'Accommodation Required',
-        yesNo(participant.accommodation)
+        yesNo(
+          participant.accommodation
+        ),
+        column1,
+        columnWidth
       )
 
-      addLabelValue(
-        'Travelling From Outside Jamshedpur',
-        yesNo(participant.from_outside)
+      height2 = field(
+        'Outside Jamshedpur',
+        yesNo(
+          participant.from_outside
+        ),
+        column2,
+        columnWidth
       )
+
+      y += Math.max(height1, height2)
+
+      ensureSpace(18)
+
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(7.5)
+      pdf.setTextColor(110)
+
+      pdf.text(
+        'ACTIVITIES',
+        margin,
+        y
+      )
+
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8.5)
+      pdf.setTextColor(25)
+
+      const activityLines =
+        pdf.splitTextToSize(
+          activities(
+            participant.activities_json
+          ),
+          contentWidth
+        )
+
+      pdf.text(
+        activityLines,
+        margin,
+        y + 4
+      )
+
+      y +=
+        activityLines.length * 4 + 8
+
+      if (participant.note) {
+        ensureSpace(18)
+
+        pdf.setFont(
+          'helvetica',
+          'bold'
+        )
+
+        pdf.setFontSize(7.5)
+        pdf.setTextColor(110)
+
+        pdf.text(
+          'NOTE',
+          margin,
+          y
+        )
+
+        pdf.setFont(
+          'helvetica',
+          'normal'
+        )
+
+        pdf.setFontSize(8.5)
+        pdf.setTextColor(25)
+
+        const noteLines =
+          pdf.splitTextToSize(
+            participant.note,
+            contentWidth
+          )
+
+        pdf.text(
+          noteLines,
+          margin,
+          y + 4
+        )
+
+        y +=
+          noteLines.length * 4 + 8
+      }
 
       if (
         index <
         registration.participants.length - 1
       ) {
-        checkPageSpace(10)
+        y += 2
 
         pdf.setDrawColor(220)
+
         pdf.line(
-          left,
+          margin,
           y,
-          pageWidth - right,
+          pageWidth - margin,
           y
         )
 
-        y += 8
+        y += 7
       }
     }
   )
 
-  // Footer note
-  checkPageSpace(24)
-
-  y += 4
-
-  pdf.setDrawColor(180)
-  pdf.line(left, y, pageWidth - right, y)
-
-  y += 8
-
-  pdf.setFont('helvetica', 'normal')
-  pdf.setFontSize(8)
-  pdf.setTextColor(100)
-
-  const note =
-    'This is a computer-generated registration document for National Ho Youth Meet 2026.'
-
-  const noteLines = pdf.splitTextToSize(
-    note,
-    contentWidth
-  )
-
-  pdf.text(noteLines, left, y)
-
-  // Page numbers
+  // -----------------------------
+  // Footer on every page
+  // -----------------------------
   const pageCount =
     pdf.getNumberOfPages()
 
@@ -492,18 +725,42 @@ function downloadRegistrationPdf() {
   ) {
     pdf.setPage(pageNumber)
 
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(8)
-    pdf.setTextColor(120)
+    pdf.setDrawColor(210)
+
+    pdf.line(
+      margin,
+      pageHeight - 18,
+      pageWidth - margin,
+      pageHeight - 18
+    )
+
+    pdf.setFont(
+      'helvetica',
+      'normal'
+    )
+
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(110)
+
+    pdf.text(
+      'Computer-generated registration confirmation - National Ho Youth Meet 2026',
+      margin,
+      pageHeight - 12
+    )
 
     pdf.text(
       `Page ${pageNumber} of ${pageCount}`,
-      pageWidth / 2,
-      pageHeight - 8,
-      { align: 'center' }
+      pageWidth - margin,
+      pageHeight - 12,
+      {
+        align: 'right',
+      }
     )
   }
 
+  // -----------------------------
+  // Download
+  // -----------------------------
   pdf.save(
     `${registration.registrationId}-Registration.pdf`
   )
