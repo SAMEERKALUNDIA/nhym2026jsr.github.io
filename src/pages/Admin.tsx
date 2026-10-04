@@ -132,7 +132,45 @@ export default function Admin() {
       setUpdatingId(null)
     }
   }
+const stats = useMemo(() => {
+  const totalRegistrations = rows.length
 
+  const totalParticipants = rows.reduce(
+    (sum, row) => sum + Number(row.participant_count || 0),
+    0
+  )
+
+  const pending = rows.filter(
+    row => row.status === 'PENDING'
+  ).length
+
+  const paymentVerified = rows.filter(
+    row => row.status === 'PAYMENT_VERIFIED'
+  ).length
+
+  const approved = rows.filter(
+    row => row.status === 'APPROVED'
+  ).length
+
+  const rejected = rows.filter(
+    row => row.status === 'REJECTED'
+  ).length
+
+  const totalAmount = rows.reduce(
+    (sum, row) => sum + Number(row.total_amount || 0),
+    0
+  )
+
+  return {
+    totalRegistrations,
+    totalParticipants,
+    pending,
+    paymentVerified,
+    approved,
+    rejected,
+    totalAmount,
+  }
+}, [rows])
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
 
@@ -209,6 +247,73 @@ export default function Admin() {
 
         {rows.length > 0 && (
           <>
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+  <div className="rounded-lg border bg-card p-5">
+    <div className="text-sm text-muted-foreground">
+      Total Registrations
+    </div>
+    <div className="mt-2 text-3xl font-semibold">
+      {stats.totalRegistrations}
+    </div>
+  </div>
+
+  <div className="rounded-lg border bg-card p-5">
+    <div className="text-sm text-muted-foreground">
+      Total Participants
+    </div>
+    <div className="mt-2 text-3xl font-semibold">
+      {stats.totalParticipants}
+    </div>
+  </div>
+
+  <div className="rounded-lg border bg-card p-5">
+    <div className="text-sm text-muted-foreground">
+      Pending
+    </div>
+    <div className="mt-2 text-3xl font-semibold">
+      {stats.pending}
+    </div>
+  </div>
+
+  <div className="rounded-lg border bg-card p-5">
+    <div className="text-sm text-muted-foreground">
+      Payment Verified
+    </div>
+    <div className="mt-2 text-3xl font-semibold">
+      {stats.paymentVerified}
+    </div>
+  </div>
+
+  <div className="rounded-lg border bg-card p-5">
+    <div className="text-sm text-muted-foreground">
+      Approved
+    </div>
+    <div className="mt-2 text-3xl font-semibold">
+      {stats.approved}
+    </div>
+  </div>
+
+  <div className="rounded-lg border bg-card p-5">
+    <div className="text-sm text-muted-foreground">
+      Rejected
+    </div>
+    <div className="mt-2 text-3xl font-semibold">
+      {stats.rejected}
+    </div>
+  </div>
+
+  <div className="rounded-lg border bg-card p-5 sm:col-span-2">
+    <div className="text-sm text-muted-foreground">
+      Total Registration Amount
+    </div>
+
+    <div className="mt-2 text-3xl font-semibold">
+      ₹{stats.totalAmount.toLocaleString('en-IN')}
+    </div>
+  </div>
+
+</div>
             <div className="mt-8 max-w-xl">
               <Input
                 value={search}
