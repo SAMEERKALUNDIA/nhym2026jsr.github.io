@@ -659,7 +659,7 @@ async function exportRegistrationsPdf() {
           row.total_amount || 0
         ).toLocaleString('en-IN')}`,
 
-        row.payment_mode || '—',
+        row.payment_mode?.toUpperCase() || '—',
 
         row.payment_reference || '—',
 
