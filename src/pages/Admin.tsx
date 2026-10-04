@@ -410,6 +410,461 @@ function exportRegistrationsCsv() {
   )
 }
 
+async function exportRegistrationsPdf() {
+  if (filteredRows.length === 0) {
+    window.alert('There are no registrations to export.')
+    return
+  }
+
+  const pdf = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+  })
+
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+
+  const margin = 12
+  const contentWidth = pageWidth - margin * 2
+
+  let logoData: string | null = null
+
+  try {
+    const response = await fetch('/nhym-logo.jpeg')
+
+    if (response.ok) {
+      const blob = await response.blob()
+
+      logoData = await new Promise<string>(
+        (resolve, reject) => {
+          const reader = new FileReader()
+
+          reader.onloadend = () =>
+            resolve(reader.result as string)
+
+          reader.onerror = reject
+
+          reader.readAsDataURL(blob)
+        }
+      )
+    }
+  } catch (error) {
+    console.error(
+      'Unable to load NHYM logo:',
+      error
+    )
+  }
+
+  const generatedAt =
+    new Date().toLocaleString('en-IN')
+
+  const columnWidths = [
+    31, // Registration ID
+    45, // Primary participant
+    16, // Count
+    25, // Amount
+    28, // Payment
+    35, // Reference
+    32, // Status
+    36, // Submitted
+  ]
+
+  const headers = [
+    'Registration ID',
+    'Primary Participant',
+    'Count',
+    'Amount',
+    'Payment',
+    'Reference',
+    'Status',
+    'Submitted',
+  ]
+
+  let y = 43
+
+  function addPageHeader(
+    continuation = false
+  ) {
+    if (logoData) {
+      pdf.addImage(
+        logoData,
+        'JPEG',
+        margin,
+        7,
+        continuation ? 17 : 24,
+        continuation ? 17 : 24
+      )
+    }
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(72, 30, 20)
+
+    pdf.setFontSize(
+      continuation ? 13 : 17
+    )
+
+    pdf.text(
+      'NATIONAL HO YOUTH MEET 2026',
+      logoData
+        ? continuation
+          ? 34
+          : 42
+        : margin,
+      continuation ? 14 : 15
+    )
+
+    pdf.setFont(
+      'helvetica',
+      continuation ? 'normal' : 'bold'
+    )
+
+    pdf.setFontSize(
+      continuation ? 8 : 11
+    )
+
+    pdf.setTextColor(50)
+
+    pdf.text(
+      continuation
+        ? 'Registration Summary Report - Continued'
+        : 'Registration Summary Report',
+      logoData
+        ? continuation
+          ? 34
+          : 42
+        : margin,
+      continuation ? 20 : 22
+    )
+
+    if (!continuation) {
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.setTextColor(100)
+
+      pdf.text(
+        'Jamshedpur, Jharkhand',
+        42,
+        28
+      )
+
+      pdf.text(
+        `Generated: ${generatedAt}`,
+        pageWidth - margin,
+        15,
+        { align: 'right' }
+      )
+
+      pdf.text(
+        `Registrations in report: ${filteredRows.length}`,
+        pageWidth - margin,
+        21,
+        { align: 'right' }
+      )
+
+      const participantTotal =
+        filteredRows.reduce(
+          (sum, row) =>
+            sum +
+            Number(
+              row.participant_count || 0
+            ),
+          0
+        )
+
+      pdf.text(
+        `Participants: ${participantTotal}`,
+        pageWidth - margin,
+        27,
+        { align: 'right' }
+      )
+    }
+
+    pdf.setDrawColor(185)
+
+    pdf.line(
+      margin,
+      continuation ? 28 : 34,
+      pageWidth - margin,
+      continuation ? 28 : 34
+    )
+
+    y = continuation ? 34 : 40
+  }
+
+  function drawTableHeader() {
+    const rowHeight = 9
+    let x = margin
+
+    pdf.setFillColor(245, 241, 234)
+
+    pdf.rect(
+      margin,
+      y,
+      contentWidth,
+      rowHeight,
+      'F'
+    )
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(7)
+    pdf.setTextColor(60)
+
+    headers.forEach(
+      (header, index) => {
+        pdf.text(
+          header,
+          x + 2,
+          y + 5.7
+        )
+
+        x += columnWidths[index]
+      }
+    )
+
+    pdf.setDrawColor(205)
+
+    pdf.line(
+      margin,
+      y + rowHeight,
+      pageWidth - margin,
+      y + rowHeight
+    )
+
+    y += rowHeight
+  }
+
+  function addNewPage() {
+    pdf.addPage()
+    addPageHeader(true)
+    drawTableHeader()
+  }
+
+  addPageHeader()
+  drawTableHeader()
+
+  filteredRows.forEach(
+    (row, rowIndex) => {
+      const values = [
+        row.registration_id || '—',
+
+        row.participants?.[0]?.name ||
+          '—',
+
+        String(
+          row.participant_count || 0
+        ),
+
+        `INR ${Number(
+          row.total_amount || 0
+        ).toLocaleString('en-IN')}`,
+
+        row.payment_mode || '—',
+
+        row.payment_reference || '—',
+
+        row.status
+          ?.replace(/_/g, ' ') ||
+          '—',
+
+        new Date(
+          row.created_at
+        ).toLocaleString('en-IN'),
+      ]
+
+      const wrappedValues =
+        values.map(
+          (value, index) =>
+            pdf.splitTextToSize(
+              value,
+              columnWidths[index] - 4
+            )
+        )
+
+      const maxLines =
+        Math.max(
+          ...wrappedValues.map(
+            value => value.length
+          )
+        )
+
+      const rowHeight =
+        Math.max(
+          9,
+          maxLines * 3.6 + 4
+        )
+
+      if (
+        y + rowHeight >
+        pageHeight - 19
+      ) {
+        addNewPage()
+      }
+
+      if (rowIndex % 2 === 1) {
+        pdf.setFillColor(
+          250,
+          250,
+          250
+        )
+
+        pdf.rect(
+          margin,
+          y,
+          contentWidth,
+          rowHeight,
+          'F'
+        )
+      }
+
+      let x = margin
+
+      pdf.setFont(
+        'helvetica',
+        'normal'
+      )
+
+      pdf.setFontSize(7)
+      pdf.setTextColor(30)
+
+      wrappedValues.forEach(
+        (value, index) => {
+          pdf.text(
+            value,
+            x + 2,
+            y + 5
+          )
+
+          x += columnWidths[index]
+        }
+      )
+
+      pdf.setDrawColor(230)
+
+      pdf.line(
+        margin,
+        y + rowHeight,
+        pageWidth - margin,
+        y + rowHeight
+      )
+
+      y += rowHeight
+    }
+  )
+
+  // Summary
+  const reportAmount =
+    filteredRows.reduce(
+      (sum, row) =>
+        sum +
+        Number(row.total_amount || 0),
+      0
+    )
+
+  const reportParticipants =
+    filteredRows.reduce(
+      (sum, row) =>
+        sum +
+        Number(
+          row.participant_count || 0
+        ),
+      0
+    )
+
+  if (y + 22 > pageHeight - 19) {
+    addNewPage()
+  }
+
+  y += 6
+
+  pdf.setFillColor(245, 241, 234)
+
+  pdf.roundedRect(
+    margin,
+    y,
+    contentWidth,
+    14,
+    1.5,
+    1.5,
+    'F'
+  )
+
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(8.5)
+  pdf.setTextColor(50)
+
+  pdf.text(
+    `Total Registrations: ${filteredRows.length}`,
+    margin + 4,
+    y + 8.5
+  )
+
+  pdf.text(
+    `Total Participants: ${reportParticipants}`,
+    margin + 75,
+    y + 8.5
+  )
+
+  pdf.text(
+    `Total Amount: INR ${reportAmount.toLocaleString(
+      'en-IN'
+    )}`,
+    margin + 155,
+    y + 8.5
+  )
+
+  // Footer on every page
+  const pageCount =
+    pdf.getNumberOfPages()
+
+  for (
+    let pageNumber = 1;
+    pageNumber <= pageCount;
+    pageNumber++
+  ) {
+    pdf.setPage(pageNumber)
+
+    pdf.setDrawColor(210)
+
+    pdf.line(
+      margin,
+      pageHeight - 14,
+      pageWidth - margin,
+      pageHeight - 14
+    )
+
+    pdf.setFont(
+      'helvetica',
+      'normal'
+    )
+
+    pdf.setFontSize(7)
+    pdf.setTextColor(110)
+
+    pdf.text(
+      'Confidential Admin Report - National Ho Youth Meet 2026',
+      margin,
+      pageHeight - 8
+    )
+
+    pdf.text(
+      `Page ${pageNumber} of ${pageCount}`,
+      pageWidth - margin,
+      pageHeight - 8,
+      { align: 'right' }
+    )
+  }
+
+  const date =
+    new Date()
+      .toISOString()
+      .slice(0, 10)
+
+  pdf.save(
+    `NHYM-2026-Registrations-${date}.pdf`
+  )
+}
+
 function exportParticipantsCsv() {
   const participantRows = filteredRows.flatMap(row =>
     (row.participants || []).map(participant => ({
@@ -1435,6 +1890,14 @@ if (!authenticated) {
     disabled={filteredRows.length === 0}
   >
     Export Registrations CSV
+  </Button>
+
+  <Button
+    variant="outline"
+    onClick={() => void exportRegistrationsPdf()}
+    disabled={filteredRows.length === 0}
+  >
+    Export Registrations PDF
   </Button>
 
   <Button
