@@ -127,6 +127,22 @@ function activities(value: string) {
   return value || '—'
 }
 
+function maskEmail(email: string) {
+  const [name, domain] = email.split('@')
+
+  if (!name || !domain) {
+    return '—'
+  }
+
+  if (name.length <= 2) {
+    return `${name.charAt(0)}***@${domain}`
+  }
+
+  return `${name.slice(0, 2)}${'*'.repeat(
+    Math.min(name.length - 2, 12)
+  )}@${domain}`
+}
+
 function formatDate(value: string | null) {
   if (!value) return '—'
 
@@ -399,7 +415,7 @@ export default function Participant() {
                     </p>
 
                     <p className="mt-1 font-medium">
-                      {registration.email}
+                      {maskEmail(registration.email)}
                     </p>
                   </div>
 
