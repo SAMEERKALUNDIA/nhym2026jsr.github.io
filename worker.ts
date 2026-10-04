@@ -54,6 +54,132 @@ export default {
       return json({ ok: true, registrationId, status: 'PENDING' }, 201)
     }
 
+    // Participant Portal — look up one registration using
+    // Registration ID + the email used during registration.
+    if (
+      url.pathname === '/api/participant/lookup' &&
+      request.method === 'POST'
+    ) {
+      let body: {
+        registrationId?: string
+        email?: string
+      }
+
+      try {
+        body = await request.json() as {
+          registrationId?: string
+          email?: string
+        }
+      } catch {
+        return json({ error: 'Invalid request.' }, 400)
+      }
+
+      const registrationId =
+        String(body.registrationId ?? '')
+          .trim()
+          .toUpperCase()
+
+      const email =
+        String(body.email ?? '')
+          .trim()
+          .toLowerCase()
+
+      if (!registrationId || !email) {
+        return json(
+          {
+            error:
+              'Registration ID and registered email address are required.'
+          },
+          400
+        )
+      }
+
+      const registration = await env.DB.prepare(`
+        SELECT
+          id,
+          registration_id,
+          email,
+          total_amount,
+          payment_mode,
+          status,
+          created_at,
+          updated_at,
+          approval_email_sent_at
+        FROM registrations
+        WHERE registration_id = ?
+          AND LOWER(email) = ?
+        LIMIT 1
+      `)
+        .bind(registrationId, email)
+        .first<{
+          id: number
+          registration_id: string
+          email: string
+          total_amount: number
+          payment_mode: string
+          status: string
+          created_at: string
+          updated_at: string | null
+          approval_email_sent_at: string | null
+        }>()
+
+      /*
+       * Use the same response whether the ID does not exist
+       * or the email does not match. This avoids revealing
+       * whether a particular Registration ID exists.
+       */
+      if (!registration) {
+        return json(
+          {
+            error:
+              'Registration not found. Check your Registration ID and registered email address.'
+          },
+          404
+        )
+      }
+
+      const participantResult = await env.DB.prepare(`
+        SELECT
+          participant_no,
+          name,
+          dob,
+          gender,
+          district,
+          state,
+          age,
+          category,
+          fee,
+          activities_json,
+          cultural,
+          sports,
+          from_outside,
+          accommodation,
+          note
+        FROM participants
+        WHERE registration_id = ?
+        ORDER BY participant_no
+      `)
+        .bind(registration.id)
+        .all()
+
+      return json({
+        ok: true,
+
+        registration: {
+          registrationId: registration.registration_id,
+          email: registration.email,
+          totalAmount: registration.total_amount,
+          paymentMode: registration.payment_mode,
+          status: registration.status,
+          createdAt: registration.created_at,
+          updatedAt: registration.updated_at,
+          approvalEmailSent:
+            Boolean(registration.approval_email_sent_at),
+
+          participants: participantResult.results
+        }
+      })
+    }
     if (url.pathname === '/api/admin/registrations' && request.method === 'GET') {
   if (!authorised(request, env)) {
     return json({ error: 'Unauthorized' }, 401)
