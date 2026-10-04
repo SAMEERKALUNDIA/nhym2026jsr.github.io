@@ -6,6 +6,7 @@ import { Meta } from '@/components/Meta'
 // Routes are code-split so the first paint carries only the landing page.
 const NotFound = lazy(() => import('@/pages/NotFound'))
 const Admin = lazy(() => import('@/pages/Admin'))
+const Participant = lazy(() => import('@/pages/Participant'))
 
 /* This is a one-page site with one action, so there is no site-wide header or
    footer above the routes: the page owns its own shell, its own `main` and its
@@ -28,6 +29,7 @@ export default function App() {
             </>
           }
         />
+	<Route path="participant" element={<Participant />} />
         <Route path="admin" element={<Admin />} />
         <Route
           path="*"
