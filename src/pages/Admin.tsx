@@ -735,7 +735,7 @@ if (!authenticated) {
           />
 
           <Button
-            onClick={load}
+            onClick={() => void load()}
             disabled={loading || !token}
           >
             {loading ? 'Loading…' : 'Load registrations'}
