@@ -725,28 +725,12 @@ if (!authenticated) {
     Logout
   </Button>
 </div>
-
-        <div className="mt-6 flex max-w-2xl gap-2">
-          <Input
-            type="password"
-            value={token}
-            onChange={e => setToken(e.target.value)}
-            placeholder="Admin token"
-          />
-
-          <Button
-            onClick={() => void load()}
-            disabled={loading || !token}
-          >
-            {loading ? 'Loading…' : 'Load registrations'}
-          </Button>
-        </div>
-
-        {error && (
-          <div className="mt-4 rounded-lg border border-destructive p-4 text-destructive">
-            <strong>Error:</strong> {error}
-          </div>
-        )}
+        
+ {error && (
+	 <div className="mt-4 rounded-lg border border-destructive p-4 text-destructive">
+    	 <strong>Error:</strong> {error}
+      </div> 
+)}
 
         {success && (
           <div className="mt-4 rounded-lg border bg-card p-4">
