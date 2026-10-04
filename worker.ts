@@ -55,13 +55,61 @@ export default {
     }
 
     if (url.pathname === '/api/admin/registrations' && request.method === 'GET') {
-      if (!authorised(request, env)) return json({ error: 'Unauthorized' }, 401)
-      const rows = await env.DB.prepare(`SELECT r.*, COUNT(p.id) participant_count
-        FROM registrations r LEFT JOIN participants p ON p.registration_id = r.id
-        GROUP BY r.id ORDER BY r.id DESC LIMIT 500`).all()
-      return json({ registrations: rows.results })
-    }
+  if (!authorised(request, env)) {
+    return json({ error: 'Unauthorized' }, 401)
+  }
 
+  const rows = await env.DB.prepare(`
+    SELECT
+      r.*,
+      COUNT(p.id) AS participant_count
+    FROM registrations r
+    LEFT JOIN participants p
+      ON p.registration_id = r.id
+    GROUP BY r.id
+    ORDER BY r.id DESC
+    LIMIT 500
+  `).all()
+
+  const registrations = await Promise.all(
+    rows.results.map(async (row: any) => {
+      const participants = await env.DB.prepare(`
+        SELECT
+          id,
+          participant_no,
+          name,
+          dob,
+          gender,
+          address,
+          district,
+          state,
+          pin,
+          age,
+          category,
+          fee,
+          activities_json,
+          cultural,
+          sports,
+          from_outside,
+          accommodation,
+          note,
+          details_json
+        FROM participants
+        WHERE registration_id = ?
+        ORDER BY participant_no
+      `)
+        .bind(row.id)
+        .all()
+
+      return {
+        ...row,
+        participants: participants.results
+      }
+    })
+  )
+
+  return json({ registrations })
+}
     const match = url.pathname.match(/^\/api\/admin\/registrations\/(\d+)$/)
     if (match && request.method === 'PATCH') {
       if (!authorised(request, env)) {
