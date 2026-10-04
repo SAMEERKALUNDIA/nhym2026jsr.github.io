@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -40,7 +40,13 @@ type Row = {
 }
 
 export default function Admin() {
-  const [token, setToken] = useState('')
+  const [token, setToken] = useState(
+  () => sessionStorage.getItem('nhym_admin_token') || ''
+)
+
+const [loginToken, setLoginToken] = useState('')
+const [authenticated, setAuthenticated] = useState(false)
+const [checkingSession, setCheckingSession] = useState(true)
   const [rows, setRows] = useState<Row[]>([])
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -49,48 +55,127 @@ export default function Admin() {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Row | null>(null)
 
-  async function load() {
-    setLoading(true)
-    setError('')
+  async function load(authToken = token) {
+  if (!authToken) return false
 
-    try {
-      const r = await fetch('/api/admin/registrations', {
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      })
+  setLoading(true)
+  setError('')
 
-      const j = await r.json() as {
-        registrations?: Row[]
-        error?: string
-      }
+  try {
+    const r = await fetch('/api/admin/registrations', {
+      headers: {
+        authorization: `Bearer ${authToken}`,
+      },
+    })
 
-      if (!r.ok) {
-        throw new Error(j.error || 'Could not load registrations.')
-      }
-
-      setRows(j.registrations || [])
-
-      setSelected(current => {
-        if (!current) return null
-
-        const updated = (j.registrations || []).find(
-          row => row.id === current.id
-        )
-
-        return updated || null
-      })
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : 'Could not load registrations.'
-      )
-    } finally {
-      setLoading(false)
+    const j = await r.json() as {
+      registrations?: Row[]
+      error?: string
     }
+
+    if (!r.ok) {
+      throw new Error(
+        r.status === 401
+          ? 'Invalid admin password / access key.'
+          : j.error || 'Could not load registrations.'
+      )
+    }
+
+    setRows(j.registrations || [])
+
+    setSelected(current => {
+      if (!current) return null
+
+      return (
+        (j.registrations || []).find(
+          row => row.id === current.id
+        ) || null
+      )
+    })
+
+    return true
+  } catch (e) {
+    setError(
+      e instanceof Error
+        ? e.message
+        : 'Could not load registrations.'
+    )
+
+    return false
+  } finally {
+    setLoading(false)
+  }
+}
+
+async function login(event: React.FormEvent) {
+  event.preventDefault()
+
+  const enteredToken = loginToken.trim()
+
+  if (!enteredToken) {
+    setError('Enter the admin password / access key.')
+    return
   }
 
+  setError('')
+  setSuccess('')
+
+  const ok = await load(enteredToken)
+
+  if (!ok) return
+
+  sessionStorage.setItem(
+    'nhym_admin_token',
+    enteredToken
+  )
+
+  setToken(enteredToken)
+  setLoginToken('')
+  setAuthenticated(true)
+}
+
+function logout() {
+  sessionStorage.removeItem('nhym_admin_token')
+
+  setToken('')
+  setLoginToken('')
+  setAuthenticated(false)
+  setRows([])
+  setSelected(null)
+  setSearch('')
+  setError('')
+  setSuccess('')
+}
+
+useEffect(() => {
+  const storedToken =
+    sessionStorage.getItem('nhym_admin_token')
+
+  if (!storedToken) {
+    setCheckingSession(false)
+    return
+  }
+
+  void (async () => {
+    const ok = await load(storedToken)
+
+    if (ok) {
+      setToken(storedToken)
+      setAuthenticated(true)
+    } else {
+      sessionStorage.removeItem(
+        'nhym_admin_token'
+      )
+
+      setToken('')
+    }
+
+    setCheckingSession(false)
+  })()
+  // Validate an existing session only when this page opens.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [])
+				
   async function changeStatus(
     row: Row,
     value: 'PAYMENT_VERIFIED' | 'APPROVED' | 'REJECTED'
@@ -531,17 +616,115 @@ function exportParticipantsCsv() {
     return null
   }
 
+if (checkingSession) {
+  return (
+    <main className="grid min-h-dvh place-items-center bg-background px-gutter">
+      <div className="text-sm text-muted-foreground">
+        Checking admin session…
+      </div>
+    </main>
+  )
+}
+
+if (!authenticated) {
+  return (
+    <main className="grid min-h-dvh place-items-center bg-background px-gutter py-10">
+      <div className="w-full max-w-md">
+        <div className="text-center">
+          <p className="text-xs font-semibold tracking-[0.16em] text-brand uppercase">
+            National Ho Youth Meet 2026
+          </p>
+
+          <h1 className="mt-2 text-3xl font-semibold">
+            Admin Login
+          </h1>
+
+          <p className="mt-3 text-muted-foreground">
+            Registration administration for authorized
+            organizers only.
+          </p>
+        </div>
+
+        <form
+          onSubmit={login}
+          className="mt-8 rounded-xl border bg-card p-6 shadow-sm"
+        >
+          <label
+            htmlFor="admin-password"
+            className="text-sm font-medium"
+          >
+            Admin Password / Access Key
+          </label>
+
+          <Input
+            id="admin-password"
+            type="password"
+            value={loginToken}
+            onChange={e =>
+              setLoginToken(e.target.value)
+            }
+            placeholder="Enter admin access key"
+            autoComplete="current-password"
+            autoFocus
+            className="mt-2 h-12"
+          />
+
+          {error && (
+            <div className="mt-4 rounded-lg border border-destructive p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            disabled={loading || !loginToken.trim()}
+            className="mt-5 h-12 w-full"
+          >
+            {loading
+              ? 'Signing in…'
+              : 'Sign In'}
+          </Button>
+
+          <p className="mt-5 text-center text-xs text-muted-foreground">
+            Authorized NHYM 2026 administration only.
+          </p>
+        </form>
+
+        <div className="mt-5 text-center">
+          <a
+            href="/"
+            className="text-sm underline underline-offset-4"
+          >
+            ← Back to NHYM website
+          </a>
+        </div>
+      </div>
+    </main>
+  )
+}
+
   return (
     <main className="min-h-dvh bg-background px-gutter py-10">
       <div className="mx-auto max-w-content">
 
-        <h1 className="text-4xl">
-          NHYM 2026 Registration Admin
-        </h1>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+  <div>
+    <h1 className="text-4xl">
+      NHYM 2026 Registration Admin
+    </h1>
 
-        <p className="mt-2 text-muted-foreground">
-          Registration management and payment verification
-        </p>
+    <p className="mt-2 text-muted-foreground">
+      Registration management and payment verification
+    </p>
+  </div>
+
+  <Button
+    variant="outline"
+    onClick={logout}
+  >
+    Logout
+  </Button>
+</div>
 
         <div className="mt-6 flex max-w-2xl gap-2">
           <Input
