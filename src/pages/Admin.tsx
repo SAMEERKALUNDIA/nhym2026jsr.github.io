@@ -43,6 +43,7 @@ export default function Admin() {
   const [token, setToken] = useState('')
   const [rows, setRows] = useState<Row[]>([])
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
   const [updatingId, setUpdatingId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
@@ -69,6 +70,16 @@ export default function Admin() {
       }
 
       setRows(j.registrations || [])
+
+      setSelected(current => {
+        if (!current) return null
+
+        const updated = (j.registrations || []).find(
+          row => row.id === current.id
+        )
+
+        return updated || null
+      })
     } catch (e) {
       setError(
         e instanceof Error
@@ -80,13 +91,44 @@ export default function Admin() {
     }
   }
 
-  async function changeStatus(id: number, value: string) {
-    setUpdatingId(id)
+  async function changeStatus(
+    row: Row,
+    value: 'PAYMENT_VERIFIED' | 'APPROVED' | 'REJECTED'
+  ) {
+    let message = ''
+
+    if (value === 'PAYMENT_VERIFIED') {
+      message =
+        `Confirm payment verification for ${row.registration_id}?\n\n` +
+        `Payment: ${row.payment_mode}\n` +
+        `Reference: ${row.payment_reference}\n` +
+        `Amount: ₹${row.total_amount.toLocaleString('en-IN')}`
+    }
+
+    if (value === 'APPROVED') {
+      message =
+        `Approve ${row.registration_id}?\n\n` +
+        `The registration will be approved and the participant's ` +
+        `approval email will be sent automatically if it has not already been sent.`
+    }
+
+    if (value === 'REJECTED') {
+      message =
+        `Reject ${row.registration_id}?\n\n` +
+        `Please confirm that you want to mark this registration as REJECTED.`
+    }
+
+    if (!window.confirm(message)) {
+      return
+    }
+
+    setUpdatingId(row.id)
     setError('')
+    setSuccess('')
 
     try {
       const r = await fetch(
-        `/api/admin/registrations/${id}`,
+        `/api/admin/registrations/${row.id}`,
         {
           method: 'PATCH',
           headers: {
@@ -101,6 +143,8 @@ export default function Admin() {
 
       const j = await r.json() as {
         ok?: boolean
+        status?: string
+        emailSent?: boolean
         error?: string
       }
 
@@ -110,18 +154,27 @@ export default function Admin() {
         )
       }
 
+      if (value === 'PAYMENT_VERIFIED') {
+        setSuccess(
+          `${row.registration_id}: Payment successfully verified.`
+        )
+      }
+
+      if (value === 'APPROVED') {
+        setSuccess(
+          j.emailSent
+            ? `${row.registration_id}: Registration approved and approval email sent.`
+            : `${row.registration_id}: Registration approved. No duplicate approval email was sent.`
+        )
+      }
+
+      if (value === 'REJECTED') {
+        setSuccess(
+          `${row.registration_id}: Registration marked as rejected.`
+        )
+      }
+
       await load()
-
-      setSelected(current => {
-        if (!current || current.id !== id) {
-          return current
-        }
-
-        return {
-          ...current,
-          status: value,
-        }
-      })
     } catch (e) {
       setError(
         e instanceof Error
@@ -132,45 +185,47 @@ export default function Admin() {
       setUpdatingId(null)
     }
   }
-const stats = useMemo(() => {
-  const totalRegistrations = rows.length
 
-  const totalParticipants = rows.reduce(
-    (sum, row) => sum + Number(row.participant_count || 0),
-    0
-  )
+  const stats = useMemo(() => {
+    const totalRegistrations = rows.length
 
-  const pending = rows.filter(
-    row => row.status === 'PENDING'
-  ).length
+    const totalParticipants = rows.reduce(
+      (sum, row) => sum + Number(row.participant_count || 0),
+      0
+    )
 
-  const paymentVerified = rows.filter(
-    row => row.status === 'PAYMENT_VERIFIED'
-  ).length
+    const pending = rows.filter(
+      row => row.status === 'PENDING'
+    ).length
 
-  const approved = rows.filter(
-    row => row.status === 'APPROVED'
-  ).length
+    const paymentVerified = rows.filter(
+      row => row.status === 'PAYMENT_VERIFIED'
+    ).length
 
-  const rejected = rows.filter(
-    row => row.status === 'REJECTED'
-  ).length
+    const approved = rows.filter(
+      row => row.status === 'APPROVED'
+    ).length
 
-  const totalAmount = rows.reduce(
-    (sum, row) => sum + Number(row.total_amount || 0),
-    0
-  )
+    const rejected = rows.filter(
+      row => row.status === 'REJECTED'
+    ).length
 
-  return {
-    totalRegistrations,
-    totalParticipants,
-    pending,
-    paymentVerified,
-    approved,
-    rejected,
-    totalAmount,
-  }
-}, [rows])
+    const totalAmount = rows.reduce(
+      (sum, row) => sum + Number(row.total_amount || 0),
+      0
+    )
+
+    return {
+      totalRegistrations,
+      totalParticipants,
+      pending,
+      paymentVerified,
+      approved,
+      rejected,
+      totalAmount,
+    }
+  }, [rows])
+
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
 
@@ -209,6 +264,113 @@ const stats = useMemo(() => {
     }
   }
 
+  function statusBadge(status: string) {
+    const common =
+      'inline-flex rounded-full border px-3 py-1 text-xs font-semibold'
+
+    if (status === 'APPROVED') {
+      return (
+        <span className={`${common} bg-green-50 text-green-700`}>
+          ✓ APPROVED
+        </span>
+      )
+    }
+
+    if (status === 'PAYMENT_VERIFIED') {
+      return (
+        <span className={`${common} bg-blue-50 text-blue-700`}>
+          PAYMENT VERIFIED
+        </span>
+      )
+    }
+
+    if (status === 'REJECTED') {
+      return (
+        <span className={`${common} bg-red-50 text-red-700`}>
+          REJECTED
+        </span>
+      )
+    }
+
+    return (
+      <span className={`${common} bg-yellow-50 text-yellow-700`}>
+        PENDING
+      </span>
+    )
+  }
+
+  function actionButtons(row: Row) {
+    const busy = updatingId === row.id
+
+    if (row.status === 'PENDING') {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={busy}
+            onClick={() =>
+              changeStatus(row, 'PAYMENT_VERIFIED')
+            }
+          >
+            {busy ? 'Updating…' : 'Verify Payment'}
+          </Button>
+
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              changeStatus(row, 'REJECTED')
+            }
+          >
+            Reject
+          </Button>
+        </div>
+      )
+    }
+
+    if (row.status === 'PAYMENT_VERIFIED') {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={busy}
+            onClick={() =>
+              changeStatus(row, 'APPROVED')
+            }
+          >
+            {busy ? 'Updating…' : 'Approve Registration'}
+          </Button>
+
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              changeStatus(row, 'REJECTED')
+            }
+          >
+            Reject
+          </Button>
+        </div>
+      )
+    }
+
+    if (row.status === 'APPROVED') {
+      return (
+        <div className="text-sm font-medium">
+          ✓ Registration complete
+        </div>
+      )
+    }
+
+    if (row.status === 'REJECTED') {
+      return (
+        <div className="text-sm font-medium">
+          Registration rejected
+        </div>
+      )
+    }
+
+    return null
+  }
+
   return (
     <main className="min-h-dvh bg-background px-gutter py-10">
       <div className="mx-auto max-w-content">
@@ -233,15 +395,19 @@ const stats = useMemo(() => {
             onClick={load}
             disabled={loading || !token}
           >
-            {loading
-              ? 'Loading…'
-              : 'Load registrations'}
+            {loading ? 'Loading…' : 'Load registrations'}
           </Button>
         </div>
 
         {error && (
-          <div className="mt-4 rounded border border-destructive p-3 text-destructive">
-            {error}
+          <div className="mt-4 rounded-lg border border-destructive p-4 text-destructive">
+            <strong>Error:</strong> {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mt-4 rounded-lg border bg-card p-4">
+            ✓ {success}
           </div>
         )}
 
@@ -249,71 +415,72 @@ const stats = useMemo(() => {
           <>
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
-  <div className="rounded-lg border bg-card p-5">
-    <div className="text-sm text-muted-foreground">
-      Total Registrations
-    </div>
-    <div className="mt-2 text-3xl font-semibold">
-      {stats.totalRegistrations}
-    </div>
-  </div>
+              <div className="rounded-lg border bg-card p-5">
+                <div className="text-sm text-muted-foreground">
+                  Total Registrations
+                </div>
+                <div className="mt-2 text-3xl font-semibold">
+                  {stats.totalRegistrations}
+                </div>
+              </div>
 
-  <div className="rounded-lg border bg-card p-5">
-    <div className="text-sm text-muted-foreground">
-      Total Participants
-    </div>
-    <div className="mt-2 text-3xl font-semibold">
-      {stats.totalParticipants}
-    </div>
-  </div>
+              <div className="rounded-lg border bg-card p-5">
+                <div className="text-sm text-muted-foreground">
+                  Total Participants
+                </div>
+                <div className="mt-2 text-3xl font-semibold">
+                  {stats.totalParticipants}
+                </div>
+              </div>
 
-  <div className="rounded-lg border bg-card p-5">
-    <div className="text-sm text-muted-foreground">
-      Pending
-    </div>
-    <div className="mt-2 text-3xl font-semibold">
-      {stats.pending}
-    </div>
-  </div>
+              <div className="rounded-lg border bg-card p-5">
+                <div className="text-sm text-muted-foreground">
+                  Pending
+                </div>
+                <div className="mt-2 text-3xl font-semibold">
+                  {stats.pending}
+                </div>
+              </div>
 
-  <div className="rounded-lg border bg-card p-5">
-    <div className="text-sm text-muted-foreground">
-      Payment Verified
-    </div>
-    <div className="mt-2 text-3xl font-semibold">
-      {stats.paymentVerified}
-    </div>
-  </div>
+              <div className="rounded-lg border bg-card p-5">
+                <div className="text-sm text-muted-foreground">
+                  Payment Verified
+                </div>
+                <div className="mt-2 text-3xl font-semibold">
+                  {stats.paymentVerified}
+                </div>
+              </div>
 
-  <div className="rounded-lg border bg-card p-5">
-    <div className="text-sm text-muted-foreground">
-      Approved
-    </div>
-    <div className="mt-2 text-3xl font-semibold">
-      {stats.approved}
-    </div>
-  </div>
+              <div className="rounded-lg border bg-card p-5">
+                <div className="text-sm text-muted-foreground">
+                  Approved
+                </div>
+                <div className="mt-2 text-3xl font-semibold">
+                  {stats.approved}
+                </div>
+              </div>
 
-  <div className="rounded-lg border bg-card p-5">
-    <div className="text-sm text-muted-foreground">
-      Rejected
-    </div>
-    <div className="mt-2 text-3xl font-semibold">
-      {stats.rejected}
-    </div>
-  </div>
+              <div className="rounded-lg border bg-card p-5">
+                <div className="text-sm text-muted-foreground">
+                  Rejected
+                </div>
+                <div className="mt-2 text-3xl font-semibold">
+                  {stats.rejected}
+                </div>
+              </div>
 
-  <div className="rounded-lg border bg-card p-5 sm:col-span-2">
-    <div className="text-sm text-muted-foreground">
-      Total Registration Amount
-    </div>
+              <div className="rounded-lg border bg-card p-5 sm:col-span-2">
+                <div className="text-sm text-muted-foreground">
+                  Total Registration Amount
+                </div>
 
-    <div className="mt-2 text-3xl font-semibold">
-      ₹{stats.totalAmount.toLocaleString('en-IN')}
-    </div>
-  </div>
+                <div className="mt-2 text-3xl font-semibold">
+                  ₹{stats.totalAmount.toLocaleString('en-IN')}
+                </div>
+              </div>
 
-</div>
+            </div>
+
             <div className="mt-8 max-w-xl">
               <Input
                 value={search}
@@ -329,7 +496,7 @@ const stats = useMemo(() => {
         )}
 
         <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-sm">
+          <table className="w-full min-w-[1250px] text-sm">
 
             <thead>
               <tr className="border-b text-left">
@@ -340,6 +507,7 @@ const stats = useMemo(() => {
                 <th>Total</th>
                 <th>Payment</th>
                 <th>Status</th>
+                <th>Action</th>
                 <th>Submitted</th>
                 <th>Details</th>
               </tr>
@@ -380,33 +548,11 @@ const stats = useMemo(() => {
                   </td>
 
                   <td>
-                    <select
-                      className="rounded border bg-background p-2"
-                      value={row.status}
-                      disabled={updatingId === row.id}
-                      onChange={e =>
-                        changeStatus(
-                          row.id,
-                          e.target.value
-                        )
-                      }
-                    >
-                      <option value="PENDING">
-                        PENDING
-                      </option>
+                    {statusBadge(row.status)}
+                  </td>
 
-                      <option value="PAYMENT_VERIFIED">
-                        PAYMENT VERIFIED
-                      </option>
-
-                      <option value="APPROVED">
-                        APPROVED
-                      </option>
-
-                      <option value="REJECTED">
-                        REJECTED
-                      </option>
-                    </select>
+                  <td>
+                    {actionButtons(row)}
                   </td>
 
                   <td>
@@ -470,7 +616,9 @@ const stats = useMemo(() => {
 
               <div>
                 <strong>Status</strong>
-                <div>{selected.status}</div>
+                <div className="mt-1">
+                  {statusBadge(selected.status)}
+                </div>
               </div>
 
               <div>
@@ -492,6 +640,23 @@ const stats = useMemo(() => {
                 </div>
               </div>
 
+              <div>
+                <strong>Approval Email</strong>
+                <div>
+                  {selected.approval_email_sent_at
+                    ? '✓ Sent'
+                    : 'Not sent'}
+                </div>
+              </div>
+
+            </div>
+
+            <div className="mt-6 rounded-lg border p-4">
+              <div className="mb-3 font-semibold">
+                Registration Actions
+              </div>
+
+              {actionButtons(selected)}
             </div>
 
             <h3 className="mt-8 text-xl font-semibold">
