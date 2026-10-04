@@ -2392,6 +2392,7 @@ if (!authenticated) {
 
   <Button
     variant="outline"
+    className="mr-3"
     onClick={exportParticipantsCsv}
     disabled={filteredRows.length === 0}
   >
