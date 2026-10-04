@@ -2391,21 +2391,20 @@ if (!authenticated) {
   </Button>
 
   <Button
-    variant="outline"
-    className="mr-3"
-    onClick={exportParticipantsCsv}
-    disabled={filteredRows.length === 0}
-  >
-    Export Participants CSV
-  <Button
-    variant="outline"
-    onClick={() => void exportParticipantsPdf()}
-    disabled={filteredRows.length === 0}
-  >
-  Export Participants PDF
-  </Button>
+  variant="outline"
+  onClick={exportParticipantsCsv}
+  disabled={filteredRows.length === 0}
+>
+  Export Participants CSV
+</Button>
 
-  </Button>
+<Button
+  variant="outline"
+  onClick={() => void exportParticipantsPdf()}
+  disabled={filteredRows.length === 0}
+>
+  Export Participants PDF
+</Button>
 
 </div>
 
