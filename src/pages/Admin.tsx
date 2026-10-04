@@ -2366,7 +2366,7 @@ if (!authenticated) {
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
 
-  <div className="w-full max-w-xl">
+  <div className="w-full lg:max-w-md">
     <Input
       value={search}
       onChange={e => setSearch(e.target.value)}
