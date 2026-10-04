@@ -249,7 +249,167 @@ export default function Admin() {
       )
     })
   }, [rows, search])
+function csvCell(value: unknown) {
+  const text = String(value ?? '')
+  return `"${text.replace(/"/g, '""')}"`
+}
 
+function downloadCsv(filename: string, content: string) {
+  const blob = new Blob(
+    ['\uFEFF' + content],
+    { type: 'text/csv;charset=utf-8;' }
+  )
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = filename
+
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+
+  URL.revokeObjectURL(url)
+}
+
+function exportRegistrationsCsv() {
+  if (filteredRows.length === 0) {
+    window.alert('There are no registrations to export.')
+    return
+  }
+
+  const headers = [
+    'Registration ID',
+    'Primary Participant',
+    'Email',
+    'Participants',
+    'Total Amount',
+    'Payment Mode',
+    'Payment Reference',
+    'Status',
+    'Submitted',
+    'Approval Email Sent',
+  ]
+
+  const data = filteredRows.map(row => [
+    row.registration_id,
+    row.participants?.[0]?.name || '',
+    row.email,
+    row.participant_count,
+    row.total_amount,
+    row.payment_mode,
+    row.payment_reference,
+    row.status,
+    new Date(row.created_at).toLocaleString('en-IN'),
+    row.approval_email_sent_at
+      ? new Date(row.approval_email_sent_at).toLocaleString('en-IN')
+      : '',
+  ])
+
+  const csv = [
+    headers.map(csvCell).join(','),
+    ...data.map(row =>
+      row.map(csvCell).join(',')
+    ),
+  ].join('\r\n')
+
+  const date = new Date()
+    .toISOString()
+    .slice(0, 10)
+
+  downloadCsv(
+    `NHYM-2026-Registrations-${date}.csv`,
+    csv
+  )
+}
+
+function exportParticipantsCsv() {
+  const participantRows = filteredRows.flatMap(row =>
+    (row.participants || []).map(participant => ({
+      registration: row,
+      participant,
+    }))
+  )
+
+  if (participantRows.length === 0) {
+    window.alert('There are no participants to export.')
+    return
+  }
+
+  const headers = [
+    'Registration ID',
+    'Participant No',
+    'Name',
+    'Date of Birth',
+    'Age',
+    'Gender',
+    'Category',
+    'Fee',
+    'Address',
+    'District',
+    'State',
+    'PIN',
+    'Activities',
+    'Cultural',
+    'Sports',
+    'From Outside',
+    'Accommodation',
+    'Note',
+    'Email',
+    'Payment Mode',
+    'Payment Reference',
+    'Registration Total',
+    'Registration Status',
+    'Submitted',
+  ]
+
+  const data = participantRows.map(
+    ({ registration, participant }) => [
+      registration.registration_id,
+      participant.participant_no,
+      participant.name,
+      participant.dob,
+      participant.age,
+      participant.gender,
+      participant.category,
+      participant.fee,
+      participant.address,
+      participant.district,
+      participant.state,
+      participant.pin,
+      activities(participant.activities_json),
+      participant.cultural,
+      participant.sports,
+      participant.from_outside,
+      participant.accommodation,
+      participant.note,
+      registration.email,
+      registration.payment_mode,
+      registration.payment_reference,
+      registration.total_amount,
+      registration.status,
+      new Date(registration.created_at)
+        .toLocaleString('en-IN'),
+    ]
+  )
+
+  const csv = [
+    headers.map(csvCell).join(','),
+    ...data.map(row =>
+      row.map(csvCell).join(',')
+    ),
+  ].join('\r\n')
+
+  const date = new Date()
+    .toISOString()
+    .slice(0, 10)
+
+  downloadCsv(
+    `NHYM-2026-Participants-${date}.csv`,
+    csv
+  )
+}
   function activities(value: string) {
     try {
       const parsed = JSON.parse(value || '[]')
@@ -481,13 +641,33 @@ export default function Admin() {
 
             </div>
 
-            <div className="mt-8 max-w-xl">
-              <Input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search ID, name, email, payment reference or status"
-              />
-            </div>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+
+  <div className="w-full max-w-xl">
+    <Input
+      value={search}
+      onChange={e => setSearch(e.target.value)}
+      placeholder="Search ID, name, email, payment reference or status"
+    />
+  </div>
+
+  <Button
+    variant="outline"
+    onClick={exportRegistrationsCsv}
+    disabled={filteredRows.length === 0}
+  >
+    Export Registrations CSV
+  </Button>
+
+  <Button
+    variant="outline"
+    onClick={exportParticipantsCsv}
+    disabled={filteredRows.length === 0}
+  >
+    Export Participants CSV
+  </Button>
+
+</div>
 
             <div className="mt-4 text-sm text-muted-foreground">
               Showing {filteredRows.length} of {rows.length} registrations
