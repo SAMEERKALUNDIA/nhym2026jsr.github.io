@@ -1561,6 +1561,496 @@ async function downloadAdminRegistrationPdf(row: Row) {
     `${row.registration_id}-Admin-Registration.pdf`
   )
 }
+
+async function exportParticipantsPdf() {
+  const participantRows = filteredRows.flatMap(row =>
+    (row.participants || []).map(participant => ({
+      registration: row,
+      participant,
+    }))
+  )
+
+  if (participantRows.length === 0) {
+    window.alert('There are no participants to export.')
+    return
+  }
+
+  const pdf = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+  })
+
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+
+  const margin = 10
+  const contentWidth = pageWidth - margin * 2
+
+  let logoData: string | null = null
+
+  try {
+    const response = await fetch('/nhym-logo.jpeg')
+
+    if (response.ok) {
+      const blob = await response.blob()
+
+      logoData = await new Promise<string>(
+        (resolve, reject) => {
+          const reader = new FileReader()
+
+          reader.onloadend = () =>
+            resolve(reader.result as string)
+
+          reader.onerror = reject
+          reader.readAsDataURL(blob)
+        }
+      )
+    }
+  } catch (error) {
+    console.error(
+      'Unable to load NHYM logo:',
+      error
+    )
+  }
+
+  const generatedAt =
+    new Date().toLocaleString('en-IN')
+
+  /*
+   * Compact participant summary.
+   * Detailed information remains available in
+   * the individual Admin Registration PDF.
+   */
+  const headers = [
+    'Reg. ID',
+    'No.',
+    'Participant Name',
+    'Category',
+    'Gender',
+    'Age',
+    'District',
+    'State',
+    'Fee',
+    'Accommodation',
+    'Status',
+  ]
+
+  const columnWidths = [
+    29, // Registration ID
+    10, // Participant number
+    39, // Name
+    35, // Category
+    18, // Gender
+    12, // Age
+    31, // District
+    25, // State
+    22, // Fee
+    28, // Accommodation
+    28, // Status
+  ]
+
+  let y = 42
+
+  function categoryLabel(category: string) {
+    switch (category) {
+      case 'student':
+        return 'Student Participant'
+
+      case 'non-earning':
+      case 'non_earning':
+        return 'Non-Earning Participant'
+
+      case 'earning':
+        return 'Earning Participant'
+
+      case 'visitor':
+        return 'Audience / Visitor'
+
+      default:
+        return category || '—'
+    }
+  }
+
+  function yesNo(value: string) {
+    switch (value?.toLowerCase()) {
+      case 'yes':
+        return 'Yes'
+
+      case 'no':
+        return 'No'
+
+      case 'maybe':
+        return 'Maybe'
+
+      default:
+        return value || '—'
+    }
+  }
+
+  function addPageHeader(
+    continuation = false
+  ) {
+    if (logoData) {
+      pdf.addImage(
+        logoData,
+        'JPEG',
+        margin,
+        6,
+        continuation ? 17 : 24,
+        continuation ? 17 : 24
+      )
+    }
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(72, 30, 20)
+    pdf.setFontSize(
+      continuation ? 13 : 17
+    )
+
+    pdf.text(
+      'NATIONAL HO YOUTH MEET 2026',
+      logoData
+        ? continuation
+          ? 32
+          : 40
+        : margin,
+      continuation ? 13 : 14
+    )
+
+    pdf.setFont(
+      'helvetica',
+      continuation ? 'normal' : 'bold'
+    )
+
+    pdf.setFontSize(
+      continuation ? 8 : 11
+    )
+
+    pdf.setTextColor(50)
+
+    pdf.text(
+      continuation
+        ? 'Participant Summary Report - Continued'
+        : 'Participant Summary Report',
+      logoData
+        ? continuation
+          ? 32
+          : 40
+        : margin,
+      continuation ? 19 : 21
+    )
+
+    if (!continuation) {
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.setTextColor(100)
+
+      pdf.text(
+        'Jamshedpur, Jharkhand',
+        40,
+        27
+      )
+
+      pdf.text(
+        `Generated: ${generatedAt}`,
+        pageWidth - margin,
+        14,
+        { align: 'right' }
+      )
+
+      pdf.text(
+        `Participants in report: ${participantRows.length}`,
+        pageWidth - margin,
+        20,
+        { align: 'right' }
+      )
+
+      pdf.text(
+        `Registrations represented: ${filteredRows.length}`,
+        pageWidth - margin,
+        26,
+        { align: 'right' }
+      )
+    }
+
+    pdf.setDrawColor(185)
+
+    pdf.line(
+      margin,
+      continuation ? 27 : 33,
+      pageWidth - margin,
+      continuation ? 27 : 33
+    )
+
+    y = continuation ? 33 : 39
+  }
+
+  function drawTableHeader() {
+    const rowHeight = 9
+    let x = margin
+
+    pdf.setFillColor(245, 241, 234)
+
+    pdf.rect(
+      margin,
+      y,
+      contentWidth,
+      rowHeight,
+      'F'
+    )
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(6.5)
+    pdf.setTextColor(60)
+
+    headers.forEach((header, index) => {
+      pdf.text(
+        header,
+        x + 1.5,
+        y + 5.7
+      )
+
+      x += columnWidths[index]
+    })
+
+    pdf.setDrawColor(205)
+
+    pdf.line(
+      margin,
+      y + rowHeight,
+      pageWidth - margin,
+      y + rowHeight
+    )
+
+    y += rowHeight
+  }
+
+  function addNewPage() {
+    pdf.addPage()
+    addPageHeader(true)
+    drawTableHeader()
+  }
+
+  addPageHeader()
+  drawTableHeader()
+
+  participantRows.forEach(
+    ({ registration, participant }, rowIndex) => {
+      const values = [
+        registration.registration_id || '—',
+
+        String(
+          participant.participant_no || '—'
+        ),
+
+        participant.name || '—',
+
+        categoryLabel(
+          participant.category
+        ),
+
+        participant.gender || '—',
+
+        participant.age || '—',
+
+        participant.district || '—',
+
+        participant.state || '—',
+
+        `INR ${Number(
+          participant.fee || 0
+        ).toLocaleString('en-IN')}`,
+
+        yesNo(
+          participant.accommodation
+        ),
+
+        registration.status
+          ?.replace(/_/g, ' ') ||
+          '—',
+      ]
+
+      const wrappedValues =
+        values.map((value, index) =>
+          pdf.splitTextToSize(
+            value,
+            columnWidths[index] - 3
+          )
+        )
+
+      const maxLines = Math.max(
+        ...wrappedValues.map(
+          value => value.length
+        )
+      )
+
+      const rowHeight = Math.max(
+        9,
+        maxLines * 3.5 + 4
+      )
+
+      if (
+        y + rowHeight >
+        pageHeight - 19
+      ) {
+        addNewPage()
+      }
+
+      if (rowIndex % 2 === 1) {
+        pdf.setFillColor(
+          250,
+          250,
+          250
+        )
+
+        pdf.rect(
+          margin,
+          y,
+          contentWidth,
+          rowHeight,
+          'F'
+        )
+      }
+
+      let x = margin
+
+      pdf.setFont(
+        'helvetica',
+        'normal'
+      )
+
+      pdf.setFontSize(6.5)
+      pdf.setTextColor(30)
+
+      wrappedValues.forEach(
+        (value, index) => {
+          pdf.text(
+            value,
+            x + 1.5,
+            y + 5
+          )
+
+          x += columnWidths[index]
+        }
+      )
+
+      pdf.setDrawColor(230)
+
+      pdf.line(
+        margin,
+        y + rowHeight,
+        pageWidth - margin,
+        y + rowHeight
+      )
+
+      y += rowHeight
+    }
+  )
+
+  const totalFees =
+    participantRows.reduce(
+      (sum, item) =>
+        sum +
+        Number(
+          item.participant.fee || 0
+        ),
+      0
+    )
+
+  if (y + 22 > pageHeight - 19) {
+    addNewPage()
+  }
+
+  y += 6
+
+  pdf.setFillColor(245, 241, 234)
+
+  pdf.roundedRect(
+    margin,
+    y,
+    contentWidth,
+    14,
+    1.5,
+    1.5,
+    'F'
+  )
+
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(8.5)
+  pdf.setTextColor(50)
+
+  pdf.text(
+    `Total Participants: ${participantRows.length}`,
+    margin + 4,
+    y + 8.5
+  )
+
+  pdf.text(
+    `Registrations: ${filteredRows.length}`,
+    margin + 90,
+    y + 8.5
+  )
+
+  pdf.text(
+    `Total Participant Fees: INR ${totalFees.toLocaleString(
+      'en-IN'
+    )}`,
+    margin + 165,
+    y + 8.5
+  )
+
+  // Footer on every page
+  const pageCount =
+    pdf.getNumberOfPages()
+
+  for (
+    let pageNumber = 1;
+    pageNumber <= pageCount;
+    pageNumber++
+  ) {
+    pdf.setPage(pageNumber)
+
+    pdf.setDrawColor(210)
+
+    pdf.line(
+      margin,
+      pageHeight - 14,
+      pageWidth - margin,
+      pageHeight - 14
+    )
+
+    pdf.setFont(
+      'helvetica',
+      'normal'
+    )
+
+    pdf.setFontSize(7)
+    pdf.setTextColor(110)
+
+    pdf.text(
+      'Confidential Participant Report - National Ho Youth Meet 2026',
+      margin,
+      pageHeight - 8
+    )
+
+    pdf.text(
+      `Page ${pageNumber} of ${pageCount}`,
+      pageWidth - margin,
+      pageHeight - 8,
+      { align: 'right' }
+    )
+  }
+
+  const date =
+    new Date()
+      .toISOString()
+      .slice(0, 10)
+
+  pdf.save(
+    `NHYM-2026-Participants-${date}.pdf`
+  )
+}
   function activities(value: string) {
     try {
       const parsed = JSON.parse(value || '[]')
@@ -1906,6 +2396,14 @@ if (!authenticated) {
     disabled={filteredRows.length === 0}
   >
     Export Participants CSV
+  <Button
+    variant="outline"
+    onClick={() => void exportParticipantsPdf()}
+    disabled={filteredRows.length === 0}
+  >
+  Export Participants PDF
+  </Button>
+
   </Button>
 
 </div>
