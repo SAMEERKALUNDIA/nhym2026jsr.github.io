@@ -418,11 +418,45 @@ export default function Home() {
           className="glow-brand pointer-events-none absolute -top-40 -right-24 -z-10 h-[26rem] w-[26rem] opacity-70"
         />
         <div className="mx-auto flex max-w-content items-center justify-between gap-4">
-          <a href="#top" className="rounded-md">
-            <Brand />
-            <span className="sr-only">Back to the top of the page</span>
-          </a>
-        </div>
+  <a href="#top" className="rounded-md">
+    <Brand />
+    <span className="sr-only">
+      Back to the top of the page
+    </span>
+  </a>
+
+  <div className="flex items-center gap-2">
+    <Button
+      asChild
+      variant="outline"
+      className="h-10 px-3 sm:px-4"
+    >
+      <a href="/participant">
+        <span className="hidden sm:inline">
+          Participant Login
+        </span>
+        <span className="sm:hidden">
+          Participant
+        </span>
+      </a>
+    </Button>
+
+    <Button
+      asChild
+      variant="outline"
+      className="h-10 px-3 sm:px-4"
+    >
+      <a href="/admin">
+        <span className="hidden sm:inline">
+          Admin Login
+        </span>
+        <span className="sm:hidden">
+          Admin
+        </span>
+      </a>
+    </Button>
+  </div>
+</div>
       </header>
 
       <main id="top">
