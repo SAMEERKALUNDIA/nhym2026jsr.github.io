@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { jsPDF } from 'jspdf'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -495,6 +496,616 @@ function exportParticipantsCsv() {
     csv
   )
 }
+async function downloadAdminRegistrationPdf(row: Row) {
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  })
+
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const margin = 15
+  const contentWidth = pageWidth - margin * 2
+
+  // Load NHYM logo
+  let logoData: string | null = null
+
+  try {
+    const response = await fetch('/nhym-logo.jpeg')
+
+    if (!response.ok) {
+      throw new Error('Logo could not be loaded.')
+    }
+
+    const blob = await response.blob()
+
+    logoData = await new Promise<string>(
+      (resolve, reject) => {
+        const reader = new FileReader()
+
+        reader.onloadend = () => {
+          resolve(reader.result as string)
+        }
+
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      }
+    )
+  } catch (error) {
+    console.error('Unable to load NHYM logo:', error)
+  }
+
+  let y = 48
+
+  function addHeader(continuation = false) {
+    if (logoData) {
+      pdf.addImage(
+        logoData,
+        'JPEG',
+        margin,
+        8,
+        continuation ? 18 : 28,
+        continuation ? 18 : 28
+      )
+    }
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(72, 30, 20)
+
+    if (continuation) {
+      pdf.setFontSize(13)
+
+      pdf.text(
+        'NATIONAL HO YOUTH MEET 2026',
+        logoData ? 38 : margin,
+        15
+      )
+
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.setTextColor(100)
+
+      pdf.text(
+        `Registration ID: ${row.registration_id}`,
+        logoData ? 38 : margin,
+        21
+      )
+
+      pdf.setDrawColor(190)
+      pdf.line(
+        margin,
+        30,
+        pageWidth - margin,
+        30
+      )
+
+      y = 38
+      return
+    }
+
+    pdf.setFontSize(17)
+
+    pdf.text(
+      'NATIONAL HO YOUTH MEET 2026',
+      48,
+      17
+    )
+
+    pdf.setFontSize(12)
+    pdf.setTextColor(40)
+
+    pdf.text(
+      'Admin Registration Record',
+      48,
+      24
+    )
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(9)
+    pdf.setTextColor(100)
+
+    pdf.text(
+      'Jamshedpur, Jharkhand',
+      48,
+      30
+    )
+
+    pdf.setDrawColor(180)
+
+    pdf.line(
+      margin,
+      40,
+      pageWidth - margin,
+      40
+    )
+  }
+
+  function addContinuationPage() {
+    pdf.addPage()
+    addHeader(true)
+  }
+
+  function ensureSpace(required: number) {
+    if (y + required > pageHeight - 23) {
+      addContinuationPage()
+    }
+  }
+
+  function sectionTitle(title: string) {
+    ensureSpace(15)
+
+    pdf.setFillColor(245, 241, 234)
+
+    pdf.roundedRect(
+      margin,
+      y - 5,
+      contentWidth,
+      9,
+      1.5,
+      1.5,
+      'F'
+    )
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(11)
+    pdf.setTextColor(72, 30, 20)
+
+    pdf.text(
+      title,
+      margin + 3,
+      y + 1
+    )
+
+    y += 10
+  }
+
+  function field(
+    label: string,
+    value: string,
+    x: number,
+    width: number
+  ) {
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(110)
+
+    pdf.text(
+      label.toUpperCase(),
+      x,
+      y
+    )
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(9.5)
+    pdf.setTextColor(25)
+
+    const lines = pdf.splitTextToSize(
+      value || '—',
+      width
+    )
+
+    pdf.text(
+      lines,
+      x,
+      y + 4
+    )
+
+    return Math.max(
+      8,
+      lines.length * 4 + 5
+    )
+  }
+
+  function categoryLabel(category: string) {
+    switch (category) {
+      case 'student':
+        return 'Student Participant'
+
+      case 'non-earning':
+      case 'non_earning':
+        return 'Non-Earning Participant'
+
+      case 'earning':
+        return 'Earning Participant'
+
+      case 'visitor':
+        return 'Audience / Visitor'
+
+      default:
+        return category || '—'
+    }
+  }
+
+  function yesNo(value: string) {
+    switch (value?.toLowerCase()) {
+      case 'yes':
+        return 'Yes'
+
+      case 'no':
+        return 'No'
+
+      case 'maybe':
+        return 'Maybe'
+
+      default:
+        return value || '—'
+    }
+  }
+
+  const columnGap = 10
+  const columnWidth =
+    (contentWidth - columnGap) / 2
+
+  const column1 = margin
+  const column2 =
+    margin + columnWidth + columnGap
+
+  // First page header
+  addHeader()
+
+  // Registration details
+  sectionTitle('Registration Details')
+
+  let height1 = field(
+    'Registration ID',
+    row.registration_id,
+    column1,
+    columnWidth
+  )
+
+  let height2 = field(
+    'Status',
+    row.status.replace(/_/g, ' '),
+    column2,
+    columnWidth
+  )
+
+  y += Math.max(height1, height2)
+
+  height1 = field(
+    'Registered Email',
+    row.email || '—',
+    column1,
+    columnWidth
+  )
+
+  height2 = field(
+    'Total Amount',
+    `INR ${Number(
+      row.total_amount || 0
+    ).toLocaleString('en-IN')}`,
+    column2,
+    columnWidth
+  )
+
+  y += Math.max(height1, height2)
+
+  height1 = field(
+    'Payment Method',
+    row.payment_mode?.toUpperCase() || '—',
+    column1,
+    columnWidth
+  )
+
+  height2 = field(
+    'Payment Reference',
+    row.payment_reference || '—',
+    column2,
+    columnWidth
+  )
+
+  y += Math.max(height1, height2)
+
+  height1 = field(
+    'Submitted',
+    new Date(row.created_at)
+      .toLocaleString('en-IN'),
+    column1,
+    columnWidth
+  )
+
+  height2 = field(
+    'Approval Email',
+    row.approval_email_sent_at
+      ? `Sent: ${new Date(
+          row.approval_email_sent_at
+        ).toLocaleString('en-IN')}`
+      : 'Not sent',
+    column2,
+    columnWidth
+  )
+
+  y += Math.max(height1, height2) + 3
+
+  // Participant details
+  ;(row.participants || []).forEach(
+    (participant, index) => {
+      ensureSpace(85)
+
+      sectionTitle(
+        `Participant ${participant.participant_no} Details`
+      )
+
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(12)
+      pdf.setTextColor(25)
+
+      const nameLines = pdf.splitTextToSize(
+        participant.name || '—',
+        contentWidth
+      )
+
+      pdf.text(
+        nameLines,
+        margin,
+        y
+      )
+
+      y += nameLines.length * 5 + 4
+
+      height1 = field(
+        'Category',
+        categoryLabel(participant.category),
+        column1,
+        columnWidth
+      )
+
+      height2 = field(
+        'Participant Fee',
+        `INR ${Number(
+          participant.fee || 0
+        ).toLocaleString('en-IN')}`,
+        column2,
+        columnWidth
+      )
+
+      y += Math.max(height1, height2)
+
+      height1 = field(
+        'Date of Birth',
+        participant.dob || '—',
+        column1,
+        columnWidth
+      )
+
+      height2 = field(
+        'Age',
+        participant.age || '—',
+        column2,
+        columnWidth
+      )
+
+      y += Math.max(height1, height2)
+
+      height1 = field(
+        'Gender',
+        participant.gender || '—',
+        column1,
+        columnWidth
+      )
+
+      height2 = field(
+        'PIN',
+        participant.pin || '—',
+        column2,
+        columnWidth
+      )
+
+      y += Math.max(height1, height2)
+
+      height1 = field(
+        'District',
+        participant.district || '—',
+        column1,
+        columnWidth
+      )
+
+      height2 = field(
+        'State',
+        participant.state || '—',
+        column2,
+        columnWidth
+      )
+
+      y += Math.max(height1, height2)
+
+      ensureSpace(18)
+
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(7.5)
+      pdf.setTextColor(110)
+
+      pdf.text(
+        'ADDRESS',
+        margin,
+        y
+      )
+
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8.5)
+      pdf.setTextColor(25)
+
+      const addressLines =
+        pdf.splitTextToSize(
+          participant.address || '—',
+          contentWidth
+        )
+
+      pdf.text(
+        addressLines,
+        margin,
+        y + 4
+      )
+
+      y += addressLines.length * 4 + 7
+
+      ensureSpace(18)
+
+      height1 = field(
+        'Accommodation Required',
+        yesNo(participant.accommodation),
+        column1,
+        columnWidth
+      )
+
+      height2 = field(
+        'From Outside Jamshedpur',
+        yesNo(participant.from_outside),
+        column2,
+        columnWidth
+      )
+
+      y += Math.max(height1, height2)
+
+      ensureSpace(18)
+
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(7.5)
+      pdf.setTextColor(110)
+
+      pdf.text(
+        'ACTIVITIES',
+        margin,
+        y
+      )
+
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8.5)
+      pdf.setTextColor(25)
+
+      const activityLines =
+        pdf.splitTextToSize(
+          activities(
+            participant.activities_json
+          ),
+          contentWidth
+        )
+
+      pdf.text(
+        activityLines,
+        margin,
+        y + 4
+      )
+
+      y += activityLines.length * 4 + 7
+
+      if (participant.cultural) {
+        ensureSpace(14)
+
+        height1 = field(
+          'Cultural',
+          participant.cultural,
+          column1,
+          columnWidth
+        )
+
+        height2 = field(
+          'Sports',
+          participant.sports || '—',
+          column2,
+          columnWidth
+        )
+
+        y += Math.max(height1, height2)
+      }
+
+      if (participant.note) {
+        ensureSpace(18)
+
+        pdf.setFont('helvetica', 'bold')
+        pdf.setFontSize(7.5)
+        pdf.setTextColor(110)
+
+        pdf.text(
+          'NOTE',
+          margin,
+          y
+        )
+
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(8.5)
+        pdf.setTextColor(25)
+
+        const noteLines =
+          pdf.splitTextToSize(
+            participant.note,
+            contentWidth
+          )
+
+        pdf.text(
+          noteLines,
+          margin,
+          y + 4
+        )
+
+        y += noteLines.length * 4 + 7
+      }
+
+      if (
+        index <
+        (row.participants || []).length - 1
+      ) {
+        ensureSpace(10)
+
+        pdf.setDrawColor(220)
+
+        pdf.line(
+          margin,
+          y,
+          pageWidth - margin,
+          y
+        )
+
+        y += 7
+      }
+    }
+  )
+
+  // Footer on every page
+  const pageCount =
+    pdf.getNumberOfPages()
+
+  for (
+    let pageNumber = 1;
+    pageNumber <= pageCount;
+    pageNumber++
+  ) {
+    pdf.setPage(pageNumber)
+
+    pdf.setDrawColor(210)
+
+    pdf.line(
+      margin,
+      pageHeight - 18,
+      pageWidth - margin,
+      pageHeight - 18
+    )
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(110)
+
+    pdf.text(
+      'Confidential Admin Record - National Ho Youth Meet 2026',
+      margin,
+      pageHeight - 12
+    )
+
+    pdf.text(
+      `Page ${pageNumber} of ${pageCount}`,
+      pageWidth - margin,
+      pageHeight - 12,
+      {
+        align: 'right',
+      }
+    )
+  }
+
+  pdf.save(
+    `${row.registration_id}-Admin-Registration.pdf`
+  )
+}
   function activities(value: string) {
     try {
       const parsed = JSON.parse(value || '[]')
@@ -924,12 +1535,24 @@ if (!authenticated) {
                 </p>
               </div>
 
-              <Button
-                variant="outline"
-                onClick={() => setSelected(null)}
-              >
-                Close
-              </Button>
+              <div className="flex flex-wrap gap-2">
+  <Button
+    type="button"
+    onClick={() =>
+      void downloadAdminRegistrationPdf(selected)
+    }
+  >
+    Download PDF
+  </Button>
+
+  <Button
+    type="button"
+    variant="outline"
+    onClick={() => setSelected(null)}
+  >
+    Close
+  </Button>
+</div>
 
             </div>
 
