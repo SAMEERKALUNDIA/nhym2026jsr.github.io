@@ -1100,30 +1100,29 @@ export default function Register() {
                 Office bearers
               </h2>
               <ul className="mt-4 space-y-3 text-sm">
-                {ROLE_ORDER.map((role) => {
-                  const person = COMMITTEE.find((entry) => entry.role === role)
-                  if (!person) return null
-                  return (
-                    <li key={role}>
-                      <span className="block font-medium text-foreground">
-                        {person.name} · {person.role}
-                      </span>
-                      <span className="block text-muted-foreground">
-                        {person.phones.map((phone, index) => (
-                          <span key={phone}>
-                            {index > 0 && ' · '}
-                            <a
-                              className="rounded-sm underline underline-offset-4"
-                              href={telHref(phone)}
-                            >
-                              {displayPhone(phone)}
-                            </a>
-                          </span>
-                        ))}
-                      </span>
-                    </li>
-                  )
-                })}
+                {ROLE_ORDER.flatMap((role) =>
+  COMMITTEE.filter((entry) => entry.role === role).map((person) => (
+    <li key={`${person.role}-${person.name}`}>
+      <span className="block font-medium text-foreground">
+        {person.name} · {person.role}
+      </span>
+
+      <span className="block text-muted-foreground">
+        {person.phones.map((phone, index) => (
+          <span key={phone}>
+            {index > 0 && ' · '}
+            <a
+              className="rounded-sm underline underline-offset-4"
+              href={telHref(phone)}
+            >
+              {displayPhone(phone)}
+            </a>
+          </span>
+        ))}
+      </span>
+    </li>
+  ))
+)}
               </ul>
             </div>
           </div>
