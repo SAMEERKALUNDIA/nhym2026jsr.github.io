@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 
 import { Brand } from '@/components/Brand'
-import { PhotoCredits } from '@/components/PhotoCredits'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -1464,8 +1463,7 @@ export default function Home() {
               The total on this page is a check for you. No payment is taken here, nothing is sent
               anywhere, and registration is complete only once the committee has verified the
               payment and approved the entry.
-            </p>
-            <PhotoCredits />
+            </p>            
           </div>
         </div>
       </footer>
