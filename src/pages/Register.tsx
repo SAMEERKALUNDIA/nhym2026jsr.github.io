@@ -8,7 +8,6 @@ import {
 } from 'lucide-react'
 
 import { Brand } from '@/components/Brand'
-import { PhotoCredits } from '@/components/PhotoCredits'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -1133,7 +1132,6 @@ export default function Register() {
             <p className="max-w-xl">
               Your registration will be submitted to the NHYM 2026 organising committee for review. Registration will be confirmed only after the payment has been verified and the registration has been approved by the committee.
             </p>
-            <PhotoCredits />
           </div>
         </div>
       </footer>
