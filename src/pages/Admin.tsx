@@ -1850,7 +1850,10 @@ async function exportParticipantsPdf() {
           participant.category
         ),
 
-        participant.gender || '—',
+        participant.gender
+          ? participant.gender.charAt(0).toUpperCase() +
+            participant.gender.slice(1).toLowerCase()
+          : '—',
 
         participant.age || '—',
 
