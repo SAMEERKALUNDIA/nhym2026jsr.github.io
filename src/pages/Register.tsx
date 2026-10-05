@@ -1131,9 +1131,7 @@ export default function Register() {
           <Separator className="my-6" />
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">
             <p className="max-w-xl">
-              The total on this page is a check for you. No payment is taken here, nothing is sent
-              anywhere, and registration is complete only once the committee has verified the
-              payment and approved the entry.
+              Your registration will be submitted to the NHYM 2026 organising committee for review. Registration will be confirmed only after the payment has been verified and the registration has been approved by the committee.
             </p>
             <PhotoCredits />
           </div>
