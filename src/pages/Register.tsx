@@ -497,34 +497,8 @@ if (!row.dob.trim()) {
                               className="mt-2 h-11"
                             />
                           </div>
-                          <div>
-                            <Label htmlFor={`age-${row.key}`}>
-                              Age{' '}
-                              <span className="font-normal text-muted-foreground">(optional)</span>
-                            </Label>
-                            <Input
-  id={`age-${row.key}`}
-  value={row.age}
-  readOnly
-  placeholder="Calculated automatically"
-  className="mt-2 h-11 bg-muted/40"
-/>
-                            <Input
-  id={`dob-${row.key}`}
-  type="date"
-  value={row.dob}
-  onChange={(e) =>
-    update(row.key, {
-      dob: e.target.value,
-      age: calculateAge(e.target.value),
-    })
-  }
-  aria-invalid={Boolean(row.error)}
-  className="mt-2 h-11"
-/>
                           </div>
-                        </div>
-
+                      
                         {/* ---- Participant details, in the desk's own order --- */}
                         <div className="mt-6 border-t border-border pt-5">
                           <p className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
@@ -533,21 +507,36 @@ if (!row.dob.trim()) {
                           <p className="mt-2 max-w-lg text-sm text-muted-foreground">
                             The desk files every entry under these, so all of them are needed.
                           </p>
+<div className="mt-4 grid gap-4 sm:grid-cols-3">
+  <div>
+    <Label htmlFor={`dob-${row.key}`}>Date of Birth</Label>
+    <Input
+      id={`dob-${row.key}`}
+      type="date"
+      value={row.dob}
+      onChange={(e) =>
+        update(row.key, {
+          dob: e.target.value,
+          age: calculateAge(e.target.value),
+        })
+      }
+      aria-invalid={Boolean(row.error)}
+      className="mt-2 h-11"
+    />
+  </div>
 
-                          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                            <div>
-                              <Label htmlFor={`dob-${row.key}`}>Date of Birth</Label>
-                              <Input
-  id={`dob-${row.key}`}
-  type="date"
-  value={row.dob}
-  onChange={(e) => update(row.key, { dob: e.target.value })}
-  aria-invalid={Boolean(row.error)}
-  className="mt-2 h-11"
-/>
-                            </div>
-                            <div>
-                              <Label htmlFor={`gender-${row.key}`}>Gender</Label>
+  <div>
+    <Label htmlFor={`age-${row.key}`}>Age</Label>
+    <Input
+      id={`age-${row.key}`}
+      value={row.age}
+      readOnly
+      className="mt-2 h-11 bg-muted/40"
+    />
+  </div>
+
+  <div>
+    <Label htmlFor={`gender-${row.key}`}>Gender</Label>
                               <Select
                                 value={row.gender}
                                 onValueChange={(value) =>
