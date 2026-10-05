@@ -7,6 +7,7 @@ import { Meta } from '@/components/Meta'
 const NotFound = lazy(() => import('@/pages/NotFound'))
 const Admin = lazy(() => import('@/pages/Admin'))
 const Participant = lazy(() => import('@/pages/Participant'))
+const Register = lazy(() => import('@/pages/Register'))
 
 /* This is a one-page site with one action, so there is no site-wide header or
    footer above the routes: the page owns its own shell, its own `main` and its
@@ -29,6 +30,7 @@ export default function App() {
             </>
           }
         />
+        <Route path="register" element={<Register />} />
 	<Route path="participant" element={<Participant />} />
         <Route path="admin" element={<Admin />} />
         <Route
