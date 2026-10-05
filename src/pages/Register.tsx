@@ -153,6 +153,27 @@ const PAYMENT_MODES: { id: PaymentMode; label: string }[] = [
 
 let nextKey = 2
 
+function calculateAge(dob: string): string {
+  if (!dob) return ''
+
+  const birthDate = new Date(`${dob}T00:00:00`)
+  if (Number.isNaN(birthDate.getTime())) return ''
+
+  const today = new Date()
+  let age = today.getFullYear() - birthDate.getFullYear()
+
+  const monthDifference = today.getMonth() - birthDate.getMonth()
+
+  if (
+    monthDifference < 0 ||
+    (monthDifference === 0 && today.getDate() < birthDate.getDate())
+  ) {
+    age--
+  }
+
+  return age >= 0 ? String(age) : ''
+}
+
 function blank(key: number): Draft {
   return {
     key,
@@ -472,8 +493,7 @@ if (!row.dob.trim()) {
                               value={row.name}
                               onChange={(e) => update(row.key, { name: e.target.value })}
                               aria-invalid={Boolean(row.error)}
-                              aria-describedby={row.error ? `name-error-${row.key}` : undefined}
-                              placeholder="Name as on the ID card"
+                              aria-describedby={row.error ? `name-error-${row.key}` : undefined}                        
                               className="mt-2 h-11"
                             />
                           </div>
@@ -483,12 +503,25 @@ if (!row.dob.trim()) {
                               <span className="font-normal text-muted-foreground">(optional)</span>
                             </Label>
                             <Input
-                              id={`age-${row.key}`}
-                              value={row.age}
-                              onChange={(e) => update(row.key, { age: e.target.value })}
-                              inputMode="numeric"                              
-                              className="mt-2 h-11"
-                            />
+  id={`age-${row.key}`}
+  value={row.age}
+  readOnly
+  placeholder="Calculated automatically"
+  className="mt-2 h-11 bg-muted/40"
+/>
+                            <Input
+  id={`dob-${row.key}`}
+  type="date"
+  value={row.dob}
+  onChange={(e) =>
+    update(row.key, {
+      dob: e.target.value,
+      age: calculateAge(e.target.value),
+    })
+  }
+  aria-invalid={Boolean(row.error)}
+  className="mt-2 h-11"
+/>
                           </div>
                         </div>
 
