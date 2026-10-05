@@ -181,7 +181,6 @@ function blank(key: number): Draft {
 /* The sheet's own date format: day, month, year. A native date control hands
    back the same string in the browser's locale order, so this only guards what
    a keyboard entry produces. */
-const IN_DATE = /^\d{1,2}\/\d{1,2}\/\d{4}$/
 
 /* Loose on purpose: a real address can carry dots, plus signs and a long
    domain, so this only catches a missing @ or a missing dot after it. */
@@ -264,10 +263,10 @@ export default function Register() {
           ok = false
           return { ...row, error: 'Write the name as it should appear on the pass.' }
         }
-        if (!IN_DATE.test(row.dob.trim())) {
-          ok = false
-          return { ...row, error: 'Enter the date of birth as day, month and year.' }
-        }
+if (!row.dob.trim()) {
+  ok = false
+  return { ...row, error: 'Select the date of birth.' }
+}
         if (row.gender === '') {
           ok = false
           return { ...row, error: 'Choose Male, Female, or Prefer not to say.' }
@@ -487,8 +486,7 @@ export default function Register() {
                               id={`age-${row.key}`}
                               value={row.age}
                               onChange={(e) => update(row.key, { age: e.target.value })}
-                              inputMode="numeric"
-                              placeholder="18"
+                              inputMode="numeric"                              
                               className="mt-2 h-11"
                             />
                           </div>
@@ -507,14 +505,13 @@ export default function Register() {
                             <div>
                               <Label htmlFor={`dob-${row.key}`}>Date of Birth</Label>
                               <Input
-                                id={`dob-${row.key}`}
-                                value={row.dob}
-                                onChange={(e) => update(row.key, { dob: e.target.value })}
-                                placeholder="DD/MM/YYYY"
-                                inputMode="numeric"
-                                aria-invalid={Boolean(row.error)}
-                                className="mt-2 h-11"
-                              />
+  id={`dob-${row.key}`}
+  type="date"
+  value={row.dob}
+  onChange={(e) => update(row.key, { dob: e.target.value })}
+  aria-invalid={Boolean(row.error)}
+  className="mt-2 h-11"
+/>
                             </div>
                             <div>
                               <Label htmlFor={`gender-${row.key}`}>Gender</Label>
@@ -561,8 +558,7 @@ export default function Register() {
                               <Input
                                 id={`district-${row.key}`}
                                 value={row.district}
-                                onChange={(e) => update(row.key, { district: e.target.value })}
-                                placeholder="East Singhbhum"
+                                onChange={(e) => update(row.key, { district: e.target.value })}                                
                                 className="mt-2 h-11"
                               />
                             </div>
@@ -571,8 +567,7 @@ export default function Register() {
                               <Input
                                 id={`state-${row.key}`}
                                 value={row.state}
-                                onChange={(e) => update(row.key, { state: e.target.value })}
-                                placeholder="Jharkhand"
+                                onChange={(e) => update(row.key, { state: e.target.value })}                                
                                 className="mt-2 h-11"
                               />
                             </div>
@@ -583,8 +578,7 @@ export default function Register() {
                                 value={row.pin}
                                 onChange={(e) => update(row.key, { pin: e.target.value })}
                                 inputMode="numeric"
-                                autoComplete="postal-code"
-                                placeholder="831004"
+                                autoComplete="postal-code"                                
                                 className="mt-2 h-11"
                               />
                             </div>
