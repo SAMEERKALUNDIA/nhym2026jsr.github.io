@@ -430,13 +430,15 @@ export default function Register() {
         >
           <div className="mx-auto max-w-content">
             <div className="max-w-2xl">
-              <h2 className="text-[clamp(1.75rem,3.4vw,2.6rem)]">Register a group</h2>
-              <p className="mt-4 text-lg text-muted-foreground">
-                Add one card per person, choose a registration type for each, and send it once. A
-                family, a school group or a whole delegation goes in together. The total is worked
-                out as you go, and it is paid to the committee — nothing on this page charges
-                anything.
-              </p>
+              <h2 className="text-[clamp(1.75rem,3.4vw,2.6rem)]">
+  NHYM 2026 Registration
+</h2>
+<p className="mt-4 text-lg text-muted-foreground">
+  Register yourself or multiple participants together in a single registration.
+  Add one participant at a time, select the appropriate participant category,
+  and complete the required details. The total registration fee will be
+  calculated automatically based on the selected participant categories.
+</p>
             </div>
 
             <div className="relative mt-10 grid gap-8 lg:grid-cols-[1.5fr_1fr] lg:items-start lg:gap-12">
