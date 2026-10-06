@@ -224,11 +224,14 @@ export default function Home() {
               <p className="font-display text-5xl font-bold tracking-[0.02em] text-brand uppercase sm:text-6xl">
                 {EVENT.greeting}
               </p>
-              <h1 className="mt-4 text-[length:var(--hero-size)] uppercase">
-                National Ho
-                <br />
-                Youth Meet 2026
+              <h1 className="mt-4 max-w-xl font-display text-4xl font-bold uppercase leading-tight sm:text-5xl">
+                  National Ho Youth Meet 2026
               </h1>
+
+              <p className="mt-6 font-display text-5xl font-bold leading-tight tracking-[0.02em] text-brand sm:text-6xl">
+                 SHIRJON 𑢽𑢢𑢼𑢮𑢩𑢳
+              </p>
+
               <p className="mt-3 max-w-md font-display text-xl font-medium text-primary/80">
                 Jamshedpur, on 28 and 29 November 2026
               </p>
