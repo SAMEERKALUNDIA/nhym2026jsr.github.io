@@ -60,52 +60,78 @@ export default function Home() {
   return (
     <div className="min-h-dvh bg-background">
       {/* ---- First screen ------------------------------------------------- */}
-      <header className="relative isolate overflow-hidden px-gutter py-6">
-        <div
-          aria-hidden="true"
-          className="glow-brand pointer-events-none absolute -top-40 -right-24 -z-10 h-[26rem] w-[26rem] opacity-70"
-        />
-        <div className="mx-auto flex max-w-content items-center justify-between gap-4">
-  <a href="#top" className="rounded-md">
-    <Brand />
-    <span className="sr-only">
-      Back to the top of the page
-    </span>
-  </a>
+<header className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-gutter backdrop-blur">
+  <div className="mx-auto flex min-h-20 max-w-content items-center justify-between gap-4">
+    {/* Logo / Brand */}
+    <a href="#top" className="shrink-0 rounded-md">
+      <Brand />
+      <span className="sr-only">Back to the top of the page</span>
+    </a>
 
-  <div className="flex items-center gap-2">
-    <Button
-      asChild
-      variant="outline"
-      className="h-10 px-3 sm:px-4"
+    {/* Desktop Navigation */}
+    <nav
+      className="hidden items-center gap-6 lg:flex"
+      aria-label="Main navigation"
     >
-      <a href="/participant">
-        <span className="hidden sm:inline">
-          Participant Login
-        </span>
-        <span className="sm:hidden">
-          Participant
-        </span>
+      <a
+        href="#top"
+        className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        Home
       </a>
-    </Button>
 
-    <Button
-      asChild
-      variant="outline"
-      className="h-10 px-3 sm:px-4"
-    >
-      <a href="/admin">
-        <span className="hidden sm:inline">
-          Admin Login
-        </span>
-        <span className="sm:hidden">
-          Admin
-        </span>
+      <a
+        href="#about"
+        className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        About
       </a>
-    </Button>
+
+      <a
+        href="#fees"
+        className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        Programme & Fees
+      </a>
+
+      <a
+        href="#committee"
+        className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        Contact
+      </a>
+    </nav>
+
+    {/* Actions */}
+    <div className="flex items-center gap-2">
+      <Button
+        asChild
+        variant="outline"
+        className="hidden h-10 px-4 sm:inline-flex"
+      >
+        <a href="/participant">Participant Login</a>
+      </Button>
+
+      <Button
+        asChild
+        className="h-10 bg-brand px-4 text-brand-foreground hover:bg-brand/90"
+      >
+        <a href="/register">
+          <span className="hidden sm:inline">Register Now</span>
+          <span className="sm:hidden">Register</span>
+        </a>
+      </Button>
+
+      <Button
+        asChild
+        variant="ghost"
+        className="hidden h-10 px-3 xl:inline-flex"
+      >
+        <a href="/admin">Admin</a>
+      </Button>
+    </div>
   </div>
-</div>
-      </header>
+</header>
 
       <main id="top">
         <section className="relative isolate overflow-hidden px-gutter pb-section">
@@ -196,7 +222,10 @@ export default function Home() {
         </section>
 
         {/* ---- Who is here and why: an editorial lede with a smaller picture */}
-        <section className="border-y border-border bg-card px-gutter py-section">
+        <section
+          id="about"
+          className="scroll-mt-20 border-y border-border bg-card px-gutter py-section"
+        >
           <div className="mx-auto grid max-w-content gap-layout lg:grid-cols-[1.4fr_1fr] lg:items-center lg:gap-12">
             <div>
               <h2 className="text-[clamp(1.75rem,3.4vw,2.6rem)]">
