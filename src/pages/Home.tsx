@@ -2,6 +2,7 @@ import {
   CalendarDays,
   Check,
   MapPin,
+  Phone,
 } from 'lucide-react'
 
 import { Brand } from '@/components/Brand'
@@ -13,13 +14,22 @@ import {
   CONTRIBUTION_AMOUNTS,
   CORE_CATEGORIES,
   EVENT,
-  ROLE_ORDER,
   TREASURER,
   UPI,
   displayPhone,
   inr,
   telHref,
 } from '@/data/event'
+
+/* The card is stamped with a post's initial rather than numbered: the roles are
+   not a sequence, and "P" and "VP" read apart at phone width. */
+const ROLE_MONOGRAM: Record<string, string> = {
+  President: 'P',
+  'Vice president': 'VP',
+  'General secretary': 'GS',
+  Secretary: 'S',
+  Treasurer: 'T',
+}
 
 const PROGRAMME = [
   {
@@ -327,6 +337,72 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ---- The committee: the people who can answer a question. A light
+             band, so the page reaches the form on paper again. ------------ */}
+        <section id="committee" className="scroll-mt-6 border-b border-border bg-card px-gutter py-section">
+          <div className="mx-auto max-w-content">
+            <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr] lg:items-end lg:gap-16">
+              <div>
+                <h2 className="text-[clamp(1.75rem,3.4vw,2.6rem)]">Who to call before the meet</h2>
+                <p className="mt-4 max-w-md text-lg text-muted-foreground">
+                  Six office bearers run the meet. Any of them can answer for the venue, the
+                  programme and the fees.
+                </p>
+              </div>
+              <p className="max-w-md text-muted-foreground lg:justify-self-end">
+                Write to the committee at{' '}
+                <a
+                  href={`mailto:${EVENT.email}`}
+                  className="rounded-sm font-medium text-foreground underline decoration-brand/60 underline-offset-4 transition-colors duration-[var(--motion-fast)] hover:decoration-brand"
+                >
+                  {EVENT.email}
+                </a>
+                , or ring the secretary or the treasurer for anything the form does not cover.
+              </p>
+            </div>
+
+            <ul className="mt-10 grid gap-px overflow-hidden rounded-lg bg-border sm:grid-cols-2 lg:grid-cols-3">
+              {COMMITTEE.map((person) => (
+                <li
+                  key={`${person.role}-${person.name}`}
+                  className="flex flex-col bg-card px-5 py-6 sm:px-6"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="grid size-11 place-items-center rounded-md bg-primary font-label text-sm font-semibold tracking-[0.06em] text-primary-foreground"
+                  >
+                    {ROLE_MONOGRAM[person.role]}
+                  </span>
+                  <span className="mt-4 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                    {person.role}
+                  </span>
+                  <span className="mt-1 font-display text-xl font-semibold text-foreground">
+                    {person.name}
+                  </span>
+                  <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                    {person.phones.map((phone, index) => (
+                      <span key={phone} className="inline-flex items-center gap-2">
+                        {index > 0 && (
+                          <span className="text-muted-foreground" aria-hidden="true">
+                            ·
+                          </span>
+                        )}
+                        <a
+                          href={telHref(phone)}
+                          className="inline-flex items-center gap-2 rounded-sm text-muted-foreground underline decoration-border underline-offset-4 transition-colors duration-[var(--motion-fast)] hover:text-brand hover:decoration-brand"
+                        >
+                          <Phone className="size-4 shrink-0" strokeWidth={2} aria-hidden="true" />
+                          {displayPhone(phone)}
+                        </a>
+                      </span>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
         {/* ---- Closing: the fee total, how to pay it, and who to call ------- */}
         <section className="relative isolate overflow-hidden border-t border-border px-gutter py-section">
           <div
@@ -433,36 +509,6 @@ export default function Home() {
                   {EVENT.email}
                 </a>
               </p>
-            </div>
-            <div className="sm:text-right">
-              <h2 className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
-                Office bearers
-              </h2>
-              <ul className="mt-4 space-y-3 text-sm">
-                {ROLE_ORDER.flatMap((role) =>
-  COMMITTEE.filter((entry) => entry.role === role).map((person) => (
-    <li key={`${person.role}-${person.name}`}>
-      <span className="block font-medium text-foreground">
-        {person.name} · {person.role}
-      </span>
-
-      <span className="block text-muted-foreground">
-        {person.phones.map((phone, index) => (
-          <span key={phone}>
-            {index > 0 && ' · '}
-            <a
-              className="rounded-sm underline underline-offset-4"
-              href={telHref(phone)}
-            >
-              {displayPhone(phone)}
-            </a>
-          </span>
-        ))}
-      </span>
-    </li>
-  ))
-)}
-              </ul>
             </div>
           </div>
           <Separator className="my-6" />
