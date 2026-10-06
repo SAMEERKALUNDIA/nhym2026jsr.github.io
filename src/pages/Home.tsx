@@ -249,8 +249,8 @@ export default function Home() {
             {/* A paper pass card, overlapping the picture it sits on. */}
             <figure className="relative min-w-0">
               <img
-                src="/images/youth-meet-hero.webp"
-                alt="A crowd gathered on open ground in front of a decorated stage for an outdoor community meet"
+                src="/nhym-ho-cultural-dance.jpeg"
+                alt="Ho cultural dance performance at National Ho Youth Meet"
                 width={1600}
                 height={1067}
                 className="aspect-[4/3] w-full rounded-xl object-cover shadow-raised"
