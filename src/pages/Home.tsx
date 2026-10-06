@@ -507,7 +507,7 @@ export default function Home() {
             aria-hidden="true"
             className="glow-brand pointer-events-none absolute -bottom-32 -left-24 -z-10 h-[26rem] w-[26rem] opacity-40"
           />
-          <div className="mx-auto grid max-w-content gap-12 lg:grid-cols-[1fr_1fr] lg:gap-16">
+          <div className="mx-auto grid max-w-content items-start gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12">
             <div>
               <h2 className="text-[clamp(1.75rem,3.4vw,2.6rem)]">
                 How the fee reaches the committee
@@ -545,44 +545,48 @@ export default function Home() {
                 </div>
               </dl>
 
-              {/* The committee's own UPI code, with the two things it encodes
-                  written out beside it: a visitor who cannot scan the picture
-                  can still type the number or the VPA. */}
-              <div className="mt-8 flex flex-col gap-5 rounded-lg border border-border bg-card p-5 sm:flex-row sm:items-center sm:gap-6">
-                <img
-                  src="/images/ravi-sawaiyan-upi.webp"
-                  alt="UPI payment code for the National Ho Youth Meet 2026, registered to Ravi Sawaiyan"
-                  width={1050}
-                  height={1500}
-                  loading="lazy"
-                  className="size-40 shrink-0 self-start rounded-md border border-border bg-card object-contain p-1.5 sm:size-44"
-                />
-                <div className="min-w-0">
-                  <p className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
-                    Or pay by UPI
-                  </p>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Scan the code with any UPI app, or enter the UPI ID by hand.
-                  </p>
-                  <dl className="mt-4 space-y-3">
-                    <div>
-                      <dt className="font-label text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                        UPI ID
-                      </dt>
-                      <dd className="mt-1 font-mono text-base font-semibold break-all">
-                        {UPI.vpa}
-                      </dd>
-                      <dd className="mt-1 text-sm text-muted-foreground">
-                        Registered to {UPI.name}.
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-              </div>
               <p className="mt-6 text-sm text-muted-foreground">
                 Nothing is collected on this page. The totals above are only a check on your side.
               </p>
             </div>
+            <div className="rounded-xl border border-border bg-card p-6 shadow-sm lg:p-8">
+  <p className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+    Pay by UPI
+  </p>
+
+  <h3 className="mt-2 font-display text-2xl font-semibold">
+    Scan &amp; pay
+  </h3>
+
+  <p className="mt-3 text-sm text-muted-foreground">
+    Scan the QR code with any UPI app, or enter the UPI ID manually.
+  </p>
+
+  <img
+    src="/images/ravi-sawaiyan-upi.webp"
+    alt="UPI payment code for the National Ho Youth Meet 2026, registered to Ravi Sawaiyan"
+    width={1050}
+    height={1500}
+    loading="lazy"
+    className="mx-auto mt-6 w-full max-w-[280px] rounded-lg border border-border bg-background object-contain p-2"
+  />
+
+  <Separator className="my-6" />
+
+  <dl>
+    <div>
+      <dt className="font-label text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+        UPI ID
+      </dt>
+      <dd className="mt-2 font-mono text-base font-semibold break-all">
+        {UPI.vpa}
+      </dd>
+      <dd className="mt-2 text-sm text-muted-foreground">
+        Registered to {UPI.name}.
+      </dd>
+    </div>
+  </dl>
+</div>
 
           </div>
         </section>
