@@ -2,8 +2,12 @@ import {
   CalendarDays,
   Check,
   MapPin,
+  Menu,
   Phone,
+  X,
 } from 'lucide-react'
+
+import { useState } from 'react'
 
 import { Brand } from '@/components/Brand'
 import { Button } from '@/components/ui/button'
@@ -57,6 +61,8 @@ const PROGRAMME = [
 ]
 
 export default function Home() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
   return (
     <div className="min-h-dvh bg-background">
       {/* ---- First screen ------------------------------------------------- */}
@@ -105,6 +111,22 @@ export default function Home() {
     {/* Actions */}
     <div className="flex items-center gap-2">
       <Button
+  type="button"
+  variant="outline"
+  size="icon"
+  className="lg:hidden"
+  onClick={() => setMobileMenuOpen((open) => !open)}
+  aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+  aria-expanded={mobileMenuOpen}
+  aria-controls="mobile-navigation"
+>
+  {mobileMenuOpen ? (
+    <X className="size-5" aria-hidden="true" />
+  ) : (
+    <Menu className="size-5" aria-hidden="true" />
+  )}
+</Button>
+      <Button
         asChild
         variant="outline"
         className="hidden h-10 px-4 sm:inline-flex"
@@ -129,8 +151,66 @@ export default function Home() {
       >
         <a href="/admin">Admin</a>
       </Button>
-    </div>
+        </div>
   </div>
+
+  {mobileMenuOpen && (
+    <nav
+      id="mobile-navigation"
+      aria-label="Mobile navigation"
+      className="mx-auto max-w-content border-t border-border/70 py-3 lg:hidden"
+    >
+      <div className="flex flex-col gap-1">
+        <a
+          href="#top"
+          onClick={() => setMobileMenuOpen(false)}
+          className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
+        >
+          Home
+        </a>
+
+        <a
+          href="#about"
+          onClick={() => setMobileMenuOpen(false)}
+          className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
+        >
+          About
+        </a>
+
+        <a
+          href="#fees"
+          onClick={() => setMobileMenuOpen(false)}
+          className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
+        >
+          Programme & Fees
+        </a>
+
+        <a
+          href="#committee"
+          onClick={() => setMobileMenuOpen(false)}
+          className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
+        >
+          Contact
+        </a>
+
+        <div className="my-2 border-t border-border" />
+
+        <a
+          href="/participant"
+          className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
+        >
+          Participant Login
+        </a>
+
+        <a
+          href="/admin"
+          className="rounded-md px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
+        >
+          Admin Login
+        </a>
+      </div>
+    </nav>
+  )}
 </header>
 
       <main id="top">
@@ -157,18 +237,7 @@ export default function Home() {
                 language and culture for Ho youth and students, with elders and families from across
                 the region in the same hall.
               </p>
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Button
-                  asChild
-                  size="lg"
-                  className="h-12 bg-brand px-7 text-base text-brand-foreground hover:bg-brand/90"
-                >
-                  <a href="/register">Register Now</a>
-                </Button>
-                <Button asChild variant="ghost" size="lg" className="h-12 px-4 text-base">
-                  <a href="#fees">See the fees</a>
-                </Button>
-              </div>
+              
               <p className="mt-4 max-w-md text-sm text-muted-foreground">
                 One form, one submission, one total for a whole family or group.
               </p>
