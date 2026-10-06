@@ -292,9 +292,9 @@ export default function Home() {
 
         {/* ---- Who is here and why: an editorial lede with a smaller picture */}
         <section
-          id="about"
-          className="scroll-mt-20 border-y border-border bg-card px-gutter py-section"
-        >
+  id="about"
+  className="scroll-mt-20 border-y border-border bg-card px-gutter pt-12 pb-section sm:pt-16"
+>
           <div className="mx-auto grid max-w-content gap-layout lg:grid-cols-[1.4fr_1fr] lg:items-center lg:gap-12">
             <div>
               <h2 className="text-[clamp(1.75rem,3.4vw,2.6rem)]">
@@ -610,13 +610,6 @@ export default function Home() {
             </div>
           </div>
           <Separator className="my-6" />
-          <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-            <p className="max-w-xl">
-              The total on this page is a check for you. No payment is taken here, nothing is sent
-              anywhere, and registration is complete only once the committee has verified the
-              payment and approved the entry.
-            </p>            
-          </div>
         </div>
       </footer>
     </div>
