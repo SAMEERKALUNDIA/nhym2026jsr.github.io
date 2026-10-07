@@ -6,5 +6,11 @@
   "assets": { "directory": "./dist", "binding": "ASSETS", "not_found_handling": "single-page-application" },
   "d1_databases": [
     { "binding": "DB", "database_name": "nhym2026-registration", "database_id": "28e5572f-dbf8-41d9-96cb-1a481cf5069b" }
-  ]
+  ],
+  "r2_buckets": [
+  {
+    "binding": "GALLERY",
+    "bucket_name": "nhym-gallery"
+  }
+]
 }
