@@ -2621,7 +2621,7 @@ if (!authenticated) {
                 </div>
               </div>
 
-              <div className="rounded-lg border bg-card p-5 sm:col-span-2">
+              <div className="rounded-lg border bg-card p-5 sm:col-span-1">
                 <div className="text-sm text-muted-foreground">
                   Total Registration Amount
                 </div>
@@ -2631,7 +2631,7 @@ if (!authenticated) {
                 </div>
               </div>
 
-              <div className="rounded-lg border bg-card p-5 sm:col-span-2">
+              <div className="rounded-lg border bg-card p-5 sm:col-span-1">
   <div className="text-sm text-muted-foreground">
     Approved Registration Amount
   </div>
