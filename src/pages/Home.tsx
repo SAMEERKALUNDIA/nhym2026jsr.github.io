@@ -25,12 +25,13 @@ import {
 
 /* The card is stamped with a post's initial rather than numbered: the roles are
    not a sequence, and "P" and "VP" read apart at phone width. */
-const ROLE_MONOGRAM: Record<string, string> = {
-  President: 'P',
-  'Vice president': 'VP',
-  'General secretary': 'GS',
-  Secretary: 'S',
-  Treasurer: 'T',
+const COMMITTEE_PHOTOS: Record<string, string> = {
+  'Sushmita Birua': '/images/president-sushmita-birua.jpeg',
+  'Nikita Soy': '/images/vice-president-nikita-soy.jpeg',
+  'Shanti Sidhu': '/images/general-secretary-shanti-sidhu.jpeg',
+  'Bina Diggi': '/images/secretary-bina-diggi.JPG',
+  'Roshni Boipai': '/images/secretary-roshni-boipai.jpeg',
+  'Saraswati Sawaiyan': '/images/treasurer-saraswati-sawaiyan.jpeg',
 }
 
 const PROGRAMME = [
@@ -443,12 +444,12 @@ export default function Home() {
                   key={`${person.role}-${person.name}`}
                   className="flex flex-col bg-card px-5 py-6 sm:px-6"
                 >
-                  <span
-                    aria-hidden="true"
-                    className="grid size-11 place-items-center rounded-md bg-primary font-label text-sm font-semibold tracking-[0.06em] text-primary-foreground"
-                  >
-                    {ROLE_MONOGRAM[person.role]}
-                  </span>
+                  <img
+  src={COMMITTEE_PHOTOS[person.name]}
+  alt={`${person.name}, ${person.role}`}
+  loading="lazy"
+  className="h-64 w-full rounded-lg bg-muted/20 object-contain"
+/>
                   <span className="mt-4 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
                     {person.role}
                   </span>
