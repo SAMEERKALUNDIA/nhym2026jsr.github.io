@@ -1,7 +1,5 @@
 import {
-  CalendarDays,
   Check,
-  MapPin,
   Menu,
   Phone,
   X,
@@ -266,40 +264,6 @@ export default function Home() {
                 height={1067}
                 className="aspect-[4/3] w-full rounded-xl object-cover shadow-raised"
               />
-              <figcaption className="relative mt-4 sm:-mt-16 sm:ml-8">
-                <div className="rounded-lg border border-border bg-card p-5 shadow-raised sm:max-w-xs">
-                  <p className="font-label text-[0.6875rem] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-                    Registration pass
-                  </p>
-                  <div className="mt-3 flex items-baseline gap-2">
-                    <span className="font-display text-4xl font-bold text-brand">28</span>
-                    <span className="font-display text-xl text-primary/70">&amp;</span>
-                    <span className="font-display text-4xl font-bold text-brand">29</span>
-                    <span className="ml-1 font-label text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                      Nov 2026
-                    </span>
-                  </div>
-                  <Separator className="my-4" />
-                  <ul className="space-y-2 text-sm">
-                    <li className="flex items-start gap-2">
-                      <MapPin
-                        className="mt-0.5 size-4 shrink-0 text-brand"
-                        strokeWidth={2}
-                        aria-hidden="true"
-                      />
-                      <span className="text-muted-foreground">{EVENT.venue}</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CalendarDays
-                        className="mt-0.5 size-4 shrink-0 text-brand"
-                        strokeWidth={2}
-                        aria-hidden="true"
-                      />
-                      <span className="text-muted-foreground">Group registrations accepted</span>
-                    </li>
-                  </ul>
-                </div>
-              </figcaption>
             </figure>
           </div>
         </section>
