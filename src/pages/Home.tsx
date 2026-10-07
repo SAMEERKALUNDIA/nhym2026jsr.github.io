@@ -594,6 +594,11 @@ export default function Home() {
           </div>
           <Separator className="my-6" />
         </div>
+        <div className="mt-6 border-t border-border/60 pt-4 text-center">
+  <p className="text-xs text-muted-foreground">
+    Website Designed &amp; Developed by Sameer Kalundia
+  </p>
+</div>
       </footer>
     </div>
   )
