@@ -422,6 +422,10 @@ useEffect(() => {
       0
     )
 
+    const approvedAmount = rows
+  .filter((row) => row.status === 'APPROVED')
+  .reduce((sum, row) => sum + Number(row.total_amount || 0), 0)
+
     return {
       totalRegistrations,
       totalParticipants,
@@ -430,6 +434,7 @@ useEffect(() => {
       approved,
       rejected,
       totalAmount,
+      approvedAmount,
     }
   }, [rows])
 
@@ -2625,6 +2630,16 @@ if (!authenticated) {
                   ₹{stats.totalAmount.toLocaleString('en-IN')}
                 </div>
               </div>
+
+              <div className="rounded-lg border bg-card p-5 sm:col-span-2">
+  <div className="text-sm text-muted-foreground">
+    Approved Registration Amount
+  </div>
+
+  <div className="mt-2 text-3xl font-semibold">
+    ₹{stats.approvedAmount.toLocaleString('en-IN')}
+  </div>
+</div>
 
             </div>
 
