@@ -2,7 +2,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { jsPDF } from 'jspdf'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-
+type GalleryPhoto = {
+  id: number
+  r2Key: string
+  title: string
+  caption: string | null
+  category: string
+  contentType: string
+  fileSize: number | null
+  isPublished: boolean
+  displayOrder: number
+  createdAt: string
+  updatedAt: string | null
+  imageUrl: string
+}
 type Participant = {
   id: number
   participant_no: number
@@ -44,7 +57,14 @@ export default function Admin() {
   const [token, setToken] = useState(
   () => sessionStorage.getItem('nhym_admin_token') || ''
 )
-
+const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([])
+const [galleryLoading, setGalleryLoading] = useState(false)
+const [galleryUploading, setGalleryUploading] = useState(false)
+const [galleryError, setGalleryError] = useState('')
+const [galleryFile, setGalleryFile] = useState<File | null>(null)
+const [galleryTitle, setGalleryTitle] = useState('')
+const [galleryCaption, setGalleryCaption] = useState('')
+const [galleryCategory, setGalleryCategory] = useState('NHYM Events')
 const [loginToken, setLoginToken] = useState('')
 const [authenticated, setAuthenticated] = useState(false)
 const [checkingSession, setCheckingSession] = useState(true)
@@ -147,6 +167,107 @@ function logout() {
   setError('')
   setSuccess('')
 }
+const loadGalleryPhotos = async () => {
+  if (!token) return
+
+  setGalleryLoading(true)
+  setGalleryError('')
+
+  try {
+    const response = await fetch('/api/admin/gallery', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Unable to load gallery photos')
+    }
+
+    setGalleryPhotos(Array.isArray(data.photos) ? data.photos : [])
+  } catch (error) {
+    setGalleryError(
+      error instanceof Error ? error.message : 'Unable to load gallery photos'
+    )
+  } finally {
+    setGalleryLoading(false)
+  }
+}
+const uploadGalleryPhoto = async () => {
+  if (!token) {
+    setGalleryError('Admin session is not available')
+    return
+  }
+
+  if (!galleryFile) {
+    setGalleryError('Please select an image')
+    return
+  }
+
+  if (!galleryTitle.trim()) {
+    setGalleryError('Please enter a photo title')
+    return
+  }
+
+  const maxSize = 20 * 1024 * 1024
+
+  if (galleryFile.size > maxSize) {
+    setGalleryError('Image must be 20 MB or smaller')
+    return
+  }
+
+  if (!galleryFile.type.startsWith('image/')) {
+    setGalleryError('Please select a valid image file')
+    return
+  }
+
+  setGalleryUploading(true)
+  setGalleryError('')
+
+  try {
+    const formData = new FormData()
+
+    formData.append('image', galleryFile)
+    formData.append('title', galleryTitle.trim())
+    formData.append('caption', galleryCaption.trim())
+    formData.append('category', galleryCategory.trim() || 'NHYM Events')
+
+    const response = await fetch('/api/admin/gallery', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Unable to upload photo')
+    }
+
+    setGalleryFile(null)
+    setGalleryTitle('')
+    setGalleryCaption('')
+    setGalleryCategory('NHYM Events')
+
+    await loadGalleryPhotos()
+  } catch (error) {
+    setGalleryError(
+      error instanceof Error ? error.message : 'Unable to upload photo'
+    )
+  } finally {
+    setGalleryUploading(false)
+  }
+}
+
+useEffect(() => {
+  if (!authenticated || !token) return
+
+  void loadGalleryPhotos()
+}, [authenticated, token])
 
 useEffect(() => {
   const storedToken =
@@ -2296,7 +2417,147 @@ if (!authenticated) {
             ✓ {success}
           </div>
         )}
+{/* GALLERY MANAGEMENT */}
+<section className="mt-8 rounded-xl border bg-card p-6">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h2 className="text-2xl font-semibold">Gallery Management</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Upload and manage photos for the NHYM website gallery.
+      </p>
+    </div>
 
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => void loadGalleryPhotos()}
+      disabled={galleryLoading}
+    >
+      {galleryLoading ? 'Loading...' : 'Refresh Gallery'}
+    </Button>
+  </div>
+
+  <div className="mt-6 grid gap-4 md:grid-cols-2">
+    <div>
+      <label className="mb-2 block text-sm font-medium">
+        Photo
+      </label>
+      <Input
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={(event) =>
+          setGalleryFile(event.target.files?.[0] ?? null)
+        }
+      />
+      <p className="mt-2 text-xs text-muted-foreground">
+        JPEG, PNG or WebP • Maximum 20 MB • 4K/8K images supported
+      </p>
+    </div>
+
+    <div>
+      <label className="mb-2 block text-sm font-medium">
+        Category
+      </label>
+      <Input
+        value={galleryCategory}
+        onChange={(event) => setGalleryCategory(event.target.value)}
+        placeholder="NHYM Events"
+      />
+    </div>
+
+    <div>
+      <label className="mb-2 block text-sm font-medium">
+        Photo title
+      </label>
+      <Input
+        value={galleryTitle}
+        onChange={(event) => setGalleryTitle(event.target.value)}
+        placeholder="Enter photo title"
+      />
+    </div>
+
+    <div>
+      <label className="mb-2 block text-sm font-medium">
+        Caption
+      </label>
+      <Input
+        value={galleryCaption}
+        onChange={(event) => setGalleryCaption(event.target.value)}
+        placeholder="Optional caption"
+      />
+    </div>
+  </div>
+
+  {galleryError && (
+    <div className="mt-4 rounded-lg border border-destructive p-3 text-sm text-destructive">
+      {galleryError}
+    </div>
+  )}
+
+  <div className="mt-5">
+    <Button
+      type="button"
+      onClick={() => void uploadGalleryPhoto()}
+      disabled={galleryUploading || !galleryFile || !galleryTitle.trim()}
+    >
+      {galleryUploading ? 'Uploading...' : 'Upload Photo'}
+    </Button>
+  </div>
+
+  <div className="mt-8">
+    <h3 className="text-lg font-semibold">
+      Uploaded Photos ({galleryPhotos.length})
+    </h3>
+
+    {galleryLoading ? (
+      <p className="mt-4 text-sm text-muted-foreground">
+        Loading gallery...
+      </p>
+    ) : galleryPhotos.length === 0 ? (
+      <p className="mt-4 text-sm text-muted-foreground">
+        No gallery photos uploaded yet.
+      </p>
+    ) : (
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {galleryPhotos.map((photo) => (
+          <div
+            key={photo.id}
+            className="overflow-hidden rounded-xl border bg-background"
+          >
+            <div className="flex h-56 items-center justify-center bg-muted/30">
+              <img
+                src={photo.imageUrl}
+                alt={photo.title}
+                loading="lazy"
+                className="h-full w-full object-contain"
+              />
+            </div>
+
+            <div className="p-4">
+              <div className="font-semibold">{photo.title}</div>
+
+              {photo.caption && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {photo.caption}
+                </p>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>{photo.category}</span>
+                <span>•</span>
+                <span>
+                  {photo.fileSize != null
+  ? `${(photo.fileSize / (1024 * 1024)).toFixed(2)} MB`
+  : 'Size unavailable'}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+</section>
         {rows.length > 0 && (
           <>
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

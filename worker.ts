@@ -1,5 +1,6 @@
 export interface Env {
   DB: D1Database
+  GALLERY: R2Bucket
   ASSETS: Fetcher
   ADMIN_TOKEN: string
   EMAIL_SERVICE_URL: string
@@ -26,6 +27,75 @@ function authorised(request: Request, env: Env) {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+
+    // PUBLIC GALLERY — list published photos
+if (url.pathname === '/api/gallery' && request.method === 'GET') {
+  const result = await env.DB.prepare(`
+    SELECT
+      id,
+      r2_key,
+      title,
+      caption,
+      category,
+      display_order,
+      created_at
+    FROM gallery_photos
+    WHERE is_published = 1
+    ORDER BY display_order ASC, created_at DESC
+  `).all()
+
+  const photos = (result.results ?? []).map((photo: any) => ({
+    id: photo.id,
+    title: photo.title,
+    caption: photo.caption,
+    category: photo.category,
+    displayOrder: photo.display_order,
+    createdAt: photo.created_at,
+    imageUrl: `/api/gallery/images/${encodeURIComponent(photo.r2_key)}`,
+  }))
+
+  return json({ photos })
+}
+
+// PUBLIC GALLERY — serve image from private R2 bucket
+if (
+  url.pathname.startsWith('/api/gallery/images/') &&
+  request.method === 'GET'
+) {
+  const encodedKey = url.pathname.slice('/api/gallery/images/'.length)
+
+  let key: string
+
+  try {
+    key = decodeURIComponent(encodedKey)
+  } catch {
+    return json({ error: 'Invalid image key' }, 400)
+  }
+
+  if (!key) {
+    return json({ error: 'Image not found' }, 404)
+  }
+
+  const object = await env.GALLERY.get(key)
+
+  if (!object) {
+    return json({ error: 'Image not found' }, 404)
+  }
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+
+  if (!headers.has('content-type')) {
+    headers.set('content-type', 'application/octet-stream')
+  }
+
+  headers.set('etag', object.httpEtag)
+  headers.set('cache-control', 'public, max-age=86400')
+
+  return new Response(object.body, {
+    headers,
+  })
+}
 
     if (url.pathname === '/api/registrations' && request.method === 'POST') {
       let body: RegistrationPayload
@@ -180,6 +250,276 @@ export default {
         }
       })
     }
+    // ADMIN GALLERY — upload photo
+if (url.pathname === '/api/admin/gallery' && request.method === 'POST') {
+  if (!authorised(request, env)) {
+    return json({ error: 'Unauthorized' }, 401)
+  }
+
+  const formData = await request.formData()
+
+  const file = formData.get('image')
+  const title = String(formData.get('title') || '').trim()
+  const caption = String(formData.get('caption') || '').trim()
+  const category = String(formData.get('category') || 'NHYM Events').trim()
+
+  if (!(file instanceof File)) {
+    return json({ error: 'Image file is required' }, 400)
+  }
+
+  if (!title) {
+    return json({ error: 'Photo title is required' }, 400)
+  }
+
+  const allowedTypes = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]
+
+  if (!allowedTypes.includes(file.type)) {
+    return json(
+      { error: 'Only JPG, PNG and WebP images are allowed' },
+      400
+    )
+  }
+
+// Maximum 20 MB per photograph
+if (file.size > 20 * 1024 * 1024) {
+  return json({ error: 'Image must be 20 MB or smaller' }, 400)
+}
+
+  const extension =
+    file.type === 'image/png'
+      ? 'png'
+      : file.type === 'image/webp'
+        ? 'webp'
+        : 'jpg'
+
+  const r2Key =
+    `gallery/${Date.now()}-${crypto.randomUUID()}.${extension}`
+
+  await env.GALLERY.put(r2Key, file.stream(), {
+    httpMetadata: {
+      contentType: file.type,
+    },
+  })
+
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO gallery_photos (
+        r2_key,
+        title,
+        caption,
+        category,
+        content_type,
+        file_size,
+        is_published,
+        display_order,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `)
+      .bind(
+        r2Key,
+        title,
+        caption || null,
+        category,
+        file.type,
+        file.size
+      )
+      .run()
+
+    return json(
+      {
+        success: true,
+        id: result.meta.last_row_id,
+        title,
+        category,
+        imageUrl: `/api/gallery/images/${encodeURIComponent(r2Key)}`,
+      },
+      201
+    )
+  } catch (error) {
+    // Avoid leaving an orphaned R2 object if the D1 insert fails.
+    await env.GALLERY.delete(r2Key)
+    throw error
+  }  
+}
+// ADMIN GALLERY — list all photos
+if (url.pathname === '/api/admin/gallery' && request.method === 'GET') {
+  if (!authorised(request, env)) {
+    return json({ error: 'Unauthorized' }, 401)
+  }
+
+  const result = await env.DB.prepare(`
+    SELECT
+      id,
+      r2_key,
+      title,
+      caption,
+      category,
+      content_type,
+      file_size,
+      is_published,
+      display_order,
+      created_at,
+      updated_at
+    FROM gallery_photos
+    ORDER BY display_order ASC, created_at DESC
+  `).all()
+
+  const photos = (result.results ?? []).map((photo: any) => ({
+    id: photo.id,
+    title: photo.title,
+    caption: photo.caption,
+    category: photo.category,
+    contentType: photo.content_type,
+    fileSize: photo.file_size,
+    isPublished: Boolean(photo.is_published),
+    displayOrder: photo.display_order,
+    createdAt: photo.created_at,
+    updatedAt: photo.updated_at,
+    imageUrl: `/api/gallery/images/${encodeURIComponent(photo.r2_key)}`,
+  }))
+
+  return json({ photos })
+}
+// ADMIN GALLERY - delete photo
+if (
+  url.pathname.startsWith('/api/admin/gallery/') &&
+  request.method === 'DELETE'
+) {
+  if (!authorised(request, env)) {
+    return json({ error: 'Unauthorized' }, 401)
+  }
+
+  const idText = url.pathname.slice('/api/admin/gallery/'.length)
+  const id = Number(idText)
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return json({ error: 'Invalid photo ID' }, 400)
+  }
+
+  const photo = await env.DB.prepare(
+    `SELECT id, r2_key
+     FROM gallery_photos
+     WHERE id = ?`
+  )
+    .bind(id)
+    .first<{ id: number; r2_key: string }>()
+
+  if (!photo) {
+    return json({ error: 'Photo not found' }, 404)
+  }
+
+  // Delete the image from R2 first.
+  await env.GALLERY.delete(photo.r2_key)
+
+  // Then remove its database record.
+  await env.DB.prepare(
+    `DELETE FROM gallery_photos
+     WHERE id = ?`
+  )
+    .bind(id)
+    .run()
+
+  return json({
+    success: true,
+    message: 'Photo deleted successfully',
+    id: photo.id,
+  })
+}
+// ADMIN GALLERY - update photo details
+if (
+  url.pathname.startsWith('/api/admin/gallery/') &&
+  request.method === 'PATCH'
+) {
+  if (!authorised(request, env)) {
+    return json({ error: 'Unauthorized' }, 401)
+  }
+
+  const idText = url.pathname.slice('/api/admin/gallery/'.length)
+  const id = Number(idText)
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return json({ error: 'Invalid photo ID' }, 400)
+  }
+
+  let body: {
+    title?: string
+    caption?: string
+    category?: string
+    isPublished?: boolean
+    displayOrder?: number
+  }
+
+  try {
+    body = await request.json()
+  } catch {
+    return json({ error: 'Invalid JSON body' }, 400)
+  }
+
+  const existing = await env.DB.prepare(
+    `SELECT id FROM gallery_photos WHERE id = ?`
+  )
+    .bind(id)
+    .first()
+
+  if (!existing) {
+    return json({ error: 'Photo not found' }, 404)
+  }
+
+  const title =
+    typeof body.title === 'string' ? body.title.trim() : undefined
+
+  const caption =
+    typeof body.caption === 'string' ? body.caption.trim() : undefined
+
+  const category =
+    typeof body.category === 'string' ? body.category.trim() : undefined
+
+  const isPublished =
+    typeof body.isPublished === 'boolean'
+      ? body.isPublished
+        ? 1
+        : 0
+      : undefined
+
+  const displayOrder =
+    typeof body.displayOrder === 'number' &&
+    Number.isInteger(body.displayOrder)
+      ? body.displayOrder
+      : undefined
+
+  await env.DB.prepare(
+    `UPDATE gallery_photos
+     SET
+       title = COALESCE(?, title),
+       caption = COALESCE(?, caption),
+       category = COALESCE(?, category),
+       is_published = COALESCE(?, is_published),
+       display_order = COALESCE(?, display_order),
+       updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  )
+    .bind(
+      title ?? null,
+      caption ?? null,
+      category ?? null,
+      isPublished ?? null,
+      displayOrder ?? null,
+      id
+    )
+    .run()
+
+  return json({
+    success: true,
+    message: 'Photo updated successfully',
+    id,
+  })
+}
     if (url.pathname === '/api/admin/registrations' && request.method === 'GET') {
   if (!authorised(request, env)) {
     return json({ error: 'Unauthorized' }, 401)
