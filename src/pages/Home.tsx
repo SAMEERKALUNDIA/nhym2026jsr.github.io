@@ -98,7 +98,13 @@ export default function Home() {
       >
         Programme & Fees
       </a>
-
+      
+<a
+  href="/gallery"
+  className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+>
+  Gallery
+</a>
       <a
         href="#committee"
         className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -184,6 +190,13 @@ export default function Home() {
           Programme & Fees
         </a>
 
+<a
+  href="/gallery"
+  onClick={() => setMobileMenuOpen(false)}
+  className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
+>
+  Gallery
+</a>
         <a
           href="#committee"
           onClick={() => setMobileMenuOpen(false)}
