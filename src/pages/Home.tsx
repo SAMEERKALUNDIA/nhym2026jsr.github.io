@@ -229,7 +229,7 @@ export default function Home() {
               </h1>
 
               <p className="mt-6 font-display text-5xl font-bold leading-tight tracking-[0.02em] text-brand sm:text-6xl">
-                 SHIRJON 𑢽𑢢𑢼𑢮𑢩𑢳
+                 SIRJON 𑢽𑢢𑢼𑢮𑢩𑢳
               </p>
 
               <p className="mt-3 max-w-md font-display text-xl font-medium text-primary/80">
@@ -552,7 +552,7 @@ export default function Home() {
                 Nothing is collected on this page. The totals above are only a check on your side.
               </p>
             </div>
-            <div className="rounded-xl border border-border bg-card p-6 shadow-sm lg:p-8">
+            <div className="mx-auto w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-sm">
   <p className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
     Pay by UPI
   </p>
@@ -571,7 +571,7 @@ export default function Home() {
     width={1050}
     height={1500}
     loading="lazy"
-    className="mx-auto mt-6 w-full max-w-[280px] rounded-lg border border-border bg-background object-contain p-2"
+    className="mx-auto mt-6 w-full max-w-[200px] rounded-lg border border-border bg-background object-contain p-2"
   />
 
   <Separator className="my-6" />
