@@ -61,9 +61,10 @@ export default function Admin() {
 const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([])
 const [galleryLoading, setGalleryLoading] = useState(false)
 const [galleryUploading, setGalleryUploading] = useState(false)
+const [selectedGalleryIds, setSelectedGalleryIds] = useState<number[]>([])
+const [galleryDeleting, setGalleryDeleting] = useState(false)
 const [galleryError, setGalleryError] = useState('')
-const [galleryFile, setGalleryFile] = useState<File | null>(null)
-const [galleryTitle, setGalleryTitle] = useState('')
+const [galleryFiles, setGalleryFiles] = useState<File[]>([])
 const [galleryCaption, setGalleryCaption] = useState('')
 const [galleryCategory, setGalleryCategory] = useState('NHYM Events')
 const [loginToken, setLoginToken] = useState('')
@@ -196,71 +197,155 @@ const loadGalleryPhotos = async () => {
     setGalleryLoading(false)
   }
 }
-const uploadGalleryPhoto = async () => {
+const uploadGalleryPhotos = async () => {
   if (!token) {
     setGalleryError('Admin session is not available')
     return
   }
 
-  if (!galleryFile) {
-    setGalleryError('Please select an image')
-    return
-  }
-
-  if (!galleryTitle.trim()) {
-    setGalleryError('Please enter a photo title')
+  if (galleryFiles.length === 0) {
+    setGalleryError('Please select at least one image')
     return
   }
 
   const maxSize = 20 * 1024 * 1024
+  const invalidFile = galleryFiles.find(
+    (file) =>
+      file.size > maxSize ||
+      !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+  )
 
-  if (galleryFile.size > maxSize) {
-    setGalleryError('Image must be 20 MB or smaller')
-    return
-  }
-
-  if (!galleryFile.type.startsWith('image/')) {
-    setGalleryError('Please select a valid image file')
+  if (invalidFile) {
+    setGalleryError(
+      `${invalidFile.name} must be JPG, PNG or WebP and 20 MB or smaller`
+    )
     return
   }
 
   setGalleryUploading(true)
   setGalleryError('')
+  setSuccess('')
+
+  let uploadedCount = 0
+  const failedFiles: string[] = []
 
   try {
-    const formData = new FormData()
+    for (const file of galleryFiles) {
+      const formData = new FormData()
 
-    formData.append('image', galleryFile)
-    formData.append('title', galleryTitle.trim())
-    formData.append('caption', galleryCaption.trim())
-    formData.append('category', galleryCategory.trim() || 'NHYM Events')
+      const title = file.name
+        .replace(/\.[^/.]+$/, '')
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
 
-    const response = await fetch('/api/admin/gallery', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    })
+      formData.append('image', file)
+      formData.append('title', title || 'NHYM Photo')
+      formData.append('caption', galleryCaption.trim())
+      formData.append(
+        'category',
+        galleryCategory.trim() || 'NHYM Events'
+      )
 
-    const data = await response.json()
+      try {
+        const response = await fetch('/api/admin/gallery', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        })
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Unable to upload photo')
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Upload failed')
+        }
+
+        uploadedCount++
+      } catch {
+        failedFiles.push(file.name)
+      }
     }
 
-    setGalleryFile(null)
-    setGalleryTitle('')
+    setGalleryFiles([])
     setGalleryCaption('')
     setGalleryCategory('NHYM Events')
 
     await loadGalleryPhotos()
-  } catch (error) {
-    setGalleryError(
-      error instanceof Error ? error.message : 'Unable to upload photo'
-    )
+
+    if (failedFiles.length === 0) {
+      setSuccess(
+        `${uploadedCount} photo${uploadedCount === 1 ? '' : 's'} uploaded successfully.`
+      )
+    } else {
+      setSuccess(
+        `${uploadedCount} photo${uploadedCount === 1 ? '' : 's'} uploaded successfully.`
+      )
+      setGalleryError(
+        `Could not upload: ${failedFiles.join(', ')}`
+      )
+    }
   } finally {
     setGalleryUploading(false)
+  }
+}
+
+const deleteSelectedGalleryPhotos = async () => {
+  if (!token) {
+    setGalleryError('Admin session is not available')
+    return
+  }
+
+  if (selectedGalleryIds.length === 0) {
+    setGalleryError('Please select at least one photo')
+    return
+  }
+
+  const confirmed = window.confirm(
+    `Delete ${selectedGalleryIds.length} selected photo${
+      selectedGalleryIds.length === 1 ? '' : 's'
+    }?\n\nThis action cannot be undone.`
+  )
+
+  if (!confirmed) return
+
+  setGalleryDeleting(true)
+  setGalleryError('')
+  setSuccess('')
+
+  try {
+    for (const id of selectedGalleryIds) {
+      const response = await fetch(`/api/admin/gallery/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to delete photo')
+      }
+    }
+
+    setSelectedGalleryIds([])
+    await loadGalleryPhotos()
+
+    setSuccess(
+      `${selectedGalleryIds.length} photo${
+        selectedGalleryIds.length === 1 ? '' : 's'
+      } deleted successfully.`
+    )
+  } catch (error) {
+    setGalleryError(
+      error instanceof Error
+        ? error.message
+        : 'Unable to delete selected photos'
+    )
+  } finally {
+    setGalleryDeleting(false)
   }
 }
 
@@ -2445,20 +2530,29 @@ if (!authenticated) {
 
   <div className="mt-6 grid gap-4 md:grid-cols-2">
     <div>
-      <label className="mb-2 block text-sm font-medium">
-        Photo
-      </label>
-      <Input
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        onChange={(event) =>
-          setGalleryFile(event.target.files?.[0] ?? null)
-        }
-      />
-      <p className="mt-2 text-xs text-muted-foreground">
-        JPEG, PNG or WebP • Maximum 20 MB • 4K/8K images supported
-      </p>
-    </div>
+  <label className="mb-2 block text-sm font-medium">
+    Photos
+  </label>
+  <Input
+    type="file"
+    accept="image/jpeg,image/png,image/webp"
+    multiple
+    onChange={(event) =>
+      setGalleryFiles(Array.from(event.target.files ?? []))
+    }
+  />
+
+  <p className="mt-2 text-xs text-muted-foreground">
+    Select multiple JPEG, PNG or WebP photos • Maximum 20 MB per photo • 4K/8K supported
+  </p>
+
+  {galleryFiles.length > 0 && (
+    <p className="mt-2 text-sm font-medium">
+      {galleryFiles.length} photo
+      {galleryFiles.length === 1 ? '' : 's'} selected
+    </p>
+  )}
+</div>
 
     <div>
       <label className="mb-2 block text-sm font-medium">
@@ -2468,17 +2562,6 @@ if (!authenticated) {
         value={galleryCategory}
         onChange={(event) => setGalleryCategory(event.target.value)}
         placeholder="NHYM Events"
-      />
-    </div>
-
-    <div>
-      <label className="mb-2 block text-sm font-medium">
-        Photo title
-      </label>
-      <Input
-        value={galleryTitle}
-        onChange={(event) => setGalleryTitle(event.target.value)}
-        placeholder="Enter photo title"
       />
     </div>
 
@@ -2502,15 +2585,29 @@ if (!authenticated) {
 
   <div className="mt-5">
     <Button
-      type="button"
-      onClick={() => void uploadGalleryPhoto()}
-      disabled={galleryUploading || !galleryFile || !galleryTitle.trim()}
-    >
-      {galleryUploading ? 'Uploading...' : 'Upload Photo'}
-    </Button>
+  type="button"
+  onClick={() => void uploadGalleryPhotos()}
+  disabled={galleryUploading || galleryFiles.length === 0}
+>
+  {galleryUploading
+    ? 'Uploading Photos...'
+    : `Upload ${galleryFiles.length > 0 ? `${galleryFiles.length} ` : ''}Photo${galleryFiles.length === 1 ? '' : 's'}`}
+</Button>
   </div>
 
   <div className="mt-8">
+    <div className="mb-4 flex flex-wrap items-center gap-3">
+  <Button
+    type="button"
+    variant="outline"
+    onClick={() => void deleteSelectedGalleryPhotos()}
+    disabled={galleryDeleting || selectedGalleryIds.length === 0}
+  >
+    {galleryDeleting
+      ? 'Deleting...'
+      : `Delete Selected${selectedGalleryIds.length > 0 ? ` (${selectedGalleryIds.length})` : ''}`}
+  </Button>
+</div>
     <h3 className="text-lg font-semibold">
       Uploaded Photos ({galleryPhotos.length})
     </h3>
