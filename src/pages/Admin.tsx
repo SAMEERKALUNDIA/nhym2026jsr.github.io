@@ -2597,6 +2597,22 @@ if (!authenticated) {
 
   <div className="mt-8">
     <div className="mb-4 flex flex-wrap items-center gap-3">
+      <Button
+  type="button"
+  variant="outline"
+  onClick={() => {
+    if (selectedGalleryIds.length === galleryPhotos.length) {
+      setSelectedGalleryIds([])
+    } else {
+      setSelectedGalleryIds(galleryPhotos.map((photo) => photo.id))
+    }
+  }}
+  disabled={galleryPhotos.length === 0}
+>
+  {selectedGalleryIds.length === galleryPhotos.length
+    ? 'Deselect All'
+    : 'Select All'}
+</Button>
   <Button
     type="button"
     variant="outline"
