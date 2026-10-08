@@ -67,6 +67,18 @@ const [galleryError, setGalleryError] = useState('')
 const [galleryFiles, setGalleryFiles] = useState<File[]>([])
 const [galleryCaption, setGalleryCaption] = useState('')
 const [galleryCategory, setGalleryCategory] = useState('NHYM Events')
+const [galleryStorageUsed, setGalleryStorageUsed] = useState(0)
+const galleryStorageMax = 10 * 1024 * 1024 * 1024
+const gallerySelectedBytes = galleryFiles.reduce(
+  (total, file) => total + file.size,
+  0
+)
+
+const galleryStorageAfterSelection =
+  galleryStorageUsed + gallerySelectedBytes
+
+const galleryStorageExceeded =
+  galleryStorageAfterSelection > galleryStorageMax
 const [loginToken, setLoginToken] = useState('')
 const [authenticated, setAuthenticated] = useState(false)
 const [checkingSession, setCheckingSession] = useState(true)
@@ -195,6 +207,26 @@ const loadGalleryPhotos = async () => {
     )
   } finally {
     setGalleryLoading(false)
+  }
+}
+const loadGalleryStorage = async () => {
+  if (!token) return
+
+  try {
+    const response = await fetch('/api/admin/gallery/storage', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to load gallery storage')
+    }
+
+    const data = await response.json()
+    setGalleryStorageUsed(Number(data.usedBytes ?? 0))
+  } catch (error) {
+    console.error('Failed to load gallery storage:', error)
   }
 }
 const uploadGalleryPhotos = async () => {
@@ -353,6 +385,7 @@ useEffect(() => {
   if (!authenticated || !token) return
 
   void loadGalleryPhotos()
+  void loadGalleryStorage()
 }, [authenticated, token])
 
 useEffect(() => {
@@ -2551,7 +2584,39 @@ if (!authenticated) {
       {galleryFiles.length} photo
       {galleryFiles.length === 1 ? '' : 's'} selected
     </p>
-  )}
+    )}
+    {galleryFiles.length > 0 && (
+  <div className="mt-2 rounded-lg border bg-muted/20 p-3 text-sm">
+    <div className="flex justify-between gap-3">
+      <span>Selected photos size</span>
+      <span className="font-medium">
+        {(gallerySelectedBytes / (1024 * 1024)).toFixed(2)} MB
+      </span>
+    </div>
+
+    <div className="mt-1 flex justify-between gap-3">
+      <span>Storage after upload</span>
+      <span className="font-medium">
+        {(galleryStorageAfterSelection / (1024 * 1024 * 1024)).toFixed(2)} GB / 10.00 GB
+      </span>
+    </div>
+
+    <div
+      className={
+        galleryStorageExceeded
+          ? 'mt-2 font-semibold text-destructive'
+          : 'mt-2 font-semibold text-green-600'
+      }
+    >
+      {galleryStorageExceeded
+        ? 'Storage limit exceeded — remove some photos before uploading.'
+        : `${(
+            (galleryStorageMax - galleryStorageAfterSelection) /
+            (1024 * 1024 * 1024)
+          ).toFixed(2)} GB remaining after upload`}
+    </div>
+  </div>
+)}
 </div>
 
     <div>
@@ -2587,7 +2652,11 @@ if (!authenticated) {
     <Button
   type="button"
   onClick={() => void uploadGalleryPhotos()}
-  disabled={galleryUploading || galleryFiles.length === 0}
+  disabled={
+  galleryUploading ||
+  galleryFiles.length === 0 ||
+  galleryStorageExceeded
+}
 >
   {galleryUploading
     ? 'Uploading Photos...'
@@ -2627,6 +2696,35 @@ if (!authenticated) {
     <h3 className="text-lg font-semibold">
       Uploaded Photos ({galleryPhotos.length})
     </h3>
+    <div className="mt-3 rounded-lg border bg-muted/20 p-3">
+  <div className="flex items-center justify-between gap-3 text-sm">
+    <span className="font-medium">Gallery Storage</span>
+    <span className="font-semibold">
+      {(galleryStorageUsed / (1024 * 1024 * 1024)).toFixed(2)} GB / 10.00 GB
+    </span>
+  </div>
+
+  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+    <div
+      className="h-full rounded-full bg-primary transition-all"
+      style={{
+        width: `${Math.min(
+          100,
+          (galleryStorageUsed / galleryStorageMax) * 100
+        )}%`,
+      }}
+    />
+  </div>
+
+  <div className="mt-2 text-xs text-muted-foreground">
+    {Math.max(
+      0,
+      (galleryStorageMax - galleryStorageUsed) /
+        (1024 * 1024 * 1024)
+    ).toFixed(2)}{' '}
+    GB remaining
+  </div>
+</div>
 
     {galleryLoading ? (
       <p className="mt-4 text-sm text-muted-foreground">

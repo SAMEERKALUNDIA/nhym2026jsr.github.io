@@ -250,6 +250,26 @@ if (
         }
       })
     }
+    // Admin gallery storage usage
+if (url.pathname === '/api/admin/gallery/storage' && request.method === 'GET') {
+  const storageResult = await env.DB.prepare(`
+    SELECT COALESCE(SUM(file_size), 0) AS total_bytes
+    FROM gallery_photos
+  `).first<{ total_bytes: number }>()
+
+  const usedBytes = Number(storageResult?.total_bytes ?? 0)
+  const maxBytes = 10 * 1024 * 1024 * 1024
+  const remainingBytes = Math.max(0, maxBytes - usedBytes)
+
+  return json({
+    usedBytes,
+    maxBytes,
+    remainingBytes,
+    usedGB: usedBytes / (1024 * 1024 * 1024),
+    maxGB: 10,
+    remainingGB: remainingBytes / (1024 * 1024 * 1024),
+  })
+}
     // ADMIN GALLERY — upload photo
 if (url.pathname === '/api/admin/gallery' && request.method === 'POST') {
   if (!authorised(request, env)) {
@@ -287,6 +307,36 @@ if (url.pathname === '/api/admin/gallery' && request.method === 'POST') {
 // Maximum 20 MB per photograph
 if (file.size > 20 * 1024 * 1024) {
   return json({ error: 'Image must be 20 MB or smaller' }, 400)
+}
+
+// Maximum total gallery storage: 10 GB
+const MAX_GALLERY_STORAGE = 10 * 1024 * 1024 * 1024
+
+const storageResult = await env.DB.prepare(`
+  SELECT COALESCE(SUM(file_size), 0) AS total_bytes
+  FROM gallery_photos
+`).first<{ total_bytes: number }>()
+
+const currentStorageBytes = Number(storageResult?.total_bytes ?? 0)
+const newTotalStorageBytes = currentStorageBytes + file.size
+
+if (newTotalStorageBytes > MAX_GALLERY_STORAGE) {
+  const availableBytes = Math.max(
+    0,
+    MAX_GALLERY_STORAGE - currentStorageBytes
+  )
+
+  return json(
+    {
+      error: 'Gallery storage limit reached.',
+      message: 'This upload would exceed the maximum 10 GB gallery storage limit.',
+      currentStorageBytes,
+      availableBytes,
+      fileSize: file.size,
+      maxStorageBytes: MAX_GALLERY_STORAGE,
+    },
+    400
+  )
 }
 
   const extension =
