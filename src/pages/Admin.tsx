@@ -2627,6 +2627,20 @@ if (!authenticated) {
             key={photo.id}
             className="overflow-hidden rounded-xl border bg-background"
           >
+                      <label className="flex items-center gap-2 border-b px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={selectedGalleryIds.includes(photo.id)}
+              onChange={(event) => {
+                setSelectedGalleryIds((current) =>
+                  event.target.checked
+                    ? [...current, photo.id]
+                    : current.filter((id) => id !== photo.id)
+                )
+              }}
+            />
+            <span>Select photo</span>
+          </label>
             <div className="flex h-56 items-center justify-center bg-muted/30">
               <img
                 src={photo.imageUrl}
