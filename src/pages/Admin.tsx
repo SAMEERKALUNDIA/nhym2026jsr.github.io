@@ -55,9 +55,13 @@ type Row = {
 }
 
 export default function Admin() {
+  const adminPath = window.location.pathname
+  const isGalleryPage = adminPath === '/admin/gallery'
+  const isParticipantPage = adminPath === '/admin/participants'
+
   const [token, setToken] = useState(
-  () => sessionStorage.getItem('nhym_admin_token') || ''
-)
+    () => sessionStorage.getItem('nhym_admin_token') || ''
+  )
 const [galleryPhotos, setGalleryPhotos] = useState<GalleryPhoto[]>([])
 const [galleryLoading, setGalleryLoading] = useState(false)
 const [galleryUploading, setGalleryUploading] = useState(false)
@@ -384,9 +388,16 @@ const deleteSelectedGalleryPhotos = async () => {
 useEffect(() => {
   if (!authenticated || !token) return
 
-  void loadGalleryPhotos()
-  void loadGalleryStorage()
-}, [authenticated, token])
+  if (isGalleryPage) {
+    void loadGalleryPhotos()
+    void loadGalleryStorage()
+    return
+  }
+
+  if (!isParticipantPage) {
+    void loadGalleryStorage()
+  }
+}, [authenticated, token, isGalleryPage, isParticipantPage])
 
 useEffect(() => {
   const storedToken =
@@ -2514,11 +2525,19 @@ if (!authenticated) {
         <div className="flex flex-wrap items-start justify-between gap-4">
   <div>
     <h1 className="text-4xl">
-      NHYM 2026 Registration Admin
+      {isGalleryPage
+        ? 'Gallery Management'
+        : isParticipantPage
+          ? 'Participant Management'
+          : 'NHYM 2026 Admin Dashboard'}
     </h1>
 
     <p className="mt-2 text-muted-foreground">
-      Registration management and payment verification
+      {isGalleryPage
+        ? 'Upload and manage photos for the NHYM website gallery.'
+        : isParticipantPage
+          ? 'Manage registrations, verify payments and approve participants.'
+          : 'Overview of NHYM 2026 registrations and gallery storage.'}
     </p>
   </div>
 
@@ -2541,7 +2560,93 @@ if (!authenticated) {
             ✓ {success}
           </div>
         )}
-{/* GALLERY MANAGEMENT */}
+
+{!isGalleryPage && !isParticipantPage && (
+  <section className="mt-8">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="rounded-xl border bg-card p-5">
+        <div className="text-sm text-muted-foreground">Total Registrations</div>
+        <div className="mt-2 text-3xl font-semibold">{stats.totalRegistrations}</div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5">
+        <div className="text-sm text-muted-foreground">Total Participants</div>
+        <div className="mt-2 text-3xl font-semibold">{stats.totalParticipants}</div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5">
+        <div className="text-sm text-muted-foreground">Pending</div>
+        <div className="mt-2 text-3xl font-semibold">{stats.pending}</div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5">
+        <div className="text-sm text-muted-foreground">Approved</div>
+        <div className="mt-2 text-3xl font-semibold">{stats.approved}</div>
+      </div>
+    </div>
+
+    <div className="mt-4 grid gap-4 md:grid-cols-3">
+      <div className="rounded-xl border bg-card p-5">
+        <div className="text-sm text-muted-foreground">Payment Verified</div>
+        <div className="mt-2 text-2xl font-semibold">{stats.paymentVerified}</div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5">
+        <div className="text-sm text-muted-foreground">Rejected</div>
+        <div className="mt-2 text-2xl font-semibold">{stats.rejected}</div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5">
+        <div className="text-sm text-muted-foreground">Approved Registration Amount</div>
+        <div className="mt-2 text-2xl font-semibold">₹{stats.approvedAmount.toLocaleString('en-IN')}</div>
+      </div>
+    </div>
+
+    <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <div className="rounded-xl border bg-card p-5">
+        <div className="text-sm text-muted-foreground">Total Registration Amount</div>
+        <div className="mt-2 text-2xl font-semibold">₹{stats.totalAmount.toLocaleString('en-IN')}</div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-5">
+        <div className="text-sm text-muted-foreground">Gallery Storage</div>
+        <div className="mt-2 text-2xl font-semibold">
+          {(galleryStorageUsed / (1024 * 1024 * 1024)).toFixed(2)} GB / 10.00 GB
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          {Math.max(0, (galleryStorageMax - galleryStorageUsed) / (1024 * 1024 * 1024)).toFixed(2)} GB remaining
+        </div>
+      </div>
+    </div>
+
+    <div className="mt-8 grid gap-4 md:grid-cols-2">
+      <button
+        type="button"
+        onClick={() => { window.location.href = '/admin/participants' }}
+        className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40"
+      >
+        <div className="text-xl font-semibold">Manage Participants →</div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          View registrations, verify payments, approve or reject registrations, and view participant details.
+        </p>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => { window.location.href = '/admin/gallery' }}
+        className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40"
+      >
+        <div className="text-xl font-semibold">Manage Gallery →</div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Upload, review and delete NHYM gallery photos and monitor storage usage.
+        </p>
+      </button>
+    </div>
+  </section>
+)}
+
+{isGalleryPage && (
+  /* GALLERY-MANAGEMENT */
 <section className="mt-8 rounded-xl border bg-card p-6">
   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
     <div>
@@ -2789,7 +2894,8 @@ if (!authenticated) {
     )}
   </div>
 </section>
-        {rows.length > 0 && (
+)}
+        {isParticipantPage && (
           <>
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
@@ -2918,9 +3024,10 @@ if (!authenticated) {
             </div>
           </>
         )}
-
+    {isParticipantPage && (
+      <>
         <div className="mt-6 overflow-x-auto">
-  <table className="w-full min-w-[850px] text-sm">
+          <table className="w-full min-w-[850px] text-sm">
 
     <thead>
       <tr className="border-b text-left">
@@ -2935,7 +3042,14 @@ if (!authenticated) {
     </thead>
 
     <tbody>
-      {filteredRows.map(row => (
+      {filteredRows.length === 0 ? (
+        <tr>
+          <td colSpan={7} className="p-6 text-center text-sm text-muted-foreground">
+            {rows.length === 0 ? 'No registrations found.' : 'No registrations match your search.'}
+          </td>
+        </tr>
+      ) : (
+        filteredRows.map(row => (
         <tr
           key={row.id}
           className="border-b align-middle"
@@ -2980,7 +3094,8 @@ if (!authenticated) {
             </Button>
           </td>
         </tr>
-      ))}
+        ))
+      )}
     </tbody>
 
   </table>
@@ -3199,6 +3314,8 @@ if (!authenticated) {
 
           </div>
         )}
+      </>
+    )}
 
       </div>
      <DeveloperCredit />

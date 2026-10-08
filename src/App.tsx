@@ -11,12 +11,16 @@ const Participant = lazy(() => import('@/pages/Participant'))
 const Register = lazy(() => import('@/pages/Register'))
 
 /* This is a one-page site with one action, so there is no site-wide header or
-   footer above the routes: the page owns its own shell, its own `main` and its
+   footer above the routes: the page owns its own shell, its own main and its
    own footer, and the 404 carries just the mark. */
 export default function App() {
   return (
     <Suspense
-      fallback={<div className="px-gutter py-24 text-sm text-muted-foreground">Loading…</div>}
+      fallback={
+        <div className="px-gutter py-24 text-sm text-muted-foreground">
+          Loading…
+        </div>
+      }
     >
       <Routes>
         <Route
@@ -31,10 +35,21 @@ export default function App() {
             </>
           }
         />
+
         <Route path="register" element={<Register />} />
-	      <Route path="participant" element={<Participant />} />
+
+        <Route path="participant" element={<Participant />} />
+
+        {/* Admin dashboard */}
         <Route path="admin" element={<Admin />} />
+
+        {/* Separate admin management pages */}
+        <Route path="admin/participants" element={<Admin />} />
+        <Route path="admin/gallery" element={<Admin />} />
+
+        {/* Public gallery */}
         <Route path="/gallery" element={<Gallery />} />
+
         <Route
           path="*"
           element={
