@@ -1,3 +1,4 @@
+import { DeveloperCredit } from '@/components/DeveloperCredit'
 import { useEffect, useMemo, useState } from 'react'
 import { jsPDF } from 'jspdf'
 import { Button } from '@/components/ui/button'
@@ -2975,6 +2976,7 @@ if (!authenticated) {
         )}
 
       </div>
+     <DeveloperCredit />
     </main>
   )
 }

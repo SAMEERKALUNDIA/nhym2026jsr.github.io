@@ -1,3 +1,4 @@
+import { DeveloperCredit } from '@/components/DeveloperCredit'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -143,6 +144,7 @@ export default function Gallery() {
           </div>
         )}
       </section>
+      <DeveloperCredit />
 
       {selectedPhoto && (
         <div

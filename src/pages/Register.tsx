@@ -1,3 +1,4 @@
+import { DeveloperCredit } from '@/components/DeveloperCredit'
 import { useState } from 'react'
 import {
   Check,
@@ -1150,6 +1151,7 @@ if (!row.dob.trim()) {
           </div>
         </div>
       </footer>
+      <DeveloperCredit />
     </div>
   )
 }

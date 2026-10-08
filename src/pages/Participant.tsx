@@ -1,3 +1,4 @@
+import { DeveloperCredit } from '@/components/DeveloperCredit'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { jsPDF } from 'jspdf'
@@ -1178,6 +1179,7 @@ async function downloadRegistrationPdf() {
           )}
         </div>
       </main>
+      <DeveloperCredit />
     </div>
   )
 }
