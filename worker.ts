@@ -119,7 +119,7 @@ if (
       const statements = body.participants.map((p, i) => env.DB.prepare(`INSERT INTO participants
         (registration_id, participant_no, name, dob, gender, address, district, state, pin, age, category, fee, activities_json, cultural, sports, from_outside, accommodation, note, details_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(id, i + 1, String(p.name ?? ''), String(p.dob ?? ''), String(p.gender ?? ''), String(p.address ?? ''), String(p.district ?? ''), String(p.state ?? ''), String(p.pin ?? ''), String(p.age ?? ''), String(p.category ?? ''), Math.round(Number(p.fee) || 0), JSON.stringify(p.activities ?? []), String(p.cultural ?? ''), String(p.sports ?? ''), String(p.fromOutside ?? ''), String(p.accommodation ?? ''), String(p.note ?? ''), JSON.stringify(p)))
+        .bind(id, i + 1, String(p.name ?? '').trim().toUpperCase(), String(p.dob ?? ''), String(p.gender ?? ''), String(p.address ?? ''), String(p.district ?? ''), String(p.state ?? ''), String(p.pin ?? ''), String(p.age ?? ''), String(p.category ?? ''), Math.round(Number(p.fee) || 0), JSON.stringify(p.activities ?? []), String(p.cultural ?? ''), String(p.sports ?? ''), String(p.fromOutside ?? ''), String(p.accommodation ?? ''), String(p.note ?? ''), JSON.stringify({ ...p, name: String(p.name ?? '').trim().toUpperCase() })))
       if (statements.length) await env.DB.batch(statements)
       return json({ ok: true, registrationId, status: 'PENDING' }, 201)
     }
@@ -250,26 +250,6 @@ if (
         }
       })
     }
-    // Admin gallery storage usage
-if (url.pathname === '/api/admin/gallery/storage' && request.method === 'GET') {
-  const storageResult = await env.DB.prepare(`
-    SELECT COALESCE(SUM(file_size), 0) AS total_bytes
-    FROM gallery_photos
-  `).first<{ total_bytes: number }>()
-
-  const usedBytes = Number(storageResult?.total_bytes ?? 0)
-  const maxBytes = 10 * 1024 * 1024 * 1024
-  const remainingBytes = Math.max(0, maxBytes - usedBytes)
-
-  return json({
-    usedBytes,
-    maxBytes,
-    remainingBytes,
-    usedGB: usedBytes / (1024 * 1024 * 1024),
-    maxGB: 10,
-    remainingGB: remainingBytes / (1024 * 1024 * 1024),
-  })
-}
     // ADMIN GALLERY — upload photo
 if (url.pathname === '/api/admin/gallery' && request.method === 'POST') {
   if (!authorised(request, env)) {

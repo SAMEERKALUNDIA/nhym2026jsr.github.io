@@ -3110,17 +3110,9 @@ if (!authenticated) {
 
             </div>
 
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-
-  <div className="w-full lg:max-w-md">
-    <Input
-      value={search}
-      onChange={e => setSearch(e.target.value)}
-      placeholder="Search ID, name, email, payment reference or status"
-    />
-  </div>
-
+            <div className="mt-8 flex flex-nowrap items-center gap-3 overflow-x-auto pb-1">
   <Button
+    className="shrink-0"
     variant="outline"
     onClick={exportRegistrationsCsv}
     disabled={filteredRows.length === 0}
@@ -3129,6 +3121,7 @@ if (!authenticated) {
   </Button>
 
   <Button
+    className="shrink-0"
     variant="outline"
     onClick={() => void exportRegistrationsPdf()}
     disabled={filteredRows.length === 0}
@@ -3137,21 +3130,30 @@ if (!authenticated) {
   </Button>
 
   <Button
-  variant="outline"
-  onClick={exportParticipantsCsv}
-  disabled={filteredRows.length === 0}
->
-  Export Participants CSV
-</Button>
+    className="shrink-0"
+    variant="outline"
+    onClick={exportParticipantsCsv}
+    disabled={filteredRows.length === 0}
+  >
+    Export Participants CSV
+  </Button>
 
-<Button
-  variant="outline"
-  onClick={() => void exportParticipantsPdf()}
-  disabled={filteredRows.length === 0}
->
-  Export Participants PDF
-</Button>
+  <Button
+    className="shrink-0"
+    variant="outline"
+    onClick={() => void exportParticipantsPdf()}
+    disabled={filteredRows.length === 0}
+  >
+    Export Participants PDF
+  </Button>
+</div>
 
+<div className="mt-3 w-full max-w-xl">
+  <Input
+    value={search}
+    onChange={e => setSearch(e.target.value)}
+    placeholder="Search ID, name, email, payment reference or status"
+  />
 </div>
 
             <div className="mt-4 text-sm text-muted-foreground">
@@ -3347,7 +3349,7 @@ if (!authenticated) {
                   <div className="mb-4 text-lg font-semibold">
                     Participant {participant.participant_no}
                     {' — '}
-                    {participant.name}
+                    {participant.name.toUpperCase()}
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
