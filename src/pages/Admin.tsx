@@ -3,6 +3,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { jsPDF } from 'jspdf'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+const GALLERY_CATEGORIES = [
+  'NHYM Events',
+  'Ho Cultural Dance',
+  'Meetings & Programmes',
+  'Posters & News',
+  'Office Bearers',
+] as const
+
 type GalleryPhoto = {
   id: number
   r2Key: string
@@ -2782,11 +2790,15 @@ if (!authenticated) {
       <label className="mb-2 block text-sm font-medium">
         Category
       </label>
-      <Input
+      <select
         value={galleryCategory}
         onChange={(event) => setGalleryCategory(event.target.value)}
-        placeholder="NHYM Events"
-      />
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        {GALLERY_CATEGORIES.map((category) => (
+          <option key={category} value={category}>{category}</option>
+        ))}
+      </select>
     </div>
 
     <div>
@@ -2975,12 +2987,18 @@ if (!authenticated) {
                       <label className="mb-1 block text-sm font-medium">
                         Category
                       </label>
-                      <Input
+                      <select
                         value={galleryEditCategory}
                         onChange={(event) => setGalleryEditCategory(event.target.value)}
-                        placeholder="e.g. NHYM Events"
-                        maxLength={100}
-                      />
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {!GALLERY_CATEGORIES.includes(galleryEditCategory as typeof GALLERY_CATEGORIES[number]) && (
+                          <option value={galleryEditCategory}>{galleryEditCategory}</option>
+                        )}
+                        {GALLERY_CATEGORIES.map((category) => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
