@@ -98,13 +98,7 @@ export default function Home() {
       >
         Programme & Fees
       </a>
-      
-<a
-  href="/gallery"
-  className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
->
-  Gallery
-</a>
+
       <a
         href="#committee"
         className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -190,13 +184,6 @@ export default function Home() {
           Programme & Fees
         </a>
 
-<a
-  href="/gallery"
-  onClick={() => setMobileMenuOpen(false)}
-  className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
->
-  Gallery
-</a>
         <a
           href="#committee"
           onClick={() => setMobileMenuOpen(false)}
@@ -264,9 +251,6 @@ export default function Home() {
                 the region in the same hall.
               </p>
               
-              <p className="mt-4 max-w-md text-sm text-muted-foreground">
-                One form, one submission, one total for a whole family or group.
-              </p>
             </div>
 
             {/* A paper pass card, overlapping the picture it sits on. */}
