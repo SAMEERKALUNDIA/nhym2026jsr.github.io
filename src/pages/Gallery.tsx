@@ -20,6 +20,9 @@ export default function Gallery() {
   const [error, setError] = useState('')
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryPhoto | null>(null)
   const [activeCategory, setActiveCategory] = useState('All Photos')
+  const [shareMessage, setShareMessage] = useState('')
+  const [selectedDownloadIds, setSelectedDownloadIds] = useState<number[]>([])
+  const [bulkShareMessage, setBulkShareMessage] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -75,6 +78,11 @@ export default function Gallery() {
     [activeCategory, photos]
   )
 
+  useEffect(() => {
+    const existingIds = new Set(photos.map((photo) => photo.id))
+    setSelectedDownloadIds((current) => current.filter((id) => existingIds.has(id)))
+  }, [photos])
+
   const selectedIndex = selectedPhoto
     ? filteredPhotos.findIndex((photo) => photo.id === selectedPhoto.id)
     : -1
@@ -89,6 +97,135 @@ export default function Gallery() {
     if (!filteredPhotos.length) return
     const index = selectedIndex < 0 ? 0 : selectedIndex
     setSelectedPhoto(filteredPhotos[(index + 1) % filteredPhotos.length])
+  }
+
+  const toggleDownloadSelection = (photoId: number) => {
+    setSelectedDownloadIds((current) =>
+      current.includes(photoId)
+        ? current.filter((id) => id !== photoId)
+        : [...current, photoId]
+    )
+  }
+
+  const selectAllVisiblePhotos = () => {
+    const visibleIds = filteredPhotos.map((photo) => photo.id)
+    const allVisibleSelected =
+      visibleIds.length > 0 && visibleIds.every((id) => selectedDownloadIds.includes(id))
+
+    setSelectedDownloadIds((current) =>
+      allVisibleSelected
+        ? current.filter((id) => !visibleIds.includes(id))
+        : Array.from(new Set([...current, ...visibleIds]))
+    )
+  }
+
+  const shareSelectedPhotos = async () => {
+    const selected = photos.filter((photo) => selectedDownloadIds.includes(photo.id))
+    if (!selected.length) return
+
+    const photoLinks = selected.map((photo) => ({
+      title: photo.title || `NHYM Photo ${photo.id}`,
+      url: new URL(photo.imageUrl, window.location.origin).toString(),
+    }))
+
+    try {
+      if (navigator.share && photoLinks.length === 1) {
+        await navigator.share({
+          title: photoLinks[0].title,
+          url: photoLinks[0].url,
+        })
+        setBulkShareMessage('Share menu opened.')
+        return
+      }
+
+      const shareText = [
+        'NHYM 2026 Photo Gallery',
+        ...photoLinks.map((photo) => `${photo.title}: ${photo.url}`),
+      ].join('\\n')
+
+      if (navigator.share && navigator.canShare) {
+        const filesOrUrls = { title: 'NHYM 2026 Photos', text: shareText }
+        if (navigator.canShare(filesOrUrls)) {
+          await navigator.share(filesOrUrls)
+          setBulkShareMessage(`Share menu opened for ${photoLinks.length} selected photos.`)
+          return
+        }
+      }
+
+      await navigator.clipboard.writeText(shareText)
+      setBulkShareMessage(
+        `${photoLinks.length} photo links copied. Paste them into WhatsApp or another app to share.`
+      )
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return
+
+      try {
+        const shareText = [
+          'NHYM 2026 Photo Gallery',
+          ...photoLinks.map((photo) => `${photo.title}: ${photo.url}`),
+        ].join('\\n')
+        await navigator.clipboard.writeText(shareText)
+        setBulkShareMessage(
+          `${photoLinks.length} photo links copied. Paste them into WhatsApp or another app to share.`
+        )
+      } catch {
+        setBulkShareMessage('Bulk sharing is unavailable in this browser. Try selecting fewer photos or copy the links individually.')
+      }
+    }
+  }
+
+  const downloadSelectedPhotos = async () => {
+    const selected = photos.filter((photo) => selectedDownloadIds.includes(photo.id))
+    if (!selected.length) return
+
+    setShareMessage(`Starting download of ${selected.length} photo${selected.length === 1 ? '' : 's'}…`)
+
+    // Start downloads one at a time with a short gap so browsers are less likely to block them.
+    for (const [index, photo] of selected.entries()) {
+      const link = document.createElement('a')
+      link.href = new URL(photo.imageUrl, window.location.origin).toString()
+      link.download = `${(photo.title || `NHYM-photo-${photo.id}`)
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .trim() || `NHYM-photo-${photo.id}`}.jpg`
+      link.rel = 'noopener'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+
+      if (index < selected.length - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 350))
+      }
+    }
+    setShareMessage(`Download requests sent for ${selected.length} photo${selected.length === 1 ? '' : 's'}. Your browser may ask you to allow multiple downloads.`)
+  }
+
+  const sharePhoto = async (photo: GalleryPhoto) => {
+    const shareUrl = new URL(photo.imageUrl, window.location.origin).toString()
+    const shareData = {
+      title: photo.title || 'NHYM 2026 Photo',
+      text: photo.caption || `${photo.title} — National Ho Youth Meet 2026`,
+      url: shareUrl,
+    }
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData)
+        setShareMessage('Share menu opened.')
+        return
+      }
+
+      await navigator.clipboard.writeText(shareUrl)
+      setShareMessage('Photo link copied. You can share it on WhatsApp.')
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return
+
+      try {
+        await navigator.clipboard.writeText(shareUrl)
+        setShareMessage('Photo link copied. You can share it on WhatsApp.')
+      } catch {
+        setShareMessage('Sharing is unavailable in this browser. Copy the photo URL from the address bar.')
+      }
+    }
   }
 
   useEffect(() => {
@@ -188,6 +325,38 @@ export default function Gallery() {
           </div>
         )}
 
+        {bulkShareMessage && (
+          <div
+            role="status"
+            className="mx-auto mt-3 w-fit rounded-lg border border-border bg-card px-4 py-2 text-center text-sm"
+          >
+            {bulkShareMessage}
+            <button
+              type="button"
+              onClick={() => setBulkShareMessage('')}
+              className="ml-3 font-semibold text-primary underline underline-offset-2"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {shareMessage && (
+          <div
+            role="status"
+            className="mx-auto mt-4 w-fit rounded-lg border border-border bg-card px-4 py-2 text-center text-sm"
+          >
+            {shareMessage}
+            <button
+              type="button"
+              onClick={() => setShareMessage('')}
+              className="ml-3 font-semibold text-primary underline underline-offset-2"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {loading && (
           <div className="grid gap-5 pt-10 sm:grid-cols-2 lg:grid-cols-3" aria-label="Loading photos">
             {Array.from({ length: 6 }, (_, index) => (
@@ -229,12 +398,60 @@ export default function Gallery() {
         )}
 
         {!loading && !error && filteredPhotos.length > 0 && (
-          <div className="mt-8 columns-1 gap-5 sm:columns-2 lg:columns-3">
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 sm:p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={selectAllVisiblePhotos}
+                className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                {filteredPhotos.length > 0 &&
+                filteredPhotos.every((photo) => selectedDownloadIds.includes(photo.id))
+                  ? 'Deselect visible'
+                  : 'Select all visible'}
+              </button>
+              <span className="text-sm text-muted-foreground">
+                {selectedDownloadIds.length} selected
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void shareSelectedPhotos()}
+                disabled={selectedDownloadIds.length === 0}
+                className="inline-flex min-h-10 items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Share selected ({selectedDownloadIds.length}) ↗
+              </button>
+              <button
+                type="button"
+                onClick={() => void downloadSelectedPhotos()}
+                disabled={selectedDownloadIds.length === 0}
+                className="inline-flex min-h-10 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Download selected ({selectedDownloadIds.length}) ↓
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && filteredPhotos.length > 0 && (
+          <div className="mt-5 columns-1 gap-5 sm:columns-2 lg:columns-3">
             {filteredPhotos.map((photo) => (
               <article
                 key={photo.id}
                 className="mb-5 break-inside-avoid overflow-hidden rounded-xl border border-border bg-card shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg"
               >
+                <label className="flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted/50">
+                  <input
+                    type="checkbox"
+                    checked={selectedDownloadIds.includes(photo.id)}
+                    onChange={() => toggleDownloadSelection(photo.id)}
+                    className="h-4 w-4 accent-primary"
+                    aria-label={`Select ${photo.title} for download`}
+                  />
+                  Select for download
+                </label>
                 <button
                   type="button"
                   onClick={() => setSelectedPhoto(photo)}
@@ -262,6 +479,15 @@ export default function Gallery() {
                     {photo.title}
                   </h2>
 
+                  <button
+                    type="button"
+                    onClick={() => void sharePhoto(photo)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:border-primary/50 hover:bg-muted"
+                  >
+                    <span aria-hidden="true">↗</span>
+                    Share photo
+                  </button>
+
                   {photo.caption && (
                     <p className="mt-2 whitespace-pre-line text-sm leading-6 text-muted-foreground">
                       {photo.caption}
@@ -288,7 +514,7 @@ export default function Gallery() {
             type="button"
             onClick={() => setSelectedPhoto(null)}
             aria-label="Close photo viewer"
-            className="absolute right-3 top-3 z-10 rounded-full border border-white/20 bg-black/50 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15 sm:right-6 sm:top-5"
+            className="absolute right-3 top-3 z-10 min-h-11 rounded-full border border-white/30 bg-black/70 px-5 py-2 text-sm font-semibold text-white shadow-lg hover:bg-white/15 sm:right-6 sm:top-5"
           >
             Close ✕
           </button>
@@ -302,7 +528,7 @@ export default function Gallery() {
                   event.stopPropagation()
                   showPrevious()
                 }}
-                className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/50 px-4 py-3 text-2xl text-white hover:bg-white/15 sm:left-6"
+                className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/30 bg-black/70 px-5 py-4 text-3xl text-white shadow-lg hover:bg-white/15 sm:left-6"
               >
                 ‹
               </button>
@@ -313,7 +539,7 @@ export default function Gallery() {
                   event.stopPropagation()
                   showNext()
                 }}
-                className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/50 px-4 py-3 text-2xl text-white hover:bg-white/15 sm:right-6"
+                className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/30 bg-black/70 px-5 py-4 text-3xl text-white shadow-lg hover:bg-white/15 sm:right-6"
               >
                 ›
               </button>
@@ -344,12 +570,19 @@ export default function Gallery() {
                 <span className="text-xs text-white/60">
                   {Math.max(0, selectedIndex) + 1} of {filteredPhotos.length}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => void sharePhoto(selectedPhoto)}
+                  className="rounded-md border border-white/30 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+                >
+                  Share photo ↗
+                </button>
                 <a
                   href={selectedPhoto.imageUrl}
                   download
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-md border border-white/30 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/10"
+                  className="rounded-md border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/20"
                 >
                   Download original ↓
                 </a>
