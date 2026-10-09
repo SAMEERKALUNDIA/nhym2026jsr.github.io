@@ -7,7 +7,8 @@ const GALLERY_CATEGORIES = [
   'NHYM Events',
   'Ho Cultural Dance',
   'Meetings & Programmes',
-  'Posters & News',
+  'Posters',
+  'News',
   'Office Bearers',
 ] as const
 
