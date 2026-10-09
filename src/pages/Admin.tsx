@@ -71,6 +71,11 @@ const [galleryError, setGalleryError] = useState('')
 const [galleryFiles, setGalleryFiles] = useState<File[]>([])
 const [galleryCaption, setGalleryCaption] = useState('')
 const [galleryCategory, setGalleryCategory] = useState('NHYM Events')
+const [galleryEditingId, setGalleryEditingId] = useState<number | null>(null)
+const [galleryEditTitle, setGalleryEditTitle] = useState('')
+const [galleryEditCaption, setGalleryEditCaption] = useState('')
+const [galleryEditCategory, setGalleryEditCategory] = useState('NHYM Events')
+const [gallerySavingId, setGallerySavingId] = useState<number | null>(null)
 const [galleryStorageUsed, setGalleryStorageUsed] = useState(0)
 const galleryStorageMax = 10 * 1024 * 1024 * 1024
 const gallerySelectedBytes = galleryFiles.reduce(
@@ -213,6 +218,55 @@ const loadGalleryPhotos = async () => {
     setGalleryLoading(false)
   }
 }
+const saveGalleryDetails = async (photoId: number) => {
+  if (!token) {
+    setGalleryError('Admin session is not available')
+    return
+  }
+
+  if (!galleryEditTitle.trim()) {
+    setGalleryError('Please enter an image name')
+    return
+  }
+
+  setGallerySavingId(photoId)
+  setGalleryError('')
+  setSuccess('')
+
+  try {
+    const response = await fetch(`/api/admin/gallery/${photoId}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: galleryEditTitle.trim(),
+        caption: galleryEditCaption.trim(),
+        category: galleryEditCategory.trim() || 'NHYM Events',
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not update photo details')
+    }
+
+    await loadGalleryPhotos()
+    setGalleryEditingId(null)
+    setSuccess('Photo details updated successfully.')
+  } catch (error) {
+    setGalleryError(
+      error instanceof Error
+        ? error.message
+        : 'Could not update photo details'
+    )
+  } finally {
+    setGallerySavingId(null)
+  }
+}
+
 const loadGalleryStorage = async () => {
   if (!token) return
 
@@ -2886,6 +2940,87 @@ if (!authenticated) {
   ? `${(photo.fileSize / (1024 * 1024)).toFixed(2)} MB`
   : 'Size unavailable'}
                 </span>
+              </div>
+
+              <div className="mt-4 border-t pt-3">
+                {galleryEditingId === photo.id ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">
+                        Image Name
+                      </label>
+                      <Input
+                        value={galleryEditTitle}
+                        onChange={(event) => setGalleryEditTitle(event.target.value)}
+                        placeholder="Enter image name"
+                        maxLength={200}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">
+                        Caption / Details
+                      </label>
+                      <textarea
+                        value={galleryEditCaption}
+                        onChange={(event) => setGalleryEditCaption(event.target.value)}
+                        placeholder="Enter image details"
+                        rows={3}
+                        maxLength={2000}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">
+                        Category
+                      </label>
+                      <Input
+                        value={galleryEditCategory}
+                        onChange={(event) => setGalleryEditCategory(event.target.value)}
+                        placeholder="e.g. NHYM Events"
+                        maxLength={100}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        onClick={() => void saveGalleryDetails(photo.id)}
+                        disabled={gallerySavingId !== null}
+                      >
+                        {gallerySavingId === photo.id ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setGalleryEditingId(null)
+                          setGalleryError('')
+                        }}
+                        disabled={gallerySavingId !== null}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setGalleryEditingId(photo.id)
+                      setGalleryEditTitle(photo.title || '')
+                      setGalleryEditCaption(photo.caption || '')
+                      setGalleryEditCategory(photo.category || 'NHYM Events')
+                      setGalleryError('')
+                      setSuccess('')
+                    }}
+                  >
+                    Edit Details
+                  </Button>
+                )}
               </div>
             </div>
           </div>
