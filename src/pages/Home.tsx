@@ -248,13 +248,10 @@ export default function Home() {
     𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼
   </span>
 
-  <span className="mt-2 block text-4xl sm:text-5xl">
-    2026
-  </span>
 </h1>
 
-              <p className="mt-6 font-display text-5xl font-bold leading-tight tracking-[0.02em] text-brand sm:text-6xl">
-                 SIRJON 𑢽𑢢𑢼𑢮𑢩𑢳
+              <p className="mt-6 whitespace-nowrap font-display text-2xl font-extrabold leading-tight tracking-[0.01em] text-[#a85e08] sm:text-4xl [font-family:'Noto_Sans_Warang_Citi',sans-serif] [-webkit-text-stroke:0.35px_currentColor]">
+                2026 SIRJON 𑢽𑢢𑢼𑢮𑢩𑢳
               </p>
 
               <p className="mt-3 max-w-md font-display text-xl font-medium text-primary/80">
