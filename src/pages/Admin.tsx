@@ -37,6 +37,16 @@ async function loadPdfImage(path: string): Promise<string | null> {
     return null
   }
 }
+
+function addContainedPdfImage(pdf: jsPDF, data: string | null, x: number, y: number, maxWidth: number, maxHeight: number) {
+  if (!data) return
+  const props = pdf.getImageProperties(data)
+  const scale = Math.min(maxWidth / props.width, maxHeight / props.height)
+  const width = props.width * scale
+  const height = props.height * scale
+  pdf.addImage(data, 'JPEG', x + (maxWidth - width) / 2, y + (maxHeight - height) / 2, width, height)
+}
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 const GALLERY_CATEGORIES = [
@@ -844,27 +854,8 @@ async function exportRegistrationsPdf() {
   function addPageHeader(
     continuation = false
   ) {
-    if (logoData) {
-      pdf.addImage(
-        logoData,
-        'JPEG',
-        margin,
-        7,
-        continuation ? 17 : 24,
-        continuation ? 17 : 24
-      )
-    }
-    if (hoSamajLogoData) {
-      const logoSize = continuation ? 17 : 24
-      pdf.addImage(
-        hoSamajLogoData,
-        'JPEG',
-        pageWidth - margin - logoSize,
-        continuation ? 7 : 7,
-        logoSize,
-        logoSize
-      )
-    }
+    addContainedPdfImage(pdf, logoData, margin, 6, 25, 25)
+    addContainedPdfImage(pdf, hoSamajLogoData, pageWidth - margin - 25, 6, 25, 25)
 
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(72, 30, 20)
@@ -873,15 +864,7 @@ async function exportRegistrationsPdf() {
       continuation ? 13 : 17
     )
 
-    pdf.text(
-      'NATIONAL HO YOUTH MEET 2026',
-      logoData
-        ? continuation
-          ? 34
-          : 42
-        : margin,
-      continuation ? 14 : 15
-    )
+    pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, continuation ? 13 : 13, { align: 'center' })
 
     pdf.setFont(
       'helvetica',
@@ -894,28 +877,18 @@ async function exportRegistrationsPdf() {
 
     pdf.setTextColor(50)
 
-    pdf.text(
-      continuation
-        ? 'Registration Summary Report - Continued'
-        : 'Registration Summary Report',
-      logoData
-        ? continuation
-          ? 34
-          : 42
-        : margin,
-      continuation ? 20 : 22
-    )
+    pdf.text(continuation ? 'Registration Summary Report - Continued' : 'Registration Summary Report', pageWidth / 2, continuation ? 19 : 19, { align: 'center' })
 
     if (!continuation) {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(10)
       pdf.setTextColor(168, 94, 8)
-      pdf.text('2026 SIRJON', logoData ? 42 : margin, 34)
+      pdf.text('2026 SIRJON', pageWidth / 2, 25, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
       pdf.setFont('WarangCiti', 'normal')
-      pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', logoData ? 42 : margin, 39)
+      pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 30, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
     }
 
@@ -926,8 +899,9 @@ async function exportRegistrationsPdf() {
 
       pdf.text(
         'Jamshedpur, Jharkhand',
-        42,
-        28
+        pageWidth / 2,
+        35,
+        { align: 'center' }
       )
 
       pdf.text(
@@ -1379,27 +1353,8 @@ async function downloadAdminRegistrationPdf(row: Row) {
   let y = 48
 
   function addHeader(continuation = false) {
-    if (logoData) {
-      pdf.addImage(
-        logoData,
-        'JPEG',
-        margin,
-        8,
-        continuation ? 18 : 28,
-        continuation ? 18 : 28
-      )
-    }
-    if (hoSamajLogoData) {
-      const logoSize = continuation ? 17 : 24
-      pdf.addImage(
-        hoSamajLogoData,
-        'JPEG',
-        pageWidth - margin - logoSize,
-        continuation ? 7 : 7,
-        logoSize,
-        logoSize
-      )
-    }
+    addContainedPdfImage(pdf, logoData, margin, 6, 28, 28)
+    addContainedPdfImage(pdf, hoSamajLogoData, pageWidth - margin - 28, 6, 28, 28)
 
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(72, 30, 20)
@@ -1407,21 +1362,13 @@ async function downloadAdminRegistrationPdf(row: Row) {
     if (continuation) {
       pdf.setFontSize(13)
 
-      pdf.text(
-        'NATIONAL HO YOUTH MEET 2026',
-        logoData ? 38 : margin,
-        15
-      )
+      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 14, { align: 'center' })
 
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(100)
 
-      pdf.text(
-        `Registration ID: ${row.registration_id}`,
-        logoData ? 38 : margin,
-        21
-      )
+      pdf.text(`Registration ID: ${row.registration_id}`, pageWidth / 2, 21, { align: 'center' })
 
       pdf.setDrawColor(190)
       pdf.line(
@@ -1439,8 +1386,9 @@ async function downloadAdminRegistrationPdf(row: Row) {
 
     pdf.text(
       'NATIONAL HO YOUTH MEET 2026',
-      48,
-      17
+      pageWidth / 2,
+      16,
+      { align: 'center' }
     )
 
     pdf.setFontSize(12)
@@ -1448,19 +1396,20 @@ async function downloadAdminRegistrationPdf(row: Row) {
 
     pdf.text(
       'Admin Registration Record',
-      48,
-      24
+      pageWidth / 2,
+      23,
+      { align: 'center' }
     )
 
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(11)
     pdf.setTextColor(168, 94, 8)
-    pdf.text('2026 SIRJON', 48, 31)
+    pdf.text('2026 SIRJON', pageWidth / 2, 30, { align: 'center' })
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(9)
     pdf.setTextColor(72, 30, 20)
     pdf.setFont('WarangCiti', 'normal')
-    pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', 48, 36)
+    pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 36, { align: 'center' })
     pdf.setFont('helvetica', 'normal')
 
     pdf.setFont('helvetica', 'normal')
@@ -2101,27 +2050,8 @@ async function exportParticipantsPdf() {
   function addPageHeader(
     continuation = false
   ) {
-    if (logoData) {
-      pdf.addImage(
-        logoData,
-        'JPEG',
-        margin,
-        6,
-        continuation ? 17 : 24,
-        continuation ? 17 : 24
-      )
-    }
-    if (hoSamajLogoData) {
-      const logoSize = continuation ? 17 : 24
-      pdf.addImage(
-        hoSamajLogoData,
-        'JPEG',
-        pageWidth - margin - logoSize,
-        continuation ? 7 : 7,
-        logoSize,
-        logoSize
-      )
-    }
+    addContainedPdfImage(pdf, logoData, margin, 6, 25, 25)
+    addContainedPdfImage(pdf, hoSamajLogoData, pageWidth - margin - 25, 6, 25, 25)
 
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(72, 30, 20)
@@ -2129,15 +2059,7 @@ async function exportParticipantsPdf() {
       continuation ? 13 : 17
     )
 
-    pdf.text(
-      'NATIONAL HO YOUTH MEET 2026',
-      logoData
-        ? continuation
-          ? 32
-          : 40
-        : margin,
-      continuation ? 13 : 14
-    )
+    pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, continuation ? 13 : 13, { align: 'center' })
 
     pdf.setFont(
       'helvetica',
@@ -2150,28 +2072,18 @@ async function exportParticipantsPdf() {
 
     pdf.setTextColor(50)
 
-    pdf.text(
-      continuation
-        ? 'Participant Summary Report - Continued'
-        : 'Participant Summary Report',
-      logoData
-        ? continuation
-          ? 32
-          : 40
-        : margin,
-      continuation ? 19 : 21
-    )
+    pdf.text(continuation ? 'Participant Summary Report - Continued' : 'Participant Summary Report', pageWidth / 2, continuation ? 19 : 19, { align: 'center' })
 
     if (!continuation) {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(10)
       pdf.setTextColor(168, 94, 8)
-      pdf.text('2026 SIRJON', logoData ? 40 : margin, 33)
+      pdf.text('2026 SIRJON', pageWidth / 2, 25, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
       pdf.setFont('WarangCiti', 'normal')
-      pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', logoData ? 40 : margin, 38)
+      pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 30, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
     }
 
@@ -2182,8 +2094,9 @@ async function exportParticipantsPdf() {
 
       pdf.text(
         'Jamshedpur, Jharkhand',
-        40,
-        27
+        pageWidth / 2,
+        35,
+        { align: 'center' }
       )
 
       pdf.text(
