@@ -21,6 +21,36 @@ async function registerWarangCitiFont(pdf: jsPDF) {
   }
 }
 
+async function createWarangCitiTextImage(text: string): Promise<string | null> {
+  try {
+    const response = await fetch('/NotoSansWarangCiti-Regular.ttf')
+    if (!response.ok) throw new Error('Warang Citi font file not found')
+    const fontBytes = await response.arrayBuffer()
+    const fontBlob = new Blob([fontBytes], { type: 'font/ttf' })
+    const fontUrl = URL.createObjectURL(fontBlob)
+    const fontFace = new FontFace('NHYMWarangCiti', `url(${fontUrl})`)
+    await fontFace.load()
+    document.fonts.add(fontFace)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = 900
+    canvas.height = 110
+    const context = canvas.getContext('2d')
+    if (!context) return null
+    context.clearRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#1e412a'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.font = '64px NHYMWarangCiti'
+    context.fillText(text, canvas.width / 2, canvas.height / 2)
+    URL.revokeObjectURL(fontUrl)
+    return canvas.toDataURL('image/png')
+  } catch (error) {
+    console.error('Unable to render Warang Citi header:', error)
+    return null
+  }
+}
+
 async function loadPdfImage(path: string): Promise<string | null> {
   try {
     const response = await fetch(path)
@@ -788,6 +818,7 @@ async function exportRegistrationsPdf() {
   })
 
   await registerWarangCitiFont(pdf)
+  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢽𑢢𑢼𑢮𑢩𑢳')
   const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
 
   const pageWidth = pdf.internal.pageSize.getWidth()
@@ -887,8 +918,7 @@ async function exportRegistrationsPdf() {
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
-      pdf.setFont('WarangCiti', 'normal')
-      pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 30, { align: 'center' })
+      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 12, 26, 24, 3.2)
       pdf.setFont('helvetica', 'normal')
     }
 
@@ -1180,7 +1210,7 @@ async function exportRegistrationsPdf() {
   ) {
     pdf.setPage(pageNumber)
 
-    pdf.setDrawColor(210)
+    pdf.setDrawColor(30, 65, 42)
 
     pdf.line(
       margin,
@@ -1391,9 +1421,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
     pdf.setTextColor(168, 94, 8)
     pdf.setFontSize(9.5)
     pdf.text('2026 SIRJON', pageWidth / 2, 24, { align: 'center' })
-    pdf.setFont('WarangCiti', 'normal')
-    pdf.setFontSize(8)
-    pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 29, { align: 'center' })
+    if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 12, 26, 24, 3.2)
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7.5)
     pdf.setTextColor(72, 30, 20)
@@ -1866,7 +1894,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
   ) {
     pdf.setPage(pageNumber)
 
-    pdf.setDrawColor(210)
+    pdf.setDrawColor(30, 65, 42)
 
     pdf.line(
       margin,
@@ -2064,8 +2092,7 @@ async function exportParticipantsPdf() {
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
-      pdf.setFont('WarangCiti', 'normal')
-      pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 30, { align: 'center' })
+      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 12, 26, 24, 3.2)
       pdf.setFont('helvetica', 'normal')
     }
 
@@ -2343,7 +2370,7 @@ async function exportParticipantsPdf() {
   ) {
     pdf.setPage(pageNumber)
 
-    pdf.setDrawColor(210)
+    pdf.setDrawColor(30, 65, 42)
 
     pdf.line(
       margin,
