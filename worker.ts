@@ -19,6 +19,22 @@ type RegistrationPayload = {
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
 
+// Store registration text in uppercase while preserving Payment Reference exactly.
+function uppercaseRegistrationValues(value: unknown, key = ''): unknown {
+  if (key.toLowerCase() === 'paymentreference') return value
+  if (typeof value === 'string') return value.toUpperCase()
+  if (Array.isArray(value)) return value.map((item) => uppercaseRegistrationValues(item))
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([childKey, childValue]) => [
+        childKey,
+        uppercaseRegistrationValues(childValue, childKey),
+      ])
+    )
+  }
+  return value
+}
+
 function authorised(request: Request, env: Env) {
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   return Boolean(env.ADMIN_TOKEN && token === env.ADMIN_TOKEN)
@@ -100,6 +116,7 @@ if (
     if (url.pathname === '/api/registrations' && request.method === 'POST') {
       let body: RegistrationPayload
       try { body = await request.json() as RegistrationPayload } catch { return json({ error: 'Invalid request.' }, 400) }
+      body = uppercaseRegistrationValues(body) as RegistrationPayload
       if (!body.email || !body.email.includes('@')) return json({ error: 'A valid email address is required.' }, 400)
       if (!Array.isArray(body.participants) || body.participants.length < 1) return json({ error: 'Add at least one participant.' }, 400)
       if (!body.paymentMode || !body.paymentReference || body.paymentReference.trim().length < 2) return json({ error: 'Payment method and transaction/reference number are required.' }, 400)
@@ -109,7 +126,7 @@ if (
       const result = await env.DB.prepare(`INSERT INTO registrations
         (email, total_amount, payment_mode, payment_reference, status, declarations_json, created_at)
         VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`)
-        .bind(body.email.trim().toLowerCase(), Math.round(Number(body.total) || 0), body.paymentMode, body.paymentReference.trim(), JSON.stringify(body.declarations), createdAt)
+        .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, body.paymentReference.trim(), JSON.stringify(body.declarations), createdAt)
         .run()
 
       const id = Number(result.meta.last_row_id)
