@@ -857,6 +857,17 @@ async function exportRegistrationsPdf() {
     )
 
     if (!continuation) {
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(10)
+      pdf.setTextColor(168, 94, 8)
+      pdf.text('2026 SIRJON', logoData ? 42 : margin, 34)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.setTextColor(72, 30, 20)
+      pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', logoData ? 42 : margin, 39)
+    }
+
+    if (!continuation) {
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(100)
@@ -1374,6 +1385,15 @@ async function downloadAdminRegistrationPdf(row: Row) {
       48,
       24
     )
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(11)
+    pdf.setTextColor(168, 94, 8)
+    pdf.text('2026 SIRJON', 48, 31)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(9)
+    pdf.setTextColor(72, 30, 20)
+    pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', 48, 36)
 
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(9)
@@ -2059,6 +2079,17 @@ async function exportParticipantsPdf() {
         : margin,
       continuation ? 19 : 21
     )
+
+    if (!continuation) {
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(10)
+      pdf.setTextColor(168, 94, 8)
+      pdf.text('2026 SIRJON', logoData ? 40 : margin, 33)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.setTextColor(72, 30, 20)
+      pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', logoData ? 40 : margin, 38)
+    }
 
     if (!continuation) {
       pdf.setFont('helvetica', 'normal')
