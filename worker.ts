@@ -716,7 +716,7 @@ if (
             },
             body: JSON.stringify({
               secret: env.NHYM_EMAIL_SECRET,
-              email: registration.email,
+              email: registration.email.toLowerCase(),
               registrationId: registration.registration_id,
               participants: participantNames,
               totalAmount: registration.total_amount,
