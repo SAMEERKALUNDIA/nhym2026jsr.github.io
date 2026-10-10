@@ -17,6 +17,34 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+async function createWarangCitiTextImage(text: string): Promise<string | null> {
+  try {
+    const response = await fetch('/NotoSansWarangCiti-Regular.ttf')
+    if (!response.ok) throw new Error('Warang Citi font file not found')
+    const bytes = await response.arrayBuffer()
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'font/ttf' }))
+    const face = new FontFace('NHYMWarangCiti', `url(${url})`)
+    await face.load()
+    document.fonts.add(face)
+    const canvas = document.createElement('canvas')
+    canvas.width = 900
+    canvas.height = 110
+    const context = canvas.getContext('2d')
+    if (!context) return null
+    context.clearRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#1e412a'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.font = '64px NHYMWarangCiti'
+    context.fillText(text, canvas.width / 2, canvas.height / 2)
+    URL.revokeObjectURL(url)
+    return canvas.toDataURL('image/png')
+  } catch (error) {
+    console.error('Unable to render Warang Citi header:', error)
+    return null
+  }
+}
+
 type ParticipantRecord = {
   participant_no: number
   name: string
@@ -235,6 +263,7 @@ async function downloadRegistrationPdf() {
   })
 
   const pageWidth = pdf.internal.pageSize.getWidth()
+  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢽𑢢𑢼𑢮𑢩𑢳')
   const pageHeight = pdf.internal.pageSize.getHeight()
   const margin = 15
   const contentWidth = pageWidth - margin * 2
@@ -314,9 +343,7 @@ async function downloadRegistrationPdf() {
   pdf.setTextColor(168, 94, 8)
   pdf.setFontSize(9.5)
   pdf.text('2026 SIRJON', pageWidth / 2, 23, { align: 'center' })
-  pdf.setFont('WarangCiti', 'normal')
-  pdf.setFontSize(8)
-  pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 28, { align: 'center' })
+  if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 12, 25, 24, 3.2)
 
   pdf.setFont('helvetica', 'normal')
   pdf.setFontSize(8)
@@ -328,7 +355,8 @@ async function downloadRegistrationPdf() {
   pdf.setTextColor(40)
   pdf.text('Registration Confirmation', pageWidth / 2, 44, { align: 'center' })
 
-  pdf.setDrawColor(180)
+  pdf.setDrawColor(30, 65, 42)
+  pdf.setDrawColor(30, 65, 42)
   pdf.line(margin, 48, pageWidth - margin, 48)
 
   // -----------------------------
