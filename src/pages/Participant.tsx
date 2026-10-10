@@ -243,7 +243,7 @@ async function downloadRegistrationPdf() {
   let logoData: string | null = null
 
   try {
-    const response = await fetch('/nhym-logo.jpeg')
+    const response = await fetch('/nhym-logo2.jpg')
 
     if (!response.ok) {
       throw new Error('Logo could not be loaded.')
@@ -267,59 +267,65 @@ async function downloadRegistrationPdf() {
     console.error('Unable to load NHYM logo:', error)
   }
 
-  let y = 48
+  const hoSamajLogoData = await (async () => {
+    try {
+      const response = await fetch('/ho-samaj-logo.jpg')
+      if (!response.ok) return null
+      const blob = await response.blob()
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+    } catch (error) {
+      console.error('Unable to load Ho Samaj logo:', error)
+      return null
+    }
+  })()
+
+  let y = 54
 
   // -----------------------------
   // Header
   // -----------------------------
   if (logoData) {
-    pdf.addImage(
-      logoData,
-      'JPEG',
-      margin,
-      8,
-      28,
-      28
-    )
+    const props = pdf.getImageProperties(logoData)
+    const scale = Math.min(27 / props.width, 27 / props.height)
+    const width = props.width * scale
+    const height = props.height * scale
+    pdf.addImage(logoData, 'JPEG', margin + (27 - width) / 2, 7 + (27 - height) / 2, width, height)
+  }
+  if (hoSamajLogoData) {
+    const props = pdf.getImageProperties(hoSamajLogoData)
+    const scale = Math.min(27 / props.width, 27 / props.height)
+    const width = props.width * scale
+    const height = props.height * scale
+    pdf.addImage(hoSamajLogoData, 'JPEG', pageWidth - margin - 27 + (27 - width) / 2, 7 + (27 - height) / 2, width, height)
   }
 
   pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(17)
-  pdf.setTextColor(72, 30, 20)
+  pdf.setFontSize(15)
+  pdf.setTextColor(30, 65, 42)
+  pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 14, { align: 'center' })
 
-  pdf.text(
-    'NATIONAL HO YOUTH MEET 2026',
-    48,
-    17
-  )
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(10)
+  pdf.setTextColor(168, 94, 8)
+  pdf.text('2026 SIRJON', pageWidth / 2, 21, { align: 'center' })
 
-  pdf.setFontSize(12)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(11)
   pdf.setTextColor(40)
-
-  pdf.text(
-    'Registration Confirmation',
-    48,
-    24
-  )
+  pdf.text('Registration Confirmation', pageWidth / 2, 28, { align: 'center' })
 
   pdf.setFont('helvetica', 'normal')
   pdf.setFontSize(9)
-  pdf.setTextColor(100)
-
-  pdf.text(
-    'Jamshedpur, Jharkhand',
-    48,
-    30
-  )
+  pdf.setTextColor(72, 30, 20)
+  pdf.text('Jamshedpur, Jharkhand', pageWidth / 2, 35, { align: 'center' })
 
   pdf.setDrawColor(180)
-
-  pdf.line(
-    margin,
-    40,
-    pageWidth - margin,
-    40
-  )
+  pdf.line(margin, 42, pageWidth - margin, 42)
 
   // -----------------------------
   // Helper functions
@@ -744,7 +750,7 @@ async function downloadRegistrationPdf() {
     pdf.setTextColor(110)
 
     pdf.text(
-      'Computer-generated registration confirmation - National Ho Youth Meet 2026',
+      'National Ho Youth Meet 2026 - Registration Confirmation',
       margin,
       pageHeight - 12
     )
