@@ -284,7 +284,7 @@ async function downloadRegistrationPdf() {
     }
   })()
 
-  let y = 54
+  let y = 59
 
   // -----------------------------
   // Header
@@ -305,27 +305,31 @@ async function downloadRegistrationPdf() {
   }
 
   pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(15)
+  pdf.setFontSize(14)
   pdf.setTextColor(30, 65, 42)
-  pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 14, { align: 'center' })
-
-  pdf.setFont('helvetica', 'bold')
+  pdf.text('NATIONAL HO YOUTH MEET', pageWidth / 2, 13, { align: 'center' })
   pdf.setFontSize(10)
-  pdf.setTextColor(168, 94, 8)
-  pdf.text('2026 SIRJON', pageWidth / 2, 21, { align: 'center' })
+  pdf.text('2026', pageWidth / 2, 18, { align: 'center' })
 
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(11)
-  pdf.setTextColor(40)
-  pdf.text('Registration Confirmation', pageWidth / 2, 28, { align: 'center' })
+  pdf.setTextColor(168, 94, 8)
+  pdf.setFontSize(9.5)
+  pdf.text('2026 SIRJON', pageWidth / 2, 23, { align: 'center' })
+  pdf.setFont('WarangCiti', 'normal')
+  pdf.setFontSize(8)
+  pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 28, { align: 'center' })
 
   pdf.setFont('helvetica', 'normal')
-  pdf.setFontSize(9)
+  pdf.setFontSize(8)
   pdf.setTextColor(72, 30, 20)
-  pdf.text('Jamshedpur, Jharkhand', pageWidth / 2, 35, { align: 'center' })
+  pdf.text('Organized By: Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 34, { align: 'center' })
+  pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 38, { align: 'center' })
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(10)
+  pdf.setTextColor(40)
+  pdf.text('Registration Confirmation', pageWidth / 2, 44, { align: 'center' })
 
   pdf.setDrawColor(180)
-  pdf.line(margin, 42, pageWidth - margin, 42)
+  pdf.line(margin, 48, pageWidth - margin, 48)
 
   // -----------------------------
   // Helper functions
