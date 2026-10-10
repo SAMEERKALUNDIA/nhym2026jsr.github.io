@@ -849,7 +849,7 @@ async function exportRegistrationsPdf() {
     'Submitted',
   ]
 
-  let y = 43
+  let y = 47
 
   function addPageHeader(
     continuation = false
@@ -907,14 +907,14 @@ async function exportRegistrationsPdf() {
       pdf.text(
         `Generated: ${generatedAt}`,
         pageWidth - margin,
-        15,
+        34,
         { align: 'right' }
       )
 
       pdf.text(
-        `Registrations in report: ${filteredRows.length}`,
+        `Registrations: ${filteredRows.length}`,
         pageWidth - margin,
-        21,
+        38,
         { align: 'right' }
       )
 
@@ -2010,7 +2010,7 @@ async function exportParticipantsPdf() {
     28, // Status
   ]
 
-  let y = 42
+  let y = 47
 
   function categoryLabel(category: string) {
     switch (category) {
@@ -2115,9 +2115,9 @@ async function exportParticipantsPdf() {
       )
 
       pdf.text(
-        `Registrations represented: ${filteredRows.length}`,
+        `Registrations: ${filteredRows.length}`,
         pageWidth - margin,
-        26,
+        38,
         { align: 'right' }
       )
     }
