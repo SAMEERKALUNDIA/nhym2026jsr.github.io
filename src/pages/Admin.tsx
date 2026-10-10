@@ -1350,7 +1350,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
     console.error('Unable to load NHYM logo:', error)
   }
 
-  let y = 48
+  let y = 56
 
   function addHeader(continuation = false) {
     addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
@@ -1382,54 +1382,35 @@ async function downloadAdminRegistrationPdf(row: Row) {
       return
     }
 
-    pdf.setFontSize(17)
-
-    pdf.text(
-      'NATIONAL HO YOUTH MEET 2026',
-      pageWidth / 2,
-      16,
-      { align: 'center' }
-    )
-
-    pdf.setFontSize(12)
-    pdf.setTextColor(40)
-
-    pdf.text(
-      'Admin Registration Record',
-      pageWidth / 2,
-      23,
-      { align: 'center' }
-    )
-
     pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(11)
+    pdf.setFontSize(14)
+    pdf.setTextColor(30, 65, 42)
+    pdf.text('NATIONAL HO YOUTH MEET', pageWidth / 2, 14, { align: 'center' })
+    pdf.setFontSize(10)
+    pdf.text('2026', pageWidth / 2, 19, { align: 'center' })
     pdf.setTextColor(168, 94, 8)
-    pdf.text('2026 SIRJON', pageWidth / 2, 30, { align: 'center' })
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(9)
-    pdf.setTextColor(72, 30, 20)
+    pdf.setFontSize(9.5)
+    pdf.text('2026 SIRJON', pageWidth / 2, 24, { align: 'center' })
     pdf.setFont('WarangCiti', 'normal')
-    pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 36, { align: 'center' })
+    pdf.setFontSize(8)
+    pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', pageWidth / 2, 29, { align: 'center' })
     pdf.setFont('helvetica', 'normal')
-
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(9)
-    pdf.setTextColor(100)
-
-    pdf.text(
-      'Jamshedpur, Jharkhand',
-      pageWidth / 2,
-      42,
-      { align: 'center' }
-    )
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(72, 30, 20)
+    pdf.text('Organized By: Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 35, { align: 'center' })
+    pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 39, { align: 'center' })
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(10)
+    pdf.setTextColor(40)
+    pdf.text('Admin Registration Record', pageWidth / 2, 45, { align: 'center' })
 
     pdf.setDrawColor(180)
 
     pdf.line(
       margin,
-      46,
+      49,
       pageWidth - margin,
-      46
+      49
     )
   }
 
@@ -2051,8 +2032,8 @@ async function exportParticipantsPdf() {
   function addPageHeader(
     continuation = false
   ) {
-    addContainedPdfImage(pdf, logoData, margin, 6, 25, 25)
-    addContainedPdfImage(pdf, hoSamajLogoData, pageWidth - margin - 25, 6, 25, 25)
+    addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
+    addContainedPdfImage(pdf, logoData, pageWidth - margin - 25, 6, 25, 25)
 
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(72, 30, 20)
