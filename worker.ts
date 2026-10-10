@@ -624,6 +624,7 @@ if (
   return json({ registrations })
 }
     const match = url.pathname.match(/^\/api\/admin\/registrations\/(\d+)$/)
+
     if (match && request.method === 'PATCH') {
       if (!authorised(request, env)) {
         return json({ error: 'Unauthorised' }, 401)
@@ -653,7 +654,8 @@ if (
           payment_mode,
           payment_reference,
           status,
-          approval_email_sent_at
+          approval_email_sent_at,
+          rejection_email_sent_at
         FROM registrations
         WHERE id = ?
       `)
@@ -667,13 +669,13 @@ if (
           payment_reference: string
           status: string
           approval_email_sent_at: string | null
+          rejection_email_sent_at: string | null
         }>()
 
       if (!registration) {
         return json({ error: 'Registration not found.' }, 404)
       }
 
-      // Require payment verification before final approval.
       if (
         body.status === 'APPROVED' &&
         registration.status !== 'PAYMENT_VERIFIED'
@@ -684,11 +686,18 @@ if (
         )
       }
 
-      // Send approval email before changing the final status.
-      if ( 
+      const shouldSendApprovalEmail =
         body.status === 'APPROVED' &&
-          !registration.approval_email_sent_at
-       ) {
+        !registration.approval_email_sent_at
+
+      const shouldSendRejectionEmail =
+        body.status === 'REJECTED' &&
+        !registration.rejection_email_sent_at
+
+      const shouldSendEmail =
+        shouldSendApprovalEmail || shouldSendRejectionEmail
+
+      if (shouldSendEmail) {
         const participantResult = await env.DB.prepare(`
           SELECT name
           FROM participants
@@ -716,6 +725,7 @@ if (
             },
             body: JSON.stringify({
               secret: env.NHYM_EMAIL_SECRET,
+              status: body.status,
               email: registration.email.toLowerCase(),
               registrationId: registration.registration_id,
               participants: participantNames,
@@ -727,7 +737,11 @@ if (
 
           if (!emailResponse.ok) {
             return json(
-              { error: 'Approval email could not be sent.' },
+              {
+                error: shouldSendApprovalEmail
+                  ? 'Approval email could not be sent.'
+                  : 'Rejection email could not be sent.'
+              },
               502
             )
           }
@@ -742,7 +756,9 @@ if (
               {
                 error:
                   emailResult.error ||
-                  'Approval email could not be sent.'
+                  (shouldSendApprovalEmail
+                    ? 'Approval email could not be sent.'
+                    : 'Rejection email could not be sent.')
               },
               502
             )
@@ -757,10 +773,6 @@ if (
 
       const updatedAt = new Date().toISOString()
 
-      const shouldSendApprovalEmail =
-        body.status === 'APPROVED' &&
-        !registration.approval_email_sent_at
-
       if (shouldSendApprovalEmail) {
         await env.DB.prepare(`
           UPDATE registrations
@@ -769,12 +781,17 @@ if (
               approval_email_sent_at = ?
           WHERE id = ?
         `)
-          .bind(
-            body.status,
-            updatedAt,
-            updatedAt,
-            id
-          )
+          .bind(body.status, updatedAt, updatedAt, id)
+          .run()
+      } else if (shouldSendRejectionEmail) {
+        await env.DB.prepare(`
+          UPDATE registrations
+          SET status = ?,
+              updated_at = ?,
+              rejection_email_sent_at = ?
+          WHERE id = ?
+        `)
+          .bind(body.status, updatedAt, updatedAt, id)
           .run()
       } else {
         await env.DB.prepare(`
@@ -783,18 +800,19 @@ if (
               updated_at = ?
           WHERE id = ?
         `)
-          .bind(
-            body.status,
-            updatedAt,
-            id
-          )
+          .bind(body.status, updatedAt, id)
           .run()
       }
 
       return json({
         ok: true,
         status: body.status,
-        emailSent: shouldSendApprovalEmail
+        emailSent: shouldSendEmail,
+        emailType: shouldSendApprovalEmail
+          ? 'APPROVED'
+          : shouldSendRejectionEmail
+            ? 'REJECTED'
+            : null
       })
     }
 
