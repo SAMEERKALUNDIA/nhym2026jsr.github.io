@@ -1418,17 +1418,18 @@ async function downloadAdminRegistrationPdf(row: Row) {
 
     pdf.text(
       'Jamshedpur, Jharkhand',
-      48,
-      30
+      pageWidth / 2,
+      42,
+      { align: 'center' }
     )
 
     pdf.setDrawColor(180)
 
     pdf.line(
       margin,
-      40,
+      46,
       pageWidth - margin,
-      40
+      46
     )
   }
 
