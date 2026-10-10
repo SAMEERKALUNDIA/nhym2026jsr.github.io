@@ -1,6 +1,42 @@
 import { DeveloperCredit } from '@/components/DeveloperCredit'
 import { useEffect, useMemo, useState } from 'react'
 import { jsPDF } from 'jspdf'
+
+async function registerWarangCitiFont(pdf: jsPDF) {
+  try {
+    const response = await fetch('/NotoSansWarangCiti-Regular.ttf')
+    if (!response.ok) throw new Error('Warang Citi font could not be loaded.')
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    let binary = ''
+    const chunkSize = 0x8000
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+    }
+    pdf.addFileToVFS('NotoSansWarangCiti-Regular.ttf', btoa(binary))
+    pdf.addFont('NotoSansWarangCiti-Regular.ttf', 'WarangCiti', 'normal')
+    return true
+  } catch (error) {
+    console.error('Unable to register Warang Citi font:', error)
+    return false
+  }
+}
+
+async function loadPdfImage(path: string): Promise<string | null> {
+  try {
+    const response = await fetch(path)
+    if (!response.ok) return null
+    const blob = await response.blob()
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  } catch (error) {
+    console.error('Unable to load PDF image:', path, error)
+    return null
+  }
+}
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 const GALLERY_CATEGORIES = [
@@ -741,6 +777,8 @@ async function exportRegistrationsPdf() {
     format: 'a4',
   })
 
+  await registerWarangCitiFont(pdf)
+
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
 
@@ -750,7 +788,7 @@ async function exportRegistrationsPdf() {
   let logoData: string | null = null
 
   try {
-    const response = await fetch('/nhym-logo.jpeg')
+    const response = await fetch('/nhym-logo2.jpg')
 
     if (response.ok) {
       const blob = await response.blob()
@@ -864,7 +902,9 @@ async function exportRegistrationsPdf() {
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
+      pdf.setFont('WarangCiti', 'normal')
       pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', logoData ? 42 : margin, 39)
+      pdf.setFont('helvetica', 'normal')
     }
 
     if (!continuation) {
@@ -1288,6 +1328,8 @@ async function downloadAdminRegistrationPdf(row: Row) {
     format: 'a4',
   })
 
+  await registerWarangCitiFont(pdf)
+
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
   const margin = 15
@@ -1297,7 +1339,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
   let logoData: string | null = null
 
   try {
-    const response = await fetch('/nhym-logo.jpeg')
+    const response = await fetch('/nhym-logo2.jpg')
 
     if (!response.ok) {
       throw new Error('Logo could not be loaded.')
@@ -1393,7 +1435,9 @@ async function downloadAdminRegistrationPdf(row: Row) {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(9)
     pdf.setTextColor(72, 30, 20)
+    pdf.setFont('WarangCiti', 'normal')
     pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', 48, 36)
+    pdf.setFont('helvetica', 'normal')
 
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(9)
@@ -1920,6 +1964,8 @@ async function exportParticipantsPdf() {
     format: 'a4',
   })
 
+  await registerWarangCitiFont(pdf)
+
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
 
@@ -1929,7 +1975,7 @@ async function exportParticipantsPdf() {
   let logoData: string | null = null
 
   try {
-    const response = await fetch('/nhym-logo.jpeg')
+    const response = await fetch('/nhym-logo2.jpg')
 
     if (response.ok) {
       const blob = await response.blob()
@@ -2088,7 +2134,9 @@ async function exportParticipantsPdf() {
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
+      pdf.setFont('WarangCiti', 'normal')
       pdf.text('𑢽𑢢𑢼𑢮𑢩𑢳', logoData ? 40 : margin, 38)
+      pdf.setFont('helvetica', 'normal')
     }
 
     if (!continuation) {
