@@ -849,13 +849,13 @@ async function exportRegistrationsPdf() {
     'Submitted',
   ]
 
-  let y = 47
+  let y = 56
 
   function addPageHeader(
     continuation = false
   ) {
-    addContainedPdfImage(pdf, logoData, margin, 6, 25, 25)
-    addContainedPdfImage(pdf, hoSamajLogoData, pageWidth - margin - 25, 6, 25, 25)
+    addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
+    addContainedPdfImage(pdf, logoData, pageWidth - margin - 25, 6, 25, 25)
 
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(72, 30, 20)
@@ -1353,8 +1353,8 @@ async function downloadAdminRegistrationPdf(row: Row) {
   let y = 48
 
   function addHeader(continuation = false) {
-    addContainedPdfImage(pdf, logoData, margin, 6, 28, 28)
-    addContainedPdfImage(pdf, hoSamajLogoData, pageWidth - margin - 28, 6, 28, 28)
+    addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
+    addContainedPdfImage(pdf, logoData, pageWidth - margin - 25, 6, 25, 25)
 
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(72, 30, 20)
