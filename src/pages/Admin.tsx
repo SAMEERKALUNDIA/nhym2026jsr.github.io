@@ -778,6 +778,7 @@ async function exportRegistrationsPdf() {
   })
 
   await registerWarangCitiFont(pdf)
+  const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
 
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
@@ -851,6 +852,17 @@ async function exportRegistrationsPdf() {
         7,
         continuation ? 17 : 24,
         continuation ? 17 : 24
+      )
+    }
+    if (hoSamajLogoData) {
+      const logoSize = continuation ? 17 : 24
+      pdf.addImage(
+        hoSamajLogoData,
+        'JPEG',
+        pageWidth - margin - logoSize,
+        continuation ? 7 : 7,
+        logoSize,
+        logoSize
       )
     }
 
@@ -1329,6 +1341,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
   })
 
   await registerWarangCitiFont(pdf)
+  const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
 
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
@@ -1374,6 +1387,17 @@ async function downloadAdminRegistrationPdf(row: Row) {
         8,
         continuation ? 18 : 28,
         continuation ? 18 : 28
+      )
+    }
+    if (hoSamajLogoData) {
+      const logoSize = continuation ? 17 : 24
+      pdf.addImage(
+        hoSamajLogoData,
+        'JPEG',
+        pageWidth - margin - logoSize,
+        continuation ? 7 : 7,
+        logoSize,
+        logoSize
       )
     }
 
@@ -1965,6 +1989,7 @@ async function exportParticipantsPdf() {
   })
 
   await registerWarangCitiFont(pdf)
+  const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
 
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
@@ -2084,6 +2109,17 @@ async function exportParticipantsPdf() {
         6,
         continuation ? 17 : 24,
         continuation ? 17 : 24
+      )
+    }
+    if (hoSamajLogoData) {
+      const logoSize = continuation ? 17 : 24
+      pdf.addImage(
+        hoSamajLogoData,
+        'JPEG',
+        pageWidth - margin - logoSize,
+        continuation ? 7 : 7,
+        logoSize,
+        logoSize
       )
     }
 
