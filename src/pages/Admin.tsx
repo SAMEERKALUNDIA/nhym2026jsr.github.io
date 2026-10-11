@@ -183,6 +183,13 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [updatingId, setUpdatingId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Row | null>(null)
+  const [adminFinanceUsers, setAdminFinanceUsers] = useState<Array<{id:string;display_name:string;login_id:string;role:string;is_active:number;last_login_at:string|null}>>([])
+  const [showAdminFinanceUsers, setShowAdminFinanceUsers] = useState(false)
+  const [adminFinanceLoading, setAdminFinanceLoading] = useState(false)
+  const [adminFinanceError, setAdminFinanceError] = useState('')
+  const [adminFinanceNotice, setAdminFinanceNotice] = useState('')
+  const [resetFinanceUserId, setResetFinanceUserId] = useState('')
+  const [resetFinancePassword, setResetFinancePassword] = useState('')
 
   async function load(authToken = token) {
   if (!authToken) return false
@@ -233,6 +240,52 @@ const [checkingSession, setCheckingSession] = useState(true)
     return false
   } finally {
     setLoading(false)
+  }
+}
+
+async function loadAdminFinanceUsers() {
+  setAdminFinanceLoading(true)
+  setAdminFinanceError('')
+  setAdminFinanceNotice('')
+  try {
+    const response = await fetch('/api/admin/finance-users', {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    const result = await response.json() as { users?: typeof adminFinanceUsers; error?: string }
+    if (!response.ok) throw new Error(result.error || 'Could not load Finance accounts.')
+    setAdminFinanceUsers(result.users || [])
+    setShowAdminFinanceUsers(true)
+  } catch (e) {
+    setAdminFinanceError(e instanceof Error ? e.message : 'Could not load Finance accounts.')
+  } finally {
+    setAdminFinanceLoading(false)
+  }
+}
+
+async function resetAdminFinancePassword(userId: string) {
+  if (!resetFinancePassword || resetFinancePassword.length < 12) {
+    setAdminFinanceError('Temporary password must be at least 12 characters.')
+    return
+  }
+  if (!window.confirm('Reset this Finance account password? All existing sessions for this account will be signed out.')) return
+  setAdminFinanceLoading(true)
+  setAdminFinanceError('')
+  setAdminFinanceNotice('')
+  try {
+    const response = await fetch(`/api/admin/finance-users/${userId}/reset-password`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ password: resetFinancePassword }),
+    })
+    const result = await response.json() as { message?: string; error?: string }
+    if (!response.ok) throw new Error(result.error || 'Password reset failed.')
+    setAdminFinanceNotice(result.message || 'Finance password reset successfully.')
+    setResetFinancePassword('')
+    setResetFinanceUserId('')
+  } catch (e) {
+    setAdminFinanceError(e instanceof Error ? e.message : 'Password reset failed.')
+  } finally {
+    setAdminFinanceLoading(false)
   }
 }
 
@@ -2644,6 +2697,33 @@ if (!authenticated) {
         </p>
       </button>
     </div>
+
+    <section className="mt-6 rounded-xl border bg-card p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold">Finance Account Recovery</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Only the Main Admin can reset Finance Head and Finance Member passwords.</p>
+        </div>
+        <Button type="button" variant="outline" disabled={adminFinanceLoading} onClick={() => showAdminFinanceUsers ? setShowAdminFinanceUsers(false) : void loadAdminFinanceUsers()}>
+          {adminFinanceLoading ? 'Loading...' : showAdminFinanceUsers ? 'Hide Finance Accounts' : 'Manage Finance Accounts'}
+        </Button>
+      </div>
+      {adminFinanceError && <div className="mt-4 rounded-lg border border-destructive p-3 text-sm text-destructive">{adminFinanceError}</div>}
+      {adminFinanceNotice && <div className="mt-4 rounded-lg border p-3 text-sm">{adminFinanceNotice}</div>}
+      {showAdminFinanceUsers && <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[700px] text-left text-sm">
+          <thead><tr className="border-b"><th className="p-2">Name</th><th className="p-2">Login ID</th><th className="p-2">Role</th><th className="p-2">Status</th><th className="p-2">Reset Password</th></tr></thead>
+          <tbody>{adminFinanceUsers.map(user => <tr key={user.id} className="border-b align-top">
+            <td className="p-2">{user.display_name}</td><td className="p-2">{user.login_id}</td><td className="p-2">{user.role.replace('_',' ')}</td><td className="p-2">{user.is_active ? 'Active' : 'Inactive'}</td>
+            <td className="p-2"><div className="flex min-w-[280px] gap-2">
+              <Input type="password" autoComplete="new-password" minLength={12} value={resetFinanceUserId === user.id ? resetFinancePassword : ''} onChange={e => { setResetFinanceUserId(user.id); setResetFinancePassword(e.target.value) }} placeholder="Temporary password (12+)" className="max-w-[210px]" />
+              <Button type="button" size="sm" disabled={adminFinanceLoading || resetFinanceUserId !== user.id || resetFinancePassword.length < 12} onClick={() => void resetAdminFinancePassword(user.id)}>Reset</Button>
+            </div></td>
+          </tr>)}</tbody>
+        </table>
+      </div>}
+      <p className="mt-3 text-xs text-muted-foreground">The old password cannot be viewed. After reset, all sessions for that account are revoked. Use a unique temporary password and share it privately with the account holder.</p>
+    </section>
   </section>
 )}
 
