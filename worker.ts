@@ -729,7 +729,7 @@ if (
         const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
         await env.DB.prepare('INSERT INTO finance_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(crypto.randomUUID(), user.id, tokenHash, expiresAt).run()
         await env.DB.prepare('UPDATE finance_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').bind(user.id).run()
-        return financeJson({ ok: true, token, expiresAt, user: { id: user.id, displayName: user.display_name, loginId: user.login_id, role: user.role } })
+        return financeJson({ ok: true, token, expiresAt, mustChangePassword: Boolean(user.must_change_password), user: { id: user.id, displayName: user.display_name, loginId: user.login_id, role: user.role } })
       }
 
       const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
