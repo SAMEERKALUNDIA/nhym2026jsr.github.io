@@ -27,7 +27,7 @@ async function createWarangCitiTextImage(text: string): Promise<string | null> {
     await face.load()
     document.fonts.add(face)
     const canvas = document.createElement('canvas')
-    canvas.width = 900
+    canvas.width = 1800
     canvas.height = 110
     const context = canvas.getContext('2d')
     if (!context) return null
@@ -263,7 +263,7 @@ async function downloadRegistrationPdf() {
   })
 
   const pageWidth = pdf.internal.pageSize.getWidth()
-  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢽𑢢𑢼𑢮𑢩𑢳')
+  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳')
   const pageHeight = pdf.internal.pageSize.getHeight()
   const margin = 15
   const contentWidth = pageWidth - margin * 2
@@ -313,7 +313,7 @@ async function downloadRegistrationPdf() {
     }
   })()
 
-  let y = 59
+  let y = 51
 
   // -----------------------------
   // Header
@@ -334,31 +334,30 @@ async function downloadRegistrationPdf() {
     pdf.addImage(logoData, 'JPEG', pageWidth - margin - 27 + (27 - width) / 2, 7 + (27 - height) / 2, width, height)
   }
 
+  if (warangCitiHeaderImage) {
+    pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
+  }
+
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(14)
   pdf.setTextColor(30, 65, 42)
-  pdf.text('NATIONAL HO YOUTH MEET', pageWidth / 2, 13, { align: 'center' })
-  pdf.setFontSize(10)
-  pdf.text('2026', pageWidth / 2, 18, { align: 'center' })
+  pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 14, { align: 'center' })
 
-  pdf.setTextColor(168, 94, 8)
-  pdf.setFontSize(9.5)
-  pdf.text('2026 SIRJON', pageWidth / 2, 23, { align: 'center' })
-  if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 12, 25, 24, 3.2)
+  pdf.setFontSize(11)
+  pdf.text('2026', pageWidth / 2, 21, { align: 'center' })
 
   pdf.setFont('helvetica', 'normal')
-  pdf.setFontSize(8)
+  pdf.setFontSize(8.5)
   pdf.setTextColor(72, 30, 20)
-  pdf.text('Organized By: Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 34, { align: 'center' })
-  pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 38, { align: 'center' })
+  pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 29, { align: 'center' })
+
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(10)
   pdf.setTextColor(40)
-  pdf.text('Registration Confirmation', pageWidth / 2, 44, { align: 'center' })
+  pdf.text('Registration Confirmation', pageWidth / 2, 39, { align: 'center' })
 
   pdf.setDrawColor(30, 65, 42)
-  pdf.setDrawColor(30, 65, 42)
-  pdf.line(margin, 48, pageWidth - margin, 48)
+  pdf.line(margin, 43, pageWidth - margin, 43)
 
   // -----------------------------
   // Helper functions
@@ -765,37 +764,18 @@ async function downloadRegistrationPdf() {
   ) {
     pdf.setPage(pageNumber)
 
-    pdf.setDrawColor(210)
+    pdf.setDrawColor(30, 65, 42)
+    pdf.line(margin, pageHeight - 24, pageWidth - margin, pageHeight - 24)
 
-    pdf.line(
-      margin,
-      pageHeight - 18,
-      pageWidth - margin,
-      pageHeight - 18
-    )
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7)
+    pdf.setTextColor(72, 30, 20)
+    pdf.text('Address: Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003', pageWidth / 2, pageHeight - 17, { align: 'center' })
+    pdf.text('Email: nhym2026jsr@gmail.com | Phone: 9931333025, 7870979751', pageWidth / 2, pageHeight - 12, { align: 'center' })
 
-    pdf.setFont(
-      'helvetica',
-      'normal'
-    )
-
-    pdf.setFontSize(7.5)
+    pdf.setFontSize(6.5)
     pdf.setTextColor(110)
-
-    pdf.text(
-      'National Ho Youth Meet 2026 - Registration Confirmation',
-      margin,
-      pageHeight - 12
-    )
-
-    pdf.text(
-      `Page ${pageNumber} of ${pageCount}`,
-      pageWidth - margin,
-      pageHeight - 12,
-      {
-        align: 'right',
-      }
-    )
+    pdf.text(`Page ${pageNumber} of ${pageCount}`, pageWidth - margin, pageHeight - 5, { align: 'right' })
   }
 
   // -----------------------------
