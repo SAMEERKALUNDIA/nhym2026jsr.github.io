@@ -1362,32 +1362,29 @@ async function downloadAdminRegistrationPdf(row: Row) {
     }
 
     pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(14)
+    pdf.setFontSize(13)
     pdf.setTextColor(30, 65, 42)
-    pdf.text('NATIONAL HO YOUTH MEET', pageWidth / 2, 14, { align: 'center' })
-    pdf.setFontSize(10)
-    pdf.text('2026', pageWidth / 2, 19, { align: 'center' })
-    pdf.setTextColor(168, 94, 8)
-    pdf.setFontSize(9.5)
-    pdf.text('2026 SIRJON', pageWidth / 2, 24, { align: 'center' })
     if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
+    pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 14, { align: 'center' })
+    pdf.setFontSize(10)
+    pdf.text('2026', pageWidth / 2, 21, { align: 'center' })
     pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(7.5)
+    pdf.setFontSize(8)
     pdf.setTextColor(72, 30, 20)
-    pdf.text('Organized By: Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 35, { align: 'center' })
-    pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 39, { align: 'center' })
+    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 29, { align: 'center' })
+    pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 34, { align: 'center' })
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(10)
     pdf.setTextColor(40)
-    pdf.text('Admin Registration Record', pageWidth / 2, 45, { align: 'center' })
+    pdf.text('Admin Registration Record', pageWidth / 2, 42, { align: 'center' })
 
     pdf.setDrawColor(180)
 
     pdf.line(
       margin,
-      49,
+      46,
       pageWidth - margin,
-      49
+      46
     )
   }
 
@@ -1851,12 +1848,8 @@ async function downloadAdminRegistrationPdf(row: Row) {
     pdf.setFontSize(7.5)
     pdf.setTextColor(110)
 
-    pdf.text(
-      'Email: nhym2026jsr@gmail.com | Phone: 9931333025, 7870979751',
-      pageWidth / 2,
-      pageHeight - 17,
-      { align: 'center' }
-    )
+    pdf.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003', pageWidth / 2, pageHeight - 18, { align: 'center' })
+    pdf.text('Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 12, { align: 'center' })
 
     pdf.text(
       `Page ${pageNumber} of ${pageCount}`,
