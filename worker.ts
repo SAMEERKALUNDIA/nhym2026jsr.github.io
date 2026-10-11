@@ -609,7 +609,7 @@ if (
       }
 
       if (url.pathname === '/api/finance/dashboard' && request.method === 'GET') {
-        const [income, paid, pending, unpaid, categories, expenses, incomes] = await Promise.all([
+        const [income, paid, pending, unpaid, categories, expenses, incomes, budgets] = await Promise.all([
           env.DB.prepare('SELECT COALESCE(SUM(amount_paise), 0) AS total FROM finance_income').first<{ total: number }>(),
           env.DB.prepare('SELECT COALESCE(SUM(amount_paise), 0) AS total FROM finance_payments').first<{ total: number }>(),
           env.DB.prepare("SELECT COUNT(*) AS total FROM finance_expenses WHERE approval_status = 'PENDING'").first<{ total: number }>(),
@@ -623,7 +623,8 @@ if (
             FROM finance_expenses e JOIN finance_categories c ON c.id = e.category_id
             ORDER BY e.created_at DESC LIMIT 500
           `).all(),
-          env.DB.prepare('SELECT income_no, income_type, received_from, amount_paise, received_at, payment_mode, receipt_no FROM finance_income ORDER BY received_at DESC LIMIT 200').all()
+          env.DB.prepare('SELECT income_no, income_type, received_from, amount_paise, received_at, payment_mode, receipt_no FROM finance_income ORDER BY received_at DESC LIMIT 200').all(),
+          env.DB.prepare(`SELECT b.id, b.budget_period, b.approved_amount_paise, b.revision_no, b.status, c.name AS category_name FROM finance_budgets b JOIN finance_categories c ON c.id = b.category_id ORDER BY b.created_at DESC LIMIT 200`).all()
         ])
         return json({
           totalIncomePaise: Number(income?.total ?? 0),
@@ -632,8 +633,37 @@ if (
           unpaidCount: Number(unpaid?.total ?? 0),
           categories: categories.results ?? [],
           expenses: expenses.results ?? [],
-          incomes: incomes.results ?? []
+          incomes: incomes.results ?? [],
+          budgets: budgets.results ?? []
         })
+      }
+
+      if (url.pathname === '/api/finance/budgets' && request.method === 'POST') {
+        let body: { categoryId?: string; amountPaise?: number; budgetPeriod?: string }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        const categoryId = String(body.categoryId ?? '')
+        const amountPaise = Number(body.amountPaise)
+        const budgetPeriod = String(body.budgetPeriod ?? 'NHYM2026').trim().slice(0, 40)
+        if (!categoryId || !budgetPeriod || !Number.isSafeInteger(amountPaise) || amountPaise <= 0) return json({ error: 'Category, period and valid budget amount are required.' }, 400)
+        const category = await env.DB.prepare("SELECT id FROM finance_categories WHERE id = ? AND category_type = 'EXPENSE' AND is_active = 1").bind(categoryId).first()
+        if (!category) return json({ error: 'Invalid expense category.' }, 400)
+        const id = crypto.randomUUID()
+        await env.DB.prepare("INSERT INTO finance_budgets (id, category_id, budget_period, approved_amount_paise, status, created_by) VALUES (?, ?, ?, ?, 'DRAFT', ?)").bind(id, categoryId, budgetPeriod, amountPaise, actorId).run()
+        await audit('BUDGET', id, 'BUDGET_CREATED', null, { categoryId, budgetPeriod, amountPaise, status: 'DRAFT' })
+        return json({ ok: true, id, status: 'DRAFT' }, 201)
+      }
+
+      const budgetDecision = url.pathname.match(/^\\/api\\/finance\\/budgets\\/([a-f0-9-]+)\\/decision$/i)
+      if (budgetDecision && request.method === 'POST') {
+        let body: { decision?: string }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        if (!['APPROVED', 'CLOSED'].includes(String(body.decision))) return json({ error: 'Budget decision must be APPROVED or CLOSED.' }, 400)
+        const current = await env.DB.prepare('SELECT * FROM finance_budgets WHERE id = ?').bind(budgetDecision[1]).first<any>()
+        if (!current) return json({ error: 'Budget not found.' }, 404)
+        if (current.status !== 'DRAFT' && !(current.status === 'APPROVED' && body.decision === 'CLOSED')) return json({ error: 'Only draft budgets can be approved, and only approved budgets can be closed.' }, 409)
+        await env.DB.prepare('UPDATE finance_budgets SET status = ?, approved_by = ?, revision_no = revision_no + 1 WHERE id = ? AND status = ?').bind(body.decision, actorId, current.id, current.status).run()
+        await audit('BUDGET', current.id, String(body.decision), { status: current.status }, { status: body.decision, amountPaise: current.approved_amount_paise })
+        return json({ ok: true, status: body.decision })
       }
 
       if (url.pathname === '/api/finance/expenses' && request.method === 'POST') {
