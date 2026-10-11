@@ -784,7 +784,13 @@ if (
               )
           ])
         } catch (error) {
-          if (/unique constraint|constraint failed/i.test(error instanceof Error ? error.message : '')) return financeJson({ error: 'This login ID is already in use.' }, 409)
+          const message = error instanceof Error ? error.message : ''
+          if (/finance_users\.login_id/i.test(message)) {
+            return financeJson({ error: 'This login ID is already in use.' }, 409)
+          }
+          if (/unique constraint|constraint failed|foreign key constraint/i.test(message)) {
+            return financeJson({ error: 'Finance user could not be created because the request conflicts with existing finance data. Refresh and try again.' }, 409)
+          }
           throw error
         }
         return financeJson({ ok: true, user: { id, displayName, loginId, role: newRole } }, 201)
