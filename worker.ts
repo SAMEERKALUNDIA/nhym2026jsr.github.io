@@ -749,7 +749,7 @@ if (
               JSON.stringify({ isActive: body.active }),
               request.headers.get('cf-ray')
             ),
-          env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ? AND is_active = 0').bind(target.id)
+          env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ? AND ? = 0').bind(target.id, nextActive)
         ])
         if (Number(statusBatch[0]?.meta?.changes ?? 0) !== 1) {
           return json({ error: 'At least one active Finance Head must remain; no changes were made.' }, 409)
@@ -769,12 +769,20 @@ if (
         const passwordHash = await financePasswordHash(password, salt)
         const id = crypto.randomUUID()
         try {
-          await env.DB.prepare('INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) VALUES (?, ?, ?, ?, ?, ?)').bind(id, displayName, loginId, newRole, salt, passwordHash).run()
+          await env.DB.batch([
+            env.DB.prepare('INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) VALUES (?, ?, ?, ?, ?, ?)').bind(id, displayName, loginId, newRole, salt, passwordHash),
+            env.DB.prepare(`INSERT INTO finance_audit_logs
+              (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id)
+              VALUES (?, ?, 'FINANCE_USER', ?, 'USER_CREATED', NULL, ?, NULL, ?)`).bind(
+                crypto.randomUUID(), actorId, id,
+                JSON.stringify({ displayName, loginId, role: newRole }),
+                request.headers.get('cf-ray')
+              )
+          ])
         } catch (error) {
           if (/unique constraint|constraint failed/i.test(error instanceof Error ? error.message : '')) return json({ error: 'This login ID is already in use.' }, 409)
           throw error
         }
-        await audit('FINANCE_USER', id, 'USER_CREATED', null, { displayName, loginId, role: newRole })
         return json({ ok: true, user: { id, displayName, loginId, role: newRole } }, 201)
       }
       const audit = async (entityType: string, entityId: string, action: string, oldValues?: unknown, newValues?: unknown, reason?: string) => {
