@@ -713,11 +713,6 @@ if (
       if (!allowed && !isUserAdmin) return financeJson({ error: 'Your finance role does not permit this action.' }, 403)
       if (isUserAdmin && role !== 'FINANCE_HEAD') return financeJson({ error: 'Only the Finance Head can manage finance accounts.' }, 403)
 
-      const audit = async (entityType: string, entityId: string, action: string, oldValues?: unknown, newValues?: unknown, reason?: string) => {
-        await env.DB.prepare('INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(crypto.randomUUID(), actorId, entityType, entityId, action, oldValues == null ? null : JSON.stringify(oldValues), newValues == null ? null : JSON.stringify(newValues), reason ?? null, request.headers.get('cf-ray')).run()
-      }
-
       if (isAuditLogs) {
         const requestedLimit = Number(url.searchParams.get('limit') ?? 200)
         const limit = Number.isFinite(requestedLimit) ? Math.min(500, Math.max(1, Math.floor(requestedLimit))) : 200
