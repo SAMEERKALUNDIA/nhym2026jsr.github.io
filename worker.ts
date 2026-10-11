@@ -750,6 +750,14 @@ if (
         if (!allowedTypes.includes(documentType)) return json({ error: 'Invalid document type.' }, 400)
         const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
         if (!allowedMimeTypes.includes(file.type)) return json({ error: 'Only PDF, JPG, PNG and WebP files are allowed.' }, 400)
+        const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+        const startsWith = (...bytes: number[]) => bytes.every((byte, index) => signature[index] === byte)
+        const detectedType =
+          startsWith(0x25, 0x50, 0x44, 0x46, 0x2d) ? 'application/pdf' :
+          startsWith(0xff, 0xd8, 0xff) ? 'image/jpeg' :
+          startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a) ? 'image/png' :
+          startsWith(0x52, 0x49, 0x46, 0x46) && startsWith(0x57, 0x45, 0x42, 0x50) ? 'image/webp' : ''
+        if (!detectedType || detectedType !== file.type) return json({ error: 'File contents do not match the declared PDF/image type.' }, 400)
         const maxDocumentBytes = 20 * 1024 * 1024
         if (file.size <= 0 || file.size > maxDocumentBytes) return json({ error: 'Document must be between 1 byte and 20 MB.' }, 400)
         // Gallery photos and finance documents share the same R2 bucket and 10 GB storage allowance.
