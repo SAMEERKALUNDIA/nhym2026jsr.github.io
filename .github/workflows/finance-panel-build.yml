@@ -58,6 +58,7 @@ jobs:
           db = sqlite3.connect(':memory:')
           db.execute('PRAGMA foreign_keys = ON')
           db.executescript(Path('migrations/0001_finance_management.sql').read_text())
+db.executescript(Path('migrations/0002_finance_force_password_change.sql').read_text())
           tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
           required = {'finance_users','finance_sessions','finance_login_limits','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_storage_reservations','finance_audit_logs'}
           assert required <= tables, f'Missing tables: {required - tables}'
@@ -116,6 +117,15 @@ jobs:
           assert db.execute('SELECT COUNT(*) FROM finance_users').fetchone()[0] == 0, 'Migration must not seed a shared finance account'
           assert db.execute("SELECT COUNT(*) FROM finance_categories WHERE category_type='EXPENSE'").fetchone()[0] >= 1
           db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u1','Test Head','test-head','FINANCE_HEAD','salt','hash')")
+          assert db.execute("SELECT must_change_password FROM finance_users WHERE id='u1'").fetchone()[0] == 0, 'Existing/new accounts must default to no forced change unless reset by Main Admin'
+          try:
+              db.execute("UPDATE finance_users SET must_change_password=2 WHERE id='u1'")
+              raise AssertionError('Invalid forced-password-change flag was accepted')
+          except sqlite3.IntegrityError:
+              pass
+          db.execute("UPDATE finance_users SET must_change_password=1 WHERE id='u1'")
+          assert db.execute("SELECT must_change_password FROM finance_users WHERE id='u1'").fetchone()[0] == 1, 'Main Admin reset flag must be stored'
+          db.execute("UPDATE finance_users SET must_change_password=0 WHERE id='u1'")
           try:
               db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u2','Bad Role','bad-role','ROOT','salt','hash')")
               raise AssertionError('Invalid finance role was accepted')
