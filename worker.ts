@@ -644,18 +644,23 @@ if (
         if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
         let body: { displayName?: string; loginId?: string; password?: string }
         try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
-        const count = await env.DB.prepare('SELECT COUNT(*) AS total FROM finance_users').first<{ total: number }>()
-        if (Number(count?.total ?? 0) !== 0) return financeJson({ error: 'Finance setup is already complete. Ask a Finance Head to create accounts.' }, 409)
         const displayName = String(body.displayName ?? '').trim().slice(0, 100)
         const loginId = String(body.loginId ?? '').trim().toLowerCase().slice(0, 80)
         const password = String(body.password ?? '')
         if (displayName.length < 2 || !/^[a-z0-9._-]{3,80}$/.test(loginId) || password.length < 12 || password.length > 200) return financeJson({ error: 'Name, login ID (3–80 letters/numbers/._-) and a password of at least 12 characters are required.' }, 400)
-        const salt = financeRandomHex(16)
-        const passwordHash = await financePasswordHash(password, salt)
-        const id = crypto.randomUUID()
-        const created = await env.DB.prepare("INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) SELECT ?, ?, ?, 'FINANCE_HEAD', ?, ? WHERE NOT EXISTS (SELECT 1 FROM finance_users)").bind(id, displayName, loginId, salt, passwordHash).run()
-        if (Number(created.meta?.changes ?? 0) !== 1) return financeJson({ error: 'Finance setup was completed by another request. Please sign in.' }, 409)
-        return financeJson({ ok: true, message: 'Finance Head account created. Sign in using your individual credentials.' }, 201)
+        try {
+          const count = await env.DB.prepare('SELECT COUNT(*) AS total FROM finance_users').first<{ total: number }>()
+          if (Number(count?.total ?? 0) !== 0) return financeJson({ error: 'Finance setup is already complete. Ask a Finance Head to create accounts.' }, 409)
+          const salt = financeRandomHex(16)
+          const passwordHash = await financePasswordHash(password, salt)
+          const id = crypto.randomUUID()
+          const created = await env.DB.prepare("INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) SELECT ?, ?, ?, 'FINANCE_HEAD', ?, ? WHERE NOT EXISTS (SELECT 1 FROM finance_users)").bind(id, displayName, loginId, salt, passwordHash).run()
+          if (Number(created.meta?.changes ?? 0) !== 1) return financeJson({ error: 'Finance setup was completed by another request. Please sign in.' }, 409)
+          return financeJson({ ok: true, message: 'Finance Head account created. Sign in using your individual credentials.' }, 201)
+        } catch (error) {
+          console.error('Finance Head bootstrap failed', error)
+          return financeJson({ error: 'Finance Head account could not be created due to a server/database error. No success was reported; check Worker logs before retrying.' }, 500)
+        }
       }
 
       if (url.pathname === '/api/finance/login' && request.method === 'POST') {
