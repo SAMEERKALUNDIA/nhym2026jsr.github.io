@@ -635,9 +635,28 @@ if (
         const loginId = String(body.loginId ?? '').trim().toLowerCase()
         const password = String(body.password ?? '')
         if (!loginId || !password || password.length > 200) return json({ error: 'Login ID and password are required.' }, 400)
+        // Rate-limit per login ID and Cloudflare-provided client IP; store only a digest, not the raw IP.
+        const clientIp = request.headers.get('CF-Connecting-IP') ?? 'unknown'
+        const attemptKey = await financeDigest(`${loginId}:${clientIp}`)
+        const limit = await env.DB.prepare("SELECT locked_until FROM finance_login_limits WHERE attempt_key = ? AND datetime(locked_until) > datetime('now')").bind(attemptKey).first<{ locked_until: string }>()
+        if (limit) return json({ error: 'Too many failed login attempts. Try again after 15 minutes.' }, 429)
         const user = await env.DB.prepare('SELECT id, display_name, login_id, role, password_salt, password_hash FROM finance_users WHERE login_id = ? AND is_active = 1').bind(loginId).first<{ id: string; display_name: string; login_id: string; role: string; password_salt: string; password_hash: string }>()
-        const candidate = user ? await financePasswordHash(password, user.password_salt) : ''
-        if (!user || candidate !== user.password_hash) return json({ error: 'Login ID or password is incorrect.' }, 401)
+        // Perform the same PBKDF2 work for unknown users to reduce login-ID timing leaks.
+        const candidate = await financePasswordHash(password, user?.password_salt ?? 'NHYM-FINANCE-UNKNOWN-USER-SALT')
+        if (!user || candidate !== user.password_hash) {
+          await env.DB.prepare(`INSERT INTO finance_login_limits (attempt_key, failed_attempts, window_started_at, locked_until, updated_at)
+            VALUES (?, 1, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP)
+            ON CONFLICT(attempt_key) DO UPDATE SET
+              failed_attempts = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now', '-15 minutes') THEN 1 ELSE finance_login_limits.failed_attempts + 1 END,
+              window_started_at = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now', '-15 minutes') THEN CURRENT_TIMESTAMP ELSE finance_login_limits.window_started_at END,
+              locked_until = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now', '-15 minutes') THEN NULL ELSE finance_login_limits.locked_until END,
+              updated_at = CURRENT_TIMESTAMP`).bind(attemptKey).run()
+          await env.DB.prepare(`UPDATE finance_login_limits SET locked_until = datetime('now', '+15 minutes'), updated_at = CURRENT_TIMESTAMP
+            WHERE attempt_key = ? AND failed_attempts >= 5 AND datetime(window_started_at) > datetime('now', '-15 minutes')
+              AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))`).bind(attemptKey).run()
+          return json({ error: 'Login ID or password is incorrect.' }, 401)
+        }
+        await env.DB.prepare('DELETE FROM finance_login_limits WHERE attempt_key = ?').bind(attemptKey).run()
         const token = financeRandomHex(32)
         const tokenHash = await financeDigest(token)
         const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
