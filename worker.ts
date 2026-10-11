@@ -122,12 +122,34 @@ if (
       if (!body.paymentMode || !body.paymentReference || body.paymentReference.trim().length < 2) return json({ error: 'Payment method and transaction/reference number are required.' }, 400)
       if (!body.declarations || !Object.values(body.declarations).every(Boolean)) return json({ error: 'All declarations are required.' }, 400)
 
+      // Treat references consistently so spacing/case changes cannot bypass duplicate protection.
+      const normalizedReference = body.paymentReference.trim().replace(/\\s+/g, '').toUpperCase()
+      if (normalizedReference.length < 2) return json({ error: 'Enter a valid payment transaction/reference number.' }, 400)
+      const duplicate = await env.DB.prepare(`
+        SELECT id FROM registrations
+        WHERE UPPER(REPLACE(REPLACE(REPLACE(TRIM(payment_reference), ' ', ''), char(9), ''), char(10), '')) = ?
+        LIMIT 1
+      `).bind(normalizedReference).first<{ id: number }>()
+      if (duplicate) {
+        return json({ error: 'This transaction ID/payment reference has already been submitted. Please check your payment details.' }, 409)
+      }
+
       const createdAt = new Date().toISOString()
-      const result = await env.DB.prepare(`INSERT INTO registrations
-        (email, total_amount, payment_mode, payment_reference, status, declarations_json, created_at)
-        VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`)
-        .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, body.paymentReference.trim(), JSON.stringify(body.declarations), createdAt)
-        .run()
+      let result
+      try {
+        result = await env.DB.prepare(`INSERT INTO registrations
+          (email, total_amount, payment_mode, payment_reference, status, declarations_json, created_at)
+          VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`)
+          .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, normalizedReference, JSON.stringify(body.declarations), createdAt)
+          .run()
+      } catch (error) {
+        // The unique index is the final guard against simultaneous duplicate submissions.
+        const message = error instanceof Error ? error.message : ''
+        if (/unique constraint|constraint failed/i.test(message)) {
+          return json({ error: 'This transaction ID/payment reference has already been submitted. Please check your payment details.' }, 409)
+        }
+        throw error
+      }
 
       const id = Number(result.meta.last_row_id)
       const registrationId = `NHYM26-${String(id).padStart(6, '0')}`
