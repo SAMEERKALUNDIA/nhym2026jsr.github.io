@@ -820,16 +820,19 @@ if (
           customMetadata: { documentId, documentType, uploadedBy: actorId }
         })
         try {
-          await env.DB.prepare(`
-            INSERT INTO finance_documents
-              (id, expense_id, income_id, document_type, storage_key, file_name, mime_type, size_bytes, uploaded_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(documentId, expenseId || null, incomeId || null, documentType, storageKey, file.name.slice(0, 255), file.type, file.size, actorId).run()
+          await env.DB.batch([
+            env.DB.prepare(`
+              INSERT INTO finance_documents
+                (id, expense_id, income_id, document_type, storage_key, file_name, mime_type, size_bytes, uploaded_by)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(documentId, expenseId || null, incomeId || null, documentType, storageKey, file.name.slice(0, 255), file.type, file.size, actorId),
+            env.DB.prepare('INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+              .bind(crypto.randomUUID(), actorId, 'DOCUMENT', documentId, 'DOCUMENT_UPLOADED', null, JSON.stringify({ expenseId: expenseId || null, incomeId: incomeId || null, documentType, fileName: file.name, sizeBytes: file.size }), null, request.headers.get('cf-ray'))
+          ])
         } catch (error) {
           await env.GALLERY.delete(storageKey)
           throw error
         }
-        await audit('DOCUMENT', documentId, 'DOCUMENT_UPLOADED', null, { expenseId: expenseId || null, incomeId: incomeId || null, documentType, fileName: file.name, sizeBytes: file.size })
         return json({ ok: true, documentId, fileName: file.name, sizeBytes: file.size }, 201)
       }
 
