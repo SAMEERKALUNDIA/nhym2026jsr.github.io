@@ -648,7 +648,7 @@ if (
       const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
       if (!bearer) return json({ error: 'Sign in to access Finance Management.' }, 401)
       const tokenHash = await financeDigest(bearer)
-      const actor = await env.DB.prepare("SELECT u.id, u.display_name, u.login_id, u.role FROM finance_sessions s JOIN finance_users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = 1").bind(tokenHash).first<{ id: string; display_name: string; login_id: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR' }>()
+      const actor = await env.DB.prepare("SELECT u.id, u.display_name, u.login_id, u.role FROM finance_sessions s JOIN finance_users u ON u.id = s.user_id WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now') AND u.is_active = 1").bind(tokenHash).first<{ id: string; display_name: string; login_id: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR' }>()
       if (!actor) return json({ error: 'Finance session expired. Please sign in again.' }, 401)
       const actorId = actor.id
       const role = actor.role
@@ -838,6 +838,7 @@ if (
         const current = await env.DB.prepare('SELECT * FROM finance_budgets WHERE id = ?').bind(budgetDecision[1]).first<any>()
         if (!current) return json({ error: 'Budget not found.' }, 404)
         if (current.status !== 'DRAFT' && !(current.status === 'APPROVED' && body.decision === 'CLOSED')) return json({ error: 'Only draft budgets can be approved, and only approved budgets can be closed.' }, 409)
+        if (body.decision === 'APPROVED' && current.created_by === actorId) return json({ error: 'Maker-checker rule: the person who created a budget cannot approve it.' }, 403)
         await env.DB.prepare('UPDATE finance_budgets SET status = ?, approved_by = ?, revision_no = revision_no + 1 WHERE id = ? AND status = ?').bind(body.decision, actorId, current.id, current.status).run()
         await audit('BUDGET', current.id, String(body.decision), { status: current.status }, { status: body.decision, amountPaise: current.approved_amount_paise })
         return json({ ok: true, status: body.decision })
@@ -877,6 +878,7 @@ if (
         const expense = await env.DB.prepare('SELECT * FROM finance_expenses WHERE id = ?').bind(decisionMatch[1]).first<any>()
         if (!expense) return json({ error: 'Expense not found.' }, 404)
         if (expense.approval_status !== 'PENDING') return json({ error: 'Only pending expenses can be decided.' }, 409)
+        if (expense.created_by === actorId) return json({ error: 'Maker-checker rule: the person who submitted an expense cannot approve or reject it.' }, 403)
         const approvedAmount = decision === 'APPROVED' ? Number(body.approvedAmountPaise) : 0
         if (decision === 'APPROVED' && (!Number.isSafeInteger(approvedAmount) || approvedAmount <= 0 || approvedAmount > Number(expense.requested_amount_paise))) {
           return json({ error: 'Approved amount must be positive and cannot exceed the requested amount.' }, 400)
