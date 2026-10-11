@@ -123,7 +123,7 @@ if (
       if (!body.declarations || !Object.values(body.declarations).every(Boolean)) return json({ error: 'All declarations are required.' }, 400)
 
       // Treat references consistently so spacing/case changes cannot bypass duplicate protection.
-      const normalizedReference = body.paymentReference.trim().replace(/\\s+/g, '').toUpperCase()
+      const normalizedReference = body.paymentReference.trim().replace(/\s+/g, '').toUpperCase()
       if (normalizedReference.length < 2) return json({ error: 'Enter a valid payment transaction/reference number.' }, 400)
       const duplicate = await env.DB.prepare(`
         SELECT id FROM registrations
