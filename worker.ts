@@ -644,7 +644,7 @@ if (
         const description = String(body.description ?? '').trim()
         const amountPaise = Number(body.amountPaise)
         const expenseDate = String(body.expenseDate ?? '')
-        if (!categoryId || !vendorName || !description || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(expenseDate)) {
+        if (!categoryId || !vendorName || !description || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(expenseDate)) {
           return json({ error: 'Category, vendor, purpose, valid amount and date are required.' }, 400)
         }
         const category = await env.DB.prepare("SELECT id FROM finance_categories WHERE id = ? AND category_type = 'EXPENSE' AND is_active = 1").bind(categoryId).first()
@@ -659,7 +659,7 @@ if (
         return json({ ok: true, id, expenseNo, approvalStatus: 'PENDING' }, 201)
       }
 
-      const decisionMatch = url.pathname.match(/^\\/api\\/finance\\/expenses\\/([a-f0-9-]+)\\/decision$/i)
+      const decisionMatch = url.pathname.match(/^\/api\/finance\/expenses\/([a-f0-9-]+)\/decision$/i)
       if (decisionMatch && request.method === 'POST') {
         let body: { decision?: string; remarks?: string; approvedAmountPaise?: number }
         try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
@@ -685,7 +685,7 @@ if (
         return json({ ok: true, decision })
       }
 
-      const paymentMatch = url.pathname.match(/^\\/api\\/finance\\/expenses\\/([a-f0-9-]+)\\/payments$/i)
+      const paymentMatch = url.pathname.match(/^\/api\/finance\/expenses\/([a-f0-9-]+)\/payments$/i)
       if (paymentMatch && request.method === 'POST') {
         let body: { paymentMode?: string; amountPaise?: number; paidAt?: string; referenceNo?: string; remarks?: string }
         try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
@@ -694,7 +694,7 @@ if (
         const paidAt = String(body.paidAt ?? '')
         const referenceNo = String(body.referenceNo ?? '').trim()
         const remarks = String(body.remarks ?? '').trim()
-        if (!['UPI','BANK_TRANSFER','CASH'].includes(paymentMode) || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(paidAt)) return json({ error: 'Valid payment mode, amount and date are required.' }, 400)
+        if (!['UPI','BANK_TRANSFER','CASH'].includes(paymentMode) || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(paidAt)) return json({ error: 'Valid payment mode, amount and date are required.' }, 400)
         if (paymentMode !== 'CASH' && !referenceNo) return json({ error: 'UPI/bank reference number is required.' }, 400)
         const expense = await env.DB.prepare('SELECT * FROM finance_expenses WHERE id = ?').bind(paymentMatch[1]).first<any>()
         if (!expense) return json({ error: 'Expense not found.' }, 404)
@@ -729,7 +729,7 @@ if (
         const paymentMode = String(body.paymentMode ?? '')
         const referenceNo = String(body.referenceNo ?? '').trim()
         const receiptNo = String(body.receiptNo ?? '').trim()
-        if (!incomeType || !receivedFrom || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(receivedAt) || !['UPI','BANK_TRANSFER','CASH'].includes(paymentMode)) return json({ error: 'Income type, source, valid amount, date and payment mode are required.' }, 400)
+        if (!incomeType || !receivedFrom || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(receivedAt) || !['UPI','BANK_TRANSFER','CASH'].includes(paymentMode)) return json({ error: 'Income type, source, valid amount, date and payment mode are required.' }, 400)
         if (paymentMode !== 'CASH' && !referenceNo) return json({ error: 'UPI/bank reference number is required.' }, 400)
         const id = crypto.randomUUID()
         const incomeNo = `NHYM-INC-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
