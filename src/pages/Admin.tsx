@@ -889,8 +889,6 @@ async function exportRegistrationsPdf() {
     addContainedPdfImage(pdf, logoData, pageWidth - margin - 25, 6, 25, 25)
 
     if (continuation) {
-      if (continuation) {
-      if (continuation) {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(13)
       pdf.setTextColor(30, 65, 42)
