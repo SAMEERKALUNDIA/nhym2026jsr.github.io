@@ -22,6 +22,25 @@ const safeAuditJson = (value: unknown) => {
   try { return JSON.parse(value) as unknown } catch { return value }
 }
 
+async function readFinanceResponse<T>(response: Response): Promise<T> {
+  const raw = await response.text()
+  let result: T
+  try {
+    result = JSON.parse(raw) as T
+  } catch {
+    const type = response.headers.get('content-type') || 'unknown content type'
+    if (type.includes('text/html') || /^\s*<!doctype html|^\s*<html/i.test(raw)) {
+      throw new Error(`Finance API returned an HTML page instead of JSON (HTTP ${response.status}). The deployed Worker/API route is not active on this hostname yet. Refresh once; if this continues, the Worker deployment needs correction.`)
+    }
+    throw new Error(`Finance API returned an invalid response (HTTP ${response.status}, ${type}).`)
+  }
+  if (!response.ok) {
+    const message = (result as { error?: string })?.error
+    throw new Error(message || `Finance request failed (HTTP ${response.status}).`)
+  }
+  return result
+}
+
 export default function Finance() {
   const [token, setToken] = useState(() => sessionStorage.getItem('nhym_finance_session') || '')
   const [currentUser, setCurrentUser] = useState<FinanceUser | null>(() => { try { return JSON.parse(sessionStorage.getItem('nhym_finance_user') || 'null') as FinanceUser | null } catch { return null } })
@@ -72,8 +91,7 @@ export default function Finance() {
     setBusy(true); setError('')
     try {
       const response = await fetch('/api/finance/dashboard', { headers: { authorization: `Bearer ${auth}` } })
-      const result = await response.json() as Dashboard & { error?: string }
-      if (!response.ok) throw new Error(result.error || 'Finance data load nahi hua.')
+      const result = await readFinanceResponse<Dashboard & { error?: string }>(response)
       setData(result)
     } catch (e) { setError(e instanceof Error ? e.message : 'Finance data load nahi hua.') }
     finally { setBusy(false) }
@@ -90,7 +108,7 @@ export default function Finance() {
   useEffect(() => {
     void fetch('/api/finance/setup-status').then(async response => {
       if (!response.ok) throw new Error('Finance setup status unavailable')
-      const result = await response.json() as { setupComplete: boolean }
+      const result = await readFinanceResponse<{ setupComplete: boolean }>(response)
       setSetupComplete(result.setupComplete)
     }).catch(() => setError('Finance database setup is not available yet. The finance migration must be applied to a test database first.'))
   }, [])
@@ -100,8 +118,8 @@ export default function Finance() {
     setError('')
     try {
       const response = await fetch('/api/finance/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ loginId, password: loginPassword }) })
-      const result = await response.json() as { error?: string; token?: string; user?: FinanceUser }
-      if (!response.ok || !result.token || !result.user) throw new Error(result.error || 'Login nahi ho saka.')
+      const result = await readFinanceResponse<{ error?: string; token?: string; user?: FinanceUser }>(response)
+      if (!result.token || !result.user) throw new Error(result.error || 'Login nahi ho saka.')
       sessionStorage.setItem('nhym_finance_session', result.token)
       sessionStorage.setItem('nhym_finance_user', JSON.stringify(result.user))
       setToken(result.token); setCurrentUser(result.user); setLoginPassword('')
@@ -113,8 +131,7 @@ export default function Finance() {
     e.preventDefault(); setError(''); setNotice('')
     try {
       const response = await fetch('/api/finance/bootstrap', { method: 'POST', headers: { authorization: `Bearer ${bootstrapKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ displayName: bootstrapName, loginId: bootstrapLoginId, password: bootstrapPassword }) })
-      const result = await response.json() as { error?: string; message?: string }
-      if (!response.ok) throw new Error(result.error || 'Finance Head account create nahi hua.')
+      const result = await readFinanceResponse<{ error?: string; message?: string }>(response)
       setNotice(result.message || 'Finance Head account create ho gaya.')
       setSetupComplete(true); setShowBootstrap(false); setBootstrapKey(''); setBootstrapPassword('')
     } catch (e) { setError(e instanceof Error ? e.message : 'Finance Head account create nahi hua.') }
