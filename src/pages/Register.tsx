@@ -453,7 +453,7 @@ if (!row.dob.trim()) {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(), total, paymentMode, paymentReference: paymentReference.trim().replace(/\\s+/g, '').toUpperCase(), agreed,
+          email: email.trim(), total, paymentMode, paymentReference: paymentReference.trim().replace(/\s+/g, '').toUpperCase(), agreed,
           declarations: agreed,
           participants: rows.map((row) => ({ ...row, fee: feeOf(row) ?? 0 })),
         }),
