@@ -112,12 +112,14 @@ export default function Finance() {
     setError('')
     try {
       const response = await fetch('/api/finance/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ loginId, password: loginPassword }) })
-      const result = await response.json() as { error?: string; token?: string; user?: FinanceUser }
+      const result = await response.json() as { error?: string; token?: string; user?: FinanceUser; mustChangePassword?: boolean }
       if (!response.ok || !result.token || !result.user) throw new Error(result.error || 'Login nahi ho saka.')
       sessionStorage.setItem('nhym_finance_session', result.token)
       sessionStorage.setItem('nhym_finance_user', JSON.stringify(result.user))
+      sessionStorage.setItem('nhym_finance_must_change_password', result.mustChangePassword ? '1' : '0')
+      setMustChangePassword(Boolean(result.mustChangePassword))
       setToken(result.token); setCurrentUser(result.user); setLoginPassword('')
-      await load(result.token)
+      if (!result.mustChangePassword) await load(result.token)
     } catch (e) { setError(e instanceof Error ? e.message : 'Login nahi ho saka.') }
   }
 
