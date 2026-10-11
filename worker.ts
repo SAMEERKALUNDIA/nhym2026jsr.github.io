@@ -634,6 +634,39 @@ if (
     id,
   })
 }
+
+    // MAIN ADMIN ONLY — finance account listing and password recovery.
+    // Finance sessions cannot use these endpoints; they require the website ADMIN_TOKEN.
+    if (url.pathname === '/api/admin/finance-users' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const users = await env.DB.prepare(
+        'SELECT id, display_name, login_id, role, is_active, created_at, last_login_at FROM finance_users ORDER BY created_at'
+      ).all()
+      return financeJson({ users: users.results ?? [] })
+    }
+
+    const adminFinancePasswordReset = url.pathname.match(/^\\/api\\/admin\\/finance-users\\/([a-f0-9-]+)\\/reset-password$/i)
+    if (adminFinancePasswordReset && request.method === 'POST') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let body: { password?: string }
+      try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+      const password = String(body.password ?? '')
+      if (password.length < 12 || password.length > 200) {
+        return financeJson({ error: 'Set a temporary password of at least 12 characters.' }, 400)
+      }
+      const target = await env.DB.prepare('SELECT id, login_id FROM finance_users WHERE id = ?')
+        .bind(adminFinancePasswordReset[1]).first<{ id: string; login_id: string }>()
+      if (!target) return financeJson({ error: 'Finance user not found.' }, 404)
+      const salt = financeRandomHex(16)
+      const passwordHash = await financePasswordHash(password, salt)
+      await env.DB.batch([
+        env.DB.prepare('UPDATE finance_users SET password_salt = ?, password_hash = ? WHERE id = ?')
+          .bind(salt, passwordHash, target.id),
+        env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ?').bind(target.id),
+      ])
+      return financeJson({ ok: true, message: 'Password reset. All existing sessions for this account have been revoked.' })
+    }
+
     // NHYM FINANCE PANEL — individually authenticated finance users.
     if (url.pathname.startsWith('/api/finance/')) {
       if (url.pathname === '/api/finance/setup-status' && request.method === 'GET') {
