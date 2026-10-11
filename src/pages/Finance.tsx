@@ -326,7 +326,7 @@ export default function Finance() {
       a.href = url
       a.download = String(documentRecord.file_name || 'finance-document')
       a.click()
-      URL.revokeObjectURL(url)
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (e) { setError(e instanceof Error ? e.message : 'Document download nahi hua.') }
   }
 
@@ -396,7 +396,7 @@ export default function Finance() {
     section('INCOME REGISTER')
     for (const x of data.incomes) {
       addLine(`${String(x.income_no ?? '')} | ${String(x.received_at ?? '')} | ${String(x.income_type ?? '')} | ${money(Number(x.amount_paise ?? 0))}`, 8)
-      addLine(`Received from: ${String(x.received_from ?? '')} | Mode: ${String(x.payment_mode ?? '')} | Receipt: $<div className="flex flex-col gap-2"><span>{String(x.receipt_no ?? '—')}</span>{(currentUser?.role==="FINANCE_HEAD" || currentUser?.role==="OPERATOR") && String(x.id ?? '') && <label className="cursor-pointer rounded-md border px-2 py-1 text-center text-xs">Attach Receipt<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" className="hidden" disabled={busy} onChange={e=>{const input=e.currentTarget;const file=input.files?.[0];input.value="";if(file)void uploadDocument(file,{incomeId:String(x.id),documentType:"RECEIPT"})}} /></label>}</div>`, 8)
+      addLine(`Received from: ${String(x.received_from ?? '')} | Mode: ${String(x.payment_mode ?? '')} | Receipt: ${String(x.receipt_no ?? '—')}`, 8)
     }
     section('BUDGET REGISTER')
     for (const x of data.budgets) {
