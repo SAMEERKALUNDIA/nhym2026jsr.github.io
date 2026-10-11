@@ -31,6 +31,55 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate Worker TypeScript syntax
+        run: |
+          node --input-type=module <<'NODE'
+          import ts from 'typescript'
+          import { readFileSync } from 'node:fs'
+          const source = readFileSync('worker.ts', 'utf8')
+          const result = ts.transpileModule(source, {
+            reportDiagnostics: true,
+            compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
+          })
+          const errors = (result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error)
+          if (errors.length) {
+            for (const diagnostic of errors) console.error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\\n'))
+            process.exit(1)
+          }
+          console.log('Worker TypeScript syntax is valid.')
+          NODE
+
+      - name: Test finance migration and database constraints
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          db = sqlite3.connect(':memory:')
+          db.execute('PRAGMA foreign_keys = ON')
+          db.executescript(Path('migrations/0001_finance_management.sql').read_text())
+          tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          required = {'finance_users','finance_sessions','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_audit_logs'}
+          assert required <= tables, f'Missing tables: {required - tables}'
+          assert db.execute('SELECT COUNT(*) FROM finance_users').fetchone()[0] == 0, 'Migration must not seed a shared finance account'
+          assert db.execute("SELECT COUNT(*) FROM finance_categories WHERE category_type='EXPENSE'").fetchone()[0] >= 1
+          db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u1','Test Head','test-head','FINANCE_HEAD','salt','hash')")
+          try:
+              db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u2','Bad Role','bad-role','ROOT','salt','hash')")
+              raise AssertionError('Invalid finance role was accepted')
+          except sqlite3.IntegrityError:
+              pass
+          db.execute("INSERT INTO finance_expenses (id,expense_no,category_id,vendor_name,description,requested_amount_paise,expense_date,created_by) VALUES ('e1','TEST-EXP-1','exp-food','Test Vendor','Migration test',10000,'2026-10-11','u1')")
+          db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p1','e1','TEST-PAY-1','UPI',10000,'2026-10-11','ABC 123','u1')")
+          try:
+              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p2','e1','TEST-PAY-2','UPI',10000,'2026-10-11','abc123','u1')")
+              raise AssertionError('Duplicate normalized payment reference was accepted')
+          except sqlite3.IntegrityError:
+              pass
+          violations = list(db.execute('PRAGMA foreign_key_check'))
+          assert not violations, f'Foreign key violations: {violations}'
+          print('Finance migration, role constraints, normalized duplicate-payment guard and foreign keys passed.')
+          PY
       - name: TypeScript and production build
         run: pnpm run build
 
