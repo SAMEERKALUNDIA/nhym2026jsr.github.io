@@ -91,7 +91,8 @@ export default function Finance() {
     finally { setBusy(false) }
   }, [token])
 
-  useEffect(() => { if (token) void load(token) }, [token, load])
+  // A reset account must stay on the forced password-change screen without requesting dashboard data.
+  useEffect(() => { if (token && !mustChangePassword) void load(token) }, [token, mustChangePassword, load])
 
   const totals = useMemo(() => {
     const paid = data?.totalPaidPaise || 0
