@@ -890,13 +890,14 @@ async function exportRegistrationsPdf() {
 
     if (continuation) {
       if (continuation) {
+      if (continuation) {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(13)
       pdf.setTextColor(30, 65, 42)
       pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 13, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
-      pdf.text('Participant Summary Report - Continued', pageWidth / 2, 20, { align: 'center' })
+      pdf.text('Registration Summary Report - Continued', pageWidth / 2, 20, { align: 'center' })
     } else {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(13)
@@ -913,12 +914,12 @@ async function exportRegistrationsPdf() {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(10)
       pdf.setTextColor(40)
-      pdf.text('Participant Summary Report', pageWidth / 2, 42, { align: 'center' })
+      pdf.text('Registration Summary Report', pageWidth / 2, 42, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(7)
       pdf.setTextColor(100)
       pdf.text(`Generated: ${generatedAt}`, margin, 49)
-      pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin, 49, { align: 'right' })
+      pdf.text(`Registrations: ${filteredRows.length}`, pageWidth - margin, 49, { align: 'right' })
     }
 
     pdf.setDrawColor(185)
@@ -2008,71 +2009,36 @@ async function exportParticipantsPdf() {
     addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
     addContainedPdfImage(pdf, logoData, pageWidth - margin - 25, 6, 25, 25)
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(72, 30, 20)
-    pdf.setFontSize(
-      continuation ? 13 : 17
-    )
-
-    pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, continuation ? 13 : 13, { align: 'center' })
-
-    pdf.setFont(
-      'helvetica',
-      continuation ? 'normal' : 'bold'
-    )
-
-    pdf.setFontSize(
-      continuation ? 8 : 11
-    )
-
-    pdf.setTextColor(50)
-
-    pdf.text(continuation ? 'Participant Summary Report - Continued' : 'Participant Summary Report', pageWidth / 2, continuation ? 19 : 19, { align: 'center' })
-
-    if (!continuation) {
+    if (continuation) {
       pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(13)
+      pdf.setTextColor(30, 65, 42)
+      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 13, { align: 'center' })
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.text('Participant Summary Report - Continued', pageWidth / 2, 20, { align: 'center' })
+    } else {
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(13)
+      pdf.setTextColor(30, 65, 42)
+      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
+      pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 14, { align: 'center' })
       pdf.setFontSize(10)
-      pdf.setTextColor(168, 94, 8)
-      pdf.text('2026 SIRJON', pageWidth / 2, 25, { align: 'center' })
+      pdf.text('2026', pageWidth / 2, 21, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
-      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
+      pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 29, { align: 'center' })
+      pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 34, { align: 'center' })
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(10)
+      pdf.setTextColor(40)
+      pdf.text('Participant Summary Report', pageWidth / 2, 42, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
-    }
-
-    if (!continuation) {
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(8)
+      pdf.setFontSize(7)
       pdf.setTextColor(100)
-
-      pdf.text(
-        'Jamshedpur, Jharkhand',
-        pageWidth / 2,
-        35,
-        { align: 'center' }
-      )
-
-      pdf.text(
-        `Generated: ${generatedAt}`,
-        pageWidth - margin,
-        14,
-        { align: 'right' }
-      )
-
-      pdf.text(
-        `Participants in report: ${participantRows.length}`,
-        pageWidth - margin,
-        20,
-        { align: 'right' }
-      )
-
-      pdf.text(
-        `Registrations: ${filteredRows.length}`,
-        pageWidth - margin,
-        38,
-        { align: 'right' }
-      )
+      pdf.text(`Generated: ${generatedAt}`, margin, 49)
+      pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin, 49, { align: 'right' })
     }
 
     pdf.setDrawColor(185)
