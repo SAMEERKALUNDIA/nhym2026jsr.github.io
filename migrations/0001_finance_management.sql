@@ -147,6 +147,8 @@ CREATE INDEX IF NOT EXISTS idx_finance_expenses_date ON finance_expenses(expense
 CREATE INDEX IF NOT EXISTS idx_finance_payments_expense ON finance_payments(expense_id, paid_at);
 CREATE INDEX IF NOT EXISTS idx_finance_income_date ON finance_income(received_at);
 CREATE INDEX IF NOT EXISTS idx_finance_audit_entity ON finance_audit_logs(entity_type, entity_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_finance_audit_created_at ON finance_audit_logs(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_finance_approval_expense ON finance_approvals(expense_id);
 
 INSERT OR IGNORE INTO finance_categories (id, name, category_type) VALUES
 ('exp-food','Food & Catering','EXPENSE'),
