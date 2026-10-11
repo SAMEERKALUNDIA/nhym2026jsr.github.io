@@ -624,7 +624,8 @@ if (
         const salt = financeRandomHex(16)
         const passwordHash = await financePasswordHash(password, salt)
         const id = crypto.randomUUID()
-        await env.DB.prepare("INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) VALUES (?, ?, ?, 'FINANCE_HEAD', ?, ?)").bind(id, displayName, loginId, salt, passwordHash).run()
+        const created = await env.DB.prepare("INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) SELECT ?, ?, ?, 'FINANCE_HEAD', ?, ? WHERE NOT EXISTS (SELECT 1 FROM finance_users)").bind(id, displayName, loginId, salt, passwordHash).run()
+        if (Number(created.meta?.changes ?? 0) !== 1) return json({ error: 'Finance setup was completed by another request. Please sign in.' }, 409)
         return json({ ok: true, message: 'Finance Head account created. Sign in using your individual credentials.' }, 201)
       }
 
@@ -650,6 +651,10 @@ if (
       const tokenHash = await financeDigest(bearer)
       const actor = await env.DB.prepare("SELECT u.id, u.display_name, u.login_id, u.role FROM finance_sessions s JOIN finance_users u ON u.id = s.user_id WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now') AND u.is_active = 1").bind(tokenHash).first<{ id: string; display_name: string; login_id: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR' }>()
       if (!actor) return json({ error: 'Finance session expired. Please sign in again.' }, 401)
+      if (url.pathname === '/api/finance/logout' && request.method === 'POST') {
+        await env.DB.prepare('DELETE FROM finance_sessions WHERE token_hash = ?').bind(tokenHash).run()
+        return json({ ok: true })
+      }
       const actorId = actor.id
       const role = actor.role
       const method = request.method
