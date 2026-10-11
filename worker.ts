@@ -1074,7 +1074,6 @@ if (
           if (/unique constraint|constraint failed/i.test(e instanceof Error ? e.message : '')) return json({ error: 'Receipt number has already been used.' }, 409)
           throw e
         }
-        await audit('INCOME', id, 'INCOME_RECORDED', null, { incomeNo, incomeType, receivedFrom, amountPaise, receivedAt, paymentMode, referenceNo, receiptNo })
         return json({ ok: true, incomeNo }, 201)
       }
 
