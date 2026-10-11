@@ -1345,6 +1345,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
   })
 
   await registerWarangCitiFont(pdf)
+  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢽𑢢𑢼𑢮𑢩𑢳')
   const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
 
   const pageWidth = pdf.internal.pageSize.getWidth()
@@ -1948,6 +1949,7 @@ async function exportParticipantsPdf() {
   })
 
   await registerWarangCitiFont(pdf)
+  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢽𑢢𑢼𑢮𑢩𑢳')
   const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
 
   const pageWidth = pdf.internal.pageSize.getWidth()
