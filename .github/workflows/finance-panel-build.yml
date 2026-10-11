@@ -59,8 +59,31 @@ jobs:
           db.execute('PRAGMA foreign_keys = ON')
           db.executescript(Path('migrations/0001_finance_management.sql').read_text())
           tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-          required = {'finance_users','finance_sessions','finance_login_limits','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_audit_logs'}
+          required = {'finance_users','finance_sessions','finance_login_limits','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_storage_reservations','finance_audit_logs'}
           assert required <= tables, f'Missing tables: {required - tables}'
+          # Exercise atomic shared-storage reservations across gallery and finance uploads.
+          db.execute('CREATE TABLE gallery_photos (file_size INTEGER NOT NULL)')
+          max_storage = 10 * 1024 * 1024 * 1024
+          db.execute('INSERT INTO gallery_photos (file_size) VALUES (?)', (max_storage - 10,))
+          first_reservation = db.execute("""
+            INSERT INTO finance_storage_reservations (id,size_bytes,expires_at)
+            SELECT 'reserve-1',6,datetime('now','+1 hour')
+            WHERE
+              (SELECT COALESCE(SUM(file_size),0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(size_bytes),0) FROM finance_documents) +
+              (SELECT COALESCE(SUM(size_bytes),0) FROM finance_storage_reservations WHERE expires_at>CURRENT_TIMESTAMP) + 6 <= ?
+          """, (max_storage,))
+          assert first_reservation.rowcount == 1, 'First shared-storage reservation should fit'
+          second_reservation = db.execute("""
+            INSERT INTO finance_storage_reservations (id,size_bytes,expires_at)
+            SELECT 'reserve-2',5,datetime('now','+1 hour')
+            WHERE
+              (SELECT COALESCE(SUM(file_size),0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(size_bytes),0) FROM finance_documents) +
+              (SELECT COALESCE(SUM(size_bytes),0) FROM finance_storage_reservations WHERE expires_at>CURRENT_TIMESTAMP) + 5 <= ?
+          """, (max_storage,))
+          assert second_reservation.rowcount == 0, 'Concurrent reservations must not exceed the shared 10 GB cap'
+          db.execute("DELETE FROM finance_storage_reservations WHERE id='reserve-1'")
           # Exercise the persisted failed-login counter and temporary lock used by the Worker.
           db.execute("INSERT INTO finance_login_limits (attempt_key,failed_attempts,window_started_at) VALUES ('login-test',1,CURRENT_TIMESTAMP)")
           for expected in range(2, 6):
