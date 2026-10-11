@@ -332,7 +332,12 @@ export default function Finance() {
 
   function exportCsv() {
     if (!data) return
-    const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`
+    const csvCell = (value: unknown) => {
+      const raw = String(value ?? '')
+      // Prevent spreadsheet formula execution when reports are opened in Excel/Sheets.
+      const safe = /^[\\u0000-\\u0020]*[=+\\-@]/.test(raw) ? `'${raw}` : raw
+      return `"${safe.replace(/"/g, '""')}"`
+    }
     const sections: unknown[][] = [
       ['NHYM 2026 FINANCE REPORT'],
       ['Generated At', new Date().toLocaleString('en-IN')],
