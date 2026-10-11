@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { ArrowLeft, BadgeCheck, Banknote, ClipboardList, FileSpreadsheet, Plus, RefreshCw, Wallet } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Banknote, ClipboardList, FileSpreadsheet, Plus, RefreshCw, Wallet, FileText } from 'lucide-react'
+import { jsPDF } from 'jspdf'
 
 type Expense = {
   id: string; expense_no: string; category_name: string; vendor_name: string; description: string
@@ -206,13 +207,82 @@ export default function Finance() {
 
   function exportCsv() {
     if (!data) return
-    const rows = [['Expense ID','Category','Vendor','Description','Date','Requested INR','Approved INR','Paid INR','Approval Status','Payment Status'],
-      ...data.expenses.map(x => [x.expense_no,x.category_name,x.vendor_name,x.description,x.expense_date,(x.requested_amount_paise/100).toFixed(2),x.approved_amount_paise == null ? '' : (x.approved_amount_paise/100).toFixed(2),(x.paid_amount_paise/100).toFixed(2),x.approval_status,x.payment_status])]
-    const csv = rows.map(row => row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n')
+    const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`
+    const sections: unknown[][] = [
+      ['NHYM 2026 FINANCE REPORT'],
+      ['Generated At', new Date().toLocaleString('en-IN')],
+      ['SUMMARY'],
+      ['Total Income (INR)', (totals.income / 100).toFixed(2)],
+      ['Paid Expenses (INR)', (totals.paid / 100).toFixed(2)],
+      ['Net Cash Movement (INR)', (totals.net / 100).toFixed(2)],
+      [],
+      ['EXPENSE REGISTER'],
+      ['Expense ID','Category','Vendor','Description','Date','Requested INR','Approved INR','Paid INR','Approval Status','Payment Status'],
+      ...data.expenses.map(x => [x.expense_no,x.category_name,x.vendor_name,x.description,x.expense_date,(x.requested_amount_paise/100).toFixed(2),x.approved_amount_paise == null ? '' : (x.approved_amount_paise/100).toFixed(2),(x.paid_amount_paise/100).toFixed(2),x.approval_status,x.payment_status]),
+      [],
+      ['INCOME REGISTER'],
+      ['Income ID','Date','Type','Received From','Amount INR','Payment Mode','Receipt No.'],
+      ...data.incomes.map(x => [x.income_no,x.received_at,x.income_type,x.received_from,(Number(x.amount_paise ?? 0)/100).toFixed(2),x.payment_mode,x.receipt_no]),
+      [],
+      ['BUDGET REGISTER'],
+      ['Period','Category','Planned Amount INR','Status','Revision'],
+      ...data.budgets.map(x => [x.budget_period,x.category_name,(Number(x.approved_amount_paise ?? 0)/100).toFixed(2),x.status,x.revision_no]),
+    ]
+    const csv = sections.map(row => row.map(csvCell).join(',')).join('\r\n')
     const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = 'NHYM-2026-Finance-Expenses.csv'; a.click()
+    const a = document.createElement('a'); a.href = url; a.download = 'NHYM-2026-Finance-Report.csv'; a.click()
     URL.revokeObjectURL(url)
+  }
+
+  function exportPdf() {
+    if (!data) return
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const left = 14
+    let y = 16
+    const addLine = (text: string, size = 9, bold = false) => {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal')
+      doc.setFontSize(size)
+      const lines = doc.splitTextToSize(text, pageWidth - left * 2)
+      for (const line of lines) {
+        if (y > pageHeight - 15) { doc.addPage(); y = 16 }
+        doc.text(line, left, y)
+        y += size * 0.48 + 2
+      }
+    }
+    const section = (title: string) => { y += 3; addLine(title, 12, true); y += 1 }
+    addLine('NHYM 2026 — FINANCE REPORT', 16, true)
+    addLine(`Generated: ${new Date().toLocaleString('en-IN')}`, 8)
+    y += 2
+    section('SUMMARY')
+    addLine(`Total recorded income: ${money(totals.income)}`)
+    addLine(`Total recorded payments: ${money(totals.paid)}`)
+    addLine(`Net cash movement: ${money(totals.net)}`)
+    addLine('Note: Net cash movement is not a verified bank or cash balance.', 8)
+    section('EXPENSE REGISTER')
+    for (const x of data.expenses) {
+      addLine(`${x.expense_no} | ${x.expense_date} | ${x.category_name}`, 8, true)
+      addLine(`${x.vendor_name} — ${x.description}`, 8)
+      addLine(`Requested ${money(x.requested_amount_paise)} | Approved ${money(x.approved_amount_paise)} | Paid ${money(x.paid_amount_paise)} | ${x.approval_status}/${x.payment_status}`, 8)
+      y += 1
+    }
+    section('INCOME REGISTER')
+    for (const x of data.incomes) {
+      addLine(`${String(x.income_no ?? '')} | ${String(x.received_at ?? '')} | ${String(x.income_type ?? '')} | ${money(Number(x.amount_paise ?? 0))}`, 8)
+      addLine(`Received from: ${String(x.received_from ?? '')} | Mode: ${String(x.payment_mode ?? '')} | Receipt: ${String(x.receipt_no ?? '—')}`, 8)
+    }
+    section('BUDGET REGISTER')
+    for (const x of data.budgets) {
+      addLine(`${String(x.budget_period ?? '')} | ${String(x.category_name ?? '')} | Planned: ${money(Number(x.approved_amount_paise ?? 0))} | ${String(x.status ?? '')} | Revision ${String(x.revision_no ?? '')}`, 8)
+    }
+    const pageCount = doc.getNumberOfPages()
+    for (let page = 1; page <= pageCount; page++) {
+      doc.setPage(page); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+      doc.text(`NHYM 2026 Finance Report • Page ${page} of ${pageCount}`, pageWidth / 2, pageHeight - 7, { align: 'center' })
+    }
+    doc.save('NHYM-2026-Finance-Report.pdf')
   }
 
   if (!token) return <main className="min-h-screen bg-background px-4 py-12 text-foreground"><div className="mx-auto max-w-md rounded-2xl border bg-card p-6 shadow-sm">
@@ -225,7 +295,7 @@ export default function Finance() {
 
   return <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"><div className="mx-auto max-w-7xl">
     <div className="flex flex-wrap items-center justify-between gap-4"><div><Link to="/admin" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><ArrowLeft size={16}/> Admin dashboard</Link><p className="mt-4 text-xs font-semibold uppercase tracking-[.2em] text-primary">NHYM 2026 · Finance & Accounts</p><h1 className="mt-1 text-3xl font-semibold">Finance Management</h1><p className="mt-2 text-sm text-muted-foreground">Income, expenses, approvals and cash/bank records.</p></div>
-      <div className="flex flex-wrap gap-2"><button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" disabled={busy}><RefreshCw size={16}/> Refresh</button><button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><FileSpreadsheet size={16}/> Export CSV</button><button onClick={() => setShowBudgetForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Add Budget</button><button onClick={() => setShowIncomeForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Record Income</button><button onClick={() => setShowForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"><Plus size={16}/> Add Expense</button><button onClick={() => {sessionStorage.removeItem('nhym_admin_token');setToken('');setData(null)}} className="rounded-lg border px-3 py-2 text-sm">Logout</button></div>
+      <div className="flex flex-wrap gap-2"><button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" disabled={busy}><RefreshCw size={16}/> Refresh</button><button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><FileSpreadsheet size={16}/> Export CSV</button><button onClick={exportPdf} disabled={!data} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><FileText size={16}/> Export PDF</button><button onClick={() => setShowBudgetForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Add Budget</button><button onClick={() => setShowIncomeForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Record Income</button><button onClick={() => setShowForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"><Plus size={16}/> Add Expense</button><button onClick={() => {sessionStorage.removeItem('nhym_admin_token');setToken('');setData(null)}} className="rounded-lg border px-3 py-2 text-sm">Logout</button></div>
     </div>
     {error && <p role="alert" className="mt-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
     {notice && <p role="status" className="mt-5 rounded-lg bg-emerald-500/10 p-3 text-sm">{notice}</p>}
@@ -263,6 +333,6 @@ export default function Finance() {
     </section>
     <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4"><h2 className="font-semibold">Budget Register</h2><p className="text-sm text-muted-foreground">Category-wise draft, approved and closed budgets</p></div><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr>{['Period','Category','Budget Amount','Status','Actions'].map(x=><th key={x} className="px-4 py-3 font-medium">{x}</th>)}</tr></thead><tbody>{(data?.budgets || []).map((b,i)=><tr key={String(b.id ?? i)} className="border-t"><td className="px-4 py-3">{String(b.budget_period ?? '')}</td><td className="px-4 py-3">{String(b.category_name ?? '')}</td><td className="px-4 py-3">{money(Number(b.approved_amount_paise ?? 0))}</td><td className="px-4 py-3">{String(b.status ?? '')}</td><td className="px-4 py-3"><div className="flex gap-2">{b.status==='DRAFT' && <button disabled={busy} onClick={()=>void decideBudget(b,'APPROVED')} className="rounded-md border px-2 py-1 text-xs">Approve</button>}{b.status==='APPROVED' && <button disabled={busy} onClick={()=>void decideBudget(b,'CLOSED')} className="rounded-md border px-2 py-1 text-xs">Close</button>}</div></td></tr>)}{(!data || data.budgets.length===0) && <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No budgets created yet.</td></tr>}</tbody></table></div></section>
     <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4"><h2 className="font-semibold">Income Register</h2><p className="text-sm text-muted-foreground">Recent income receipts (up to 200 records)</p></div><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr>{['Income ID','Date','Type','Received From','Amount','Mode','Receipt No.'].map(x=><th key={x} className="px-4 py-3 font-medium">{x}</th>)}</tr></thead><tbody>{(data?.incomes || []).map((x,i)=><tr key={String(x.income_no ?? i)} className="border-t"><td className="px-4 py-3 font-medium">{String(x.income_no ?? '')}</td><td className="px-4 py-3">{String(x.received_at ?? '')}</td><td className="px-4 py-3">{String(x.income_type ?? '')}</td><td className="px-4 py-3">{String(x.received_from ?? '')}</td><td className="px-4 py-3">{money(Number(x.amount_paise ?? 0))}</td><td className="px-4 py-3">{String(x.payment_mode ?? '')}</td><td className="px-4 py-3">{String(x.receipt_no ?? '—')}</td></tr>)}{(!data || data.incomes.length===0) && <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No income records yet.</td></tr>}</tbody></table></div></section>
-    <p className="mt-4 text-xs text-muted-foreground">Current phase: income entry, expense requests, approvals, payment recording and expense CSV export. Secure bill upload, individual role accounts, budget entry and PDF reports remain to be completed before production use.</p>
+    <p className="mt-4 text-xs text-muted-foreground">CSV and PDF reports include summary totals plus the currently loaded expense, income and budget registers. Records are limited to the dashboard API response (up to 500 expenses and 200 income/budget records); secure bill upload and individual finance-role authentication remain prerequisites for production use.</p>
   </div></main>
 }
