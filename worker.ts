@@ -361,30 +361,35 @@ if (file.size > 20 * 1024 * 1024) {
   return json({ error: 'Image must be 20 MB or smaller' }, 400)
 }
 
-// Gallery photos and finance documents share the same 10 GB R2 storage allowance.
+// Atomically reserve space shared by gallery photos and finance documents.
 const MAX_SHARED_STORAGE = 10 * 1024 * 1024 * 1024
-
-const storageResult = await env.DB.prepare(`
-  SELECT
-    (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
-    (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) AS total_bytes
-`).first<{ total_bytes: number }>()
-
-const currentStorageBytes = Number(storageResult?.total_bytes ?? 0)
-const newTotalStorageBytes = currentStorageBytes + file.size
-
-if (newTotalStorageBytes > MAX_SHARED_STORAGE) {
-  const availableBytes = Math.max(
-    0,
-    MAX_SHARED_STORAGE - currentStorageBytes
-  )
-
+const storageReservationId = crypto.randomUUID()
+const reservationBatch = await env.DB.batch([
+  env.DB.prepare("DELETE FROM finance_storage_reservations WHERE expires_at <= CURRENT_TIMESTAMP"),
+  env.DB.prepare(`
+    INSERT INTO finance_storage_reservations (id, size_bytes, expires_at)
+    SELECT ?, ?, datetime('now', '+1 hour')
+    WHERE
+      (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+      (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
+      (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) +
+      ? <= ?
+  `).bind(storageReservationId, file.size, file.size, MAX_SHARED_STORAGE),
+])
+if (Number(reservationBatch[1]?.meta?.changes ?? 0) !== 1) {
+  const storageResult = await env.DB.prepare(`
+    SELECT
+      (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+      (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
+      (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) AS total_bytes
+  `).first<{ total_bytes: number }>()
+  const usedBytes = Number(storageResult?.total_bytes ?? 0)
   return json(
     {
       error: 'Shared R2 storage limit reached.',
       message: 'This upload would exceed the shared 10 GB gallery and finance document storage limit.',
-      currentStorageBytes,
-      availableBytes,
+      currentStorageBytes: usedBytes,
+      availableBytes: Math.max(0, MAX_SHARED_STORAGE - usedBytes),
       fileSize: file.size,
       maxStorageBytes: MAX_SHARED_STORAGE,
     },
@@ -402,42 +407,43 @@ if (newTotalStorageBytes > MAX_SHARED_STORAGE) {
   const r2Key =
     `gallery/${Date.now()}-${crypto.randomUUID()}.${extension}`
 
-  await env.GALLERY.put(r2Key, file.stream(), {
-    httpMetadata: {
-      contentType: file.type,
-    },
-  })
+  try {
+    await env.GALLERY.put(r2Key, file.stream(), {
+      httpMetadata: {
+        contentType: file.type,
+      },
+    })
+  } catch (error) {
+    try { await env.DB.prepare('DELETE FROM finance_storage_reservations WHERE id = ?').bind(storageReservationId).run() } catch (cleanupError) {
+      console.error('Gallery storage reservation cleanup failed after R2 upload error', { storageReservationId, cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) })
+    }
+    throw error
+  }
 
   try {
-    const result = await env.DB.prepare(`
-      INSERT INTO gallery_photos (
-        r2_key,
-        title,
-        caption,
-        category,
-        content_type,
-        file_size,
-        is_published,
-        display_order,
-        created_at,
-        updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    `)
-      .bind(
-        r2Key,
-        title,
-        caption || null,
-        category,
-        file.type,
-        file.size
-      )
-      .run()
+    const result = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO gallery_photos (
+          r2_key,
+          title,
+          caption,
+          category,
+          content_type,
+          file_size,
+          is_published,
+          display_order,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `).bind(r2Key, title, caption || null, category, file.type, file.size),
+      env.DB.prepare('DELETE FROM finance_storage_reservations WHERE id = ?').bind(storageReservationId),
+    ])
 
     return json(
       {
         success: true,
-        id: result.meta.last_row_id,
+        id: result[0]?.meta?.last_row_id,
         title,
         category,
         imageUrl: `/api/gallery/images/${encodeURIComponent(r2Key)}`,
@@ -445,10 +451,15 @@ if (newTotalStorageBytes > MAX_SHARED_STORAGE) {
       201
     )
   } catch (error) {
-    // Avoid leaving an orphaned R2 object if the D1 insert fails.
-    await env.GALLERY.delete(r2Key)
+    // Best-effort cleanup; preserve reservation if R2 cleanup fails so the quota stays conservatively accounted for until expiry.
+    try {
+      await env.GALLERY.delete(r2Key)
+      await env.DB.prepare('DELETE FROM finance_storage_reservations WHERE id = ?').bind(storageReservationId).run()
+    } catch (cleanupError) {
+      console.error('Gallery upload cleanup failed', { storageReservationId, cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) })
+    }
     throw error
-  }  
+  }
 }
 // ADMIN GALLERY — list all photos
 if (url.pathname === '/api/admin/gallery' && request.method === 'GET') {
