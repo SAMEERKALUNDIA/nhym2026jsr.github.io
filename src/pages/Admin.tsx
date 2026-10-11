@@ -2610,7 +2610,7 @@ if (!authenticated) {
       </div>
     </div>
 
-    <div className="mt-8 grid gap-4 md:grid-cols-2">
+    <div className="mt-8 grid gap-4 md:grid-cols-3">
       <button
         type="button"
         onClick={() => { window.location.href = '/admin/participants' }}
@@ -2630,6 +2630,17 @@ if (!authenticated) {
         <div className="text-xl font-semibold">Manage Gallery →</div>
         <p className="mt-2 text-sm text-muted-foreground">
           Upload, review and delete NHYM gallery photos and monitor storage usage.
+        </p>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => { window.location.href = '/admin/finance' }}
+        className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40"
+      >
+        <div className="text-xl font-semibold">Finance Management →</div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Record expenses, submit approval requests, record payments and export the finance register.
         </p>
       </button>
     </div>
