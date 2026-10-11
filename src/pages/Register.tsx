@@ -138,6 +138,36 @@ const DECLARATIONS: Declaration[] = [
   },
 ]
 
+type TesseractWorker = {
+  recognize: (image: File) => Promise<{ data: { text: string } }>
+  terminate: () => Promise<unknown>
+}
+type TesseractApi = {
+  createWorker: (language: string) => Promise<TesseractWorker>
+}
+declare global {
+  interface Window { Tesseract?: TesseractApi }
+}
+function loadTesseract(): Promise<TesseractApi> {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract)
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-nhym-tesseract]')
+    const script = existing ?? document.createElement('script')
+    const fail = () => reject(new Error('OCR engine could not be loaded. Please enter the transaction ID manually.'))
+    script.addEventListener('error', fail, { once: true })
+    script.addEventListener('load', () => {
+      if (window.Tesseract) resolve(window.Tesseract)
+      else fail()
+    }, { once: true })
+    if (!existing) {
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'
+      script.async = true
+      script.dataset.nhymTesseract = 'true'
+      document.head.appendChild(script)
+    }
+  })
+}
+
 const NO_DECLARATIONS: Record<DeclarationId, boolean> = {
   info: false,
   payment: false,
@@ -243,6 +273,8 @@ export default function Register() {
   const [paymentReference, setPaymentReference] = useState('')
   const [registrationId, setRegistrationId] = useState('')
   const [sending, setSending] = useState(false)
+  const [ocrBusy, setOcrBusy] = useState(false)
+  const [ocrMessage, setOcrMessage] = useState('')
 
   /* The declarations are one gate for the whole submission, so they are checked
      once and the ones still unticked are named back. */
@@ -370,6 +402,45 @@ if (!row.dob.trim()) {
     else if (problem) setFormError(problem)
     else setFormError('A few entries still need attention. They are marked below.')
     return ok
+  }
+
+  async function readPaymentScreenshot(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setOcrMessage('Please select an image file.')
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setOcrMessage('Choose an image smaller than 15 MB.')
+      return
+    }
+    setOcrBusy(true)
+    setOcrMessage('Reading screenshot in this browser…')
+    let worker: TesseractWorker | undefined
+    try {
+      const tesseract = await loadTesseract()
+      worker = await tesseract.createWorker('eng')
+      const result = await worker.recognize(file)
+      const text = result.data.text.toUpperCase()
+      const labelled = text.match(/(?:UTR|UPI\s*(?:REF(?:ERENCE)?|TXN|TRANSACTION)?\s*(?:ID|NO)?|TRANSACTION\s*(?:ID|NO|REF(?:ERENCE)?))[^A-Z0-9]{0,30}([A-Z0-9]{8,35})/i)
+      const candidates = text.match(/\b[A-Z0-9]{8,35}\b/g) ?? []
+      const candidate = labelled?.[1] ?? candidates.find((value) =>
+        /\d/.test(value) && !/^(PAYMENT|TRANSACTION|SUCCESSFUL|REFERENCE|GOOGLEPAY|PHONEPE|PAYTM|AMAZONPAY)$/.test(value)
+      )
+      if (candidate) {
+        setPaymentReference(candidate.replace(/\s+/g, '').toUpperCase())
+        setOcrMessage('Transaction reference detected. Please verify it against your payment receipt before submitting.')
+      } else {
+        setOcrMessage('Could not confidently identify a transaction ID. Please enter it manually from the receipt.')
+      }
+    } catch (error) {
+      setOcrMessage(error instanceof Error ? error.message : 'OCR failed. Please enter the transaction ID manually.')
+    } finally {
+      if (worker) await worker.terminate().catch(() => undefined)
+      setOcrBusy(false)
+    }
   }
 
   async function submit(event: React.FormEvent) {
@@ -924,7 +995,7 @@ if (!row.dob.trim()) {
                       <p className="max-w-lg text-sm text-muted-foreground">Pay the total using the bank/UPI details shown on this page, then enter the reference below. The committee will verify it before approval.</p>
                       <div className="mt-4 grid gap-4 sm:grid-cols-2">
                         <div><Label>Payment method</Label><Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent></Select></div>
-                        <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /><p className="mt-2 text-xs text-muted-foreground">Each payment reference can be used for only one registration. Enter it exactly as shown in your payment receipt.</p></div>
+                        <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /><p className="mt-2 text-xs text-muted-foreground">Each payment reference can be used for only one registration. Enter it exactly as shown in your payment receipt.</p><Label htmlFor="payment-screenshot" className="mt-4 block">Read from payment screenshot (optional)</Label><Input id="payment-screenshot" type="file" accept="image/*" disabled={ocrBusy} onChange={readPaymentScreenshot} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" /><p className="mt-2 text-xs text-muted-foreground">OCR runs in your browser. The screenshot is not uploaded or saved. Please check the detected reference yourself.</p>{ocrMessage && <p role="status" className="mt-2 text-xs text-muted-foreground">{ocrBusy ? 'Processing… ' : ''}{ocrMessage}</p>}</div>
                       </div>
                     </fieldset>
 
