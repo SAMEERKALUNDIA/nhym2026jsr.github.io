@@ -11,7 +11,7 @@ type Expense = {
 type Dashboard = {
   totalIncomePaise: number; totalPaidPaise: number; pendingApprovalCount: number
   unpaidCount: number; categories: { id: string; name: string; category_type: string }[]
-  expenses: Expense[]; incomes: Array<Record<string, unknown>>; budgets: Array<Record<string, unknown>>
+  expenses: Expense[]; incomes: Array<Record<string, unknown>>; budgets: Array<Record<string, unknown>>; documents: Array<Record<string, unknown>>
 }
 const money = (paise: number | null | undefined) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(paise || 0) / 100)
 const today = new Date().toISOString().slice(0, 10)
@@ -205,6 +205,43 @@ export default function Finance() {
     finally { setBusy(false) }
   }
 
+  async function uploadDocument(file: File, target: { expenseId?: string; incomeId?: string; documentType: string }) {
+    setError(''); setNotice('')
+    if (file.size > 20 * 1024 * 1024) { setError('File 20 MB se chhoti ya barabar honi chahiye.'); return }
+    setBusy(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('documentType', target.documentType)
+      if (target.expenseId) form.append('expenseId', target.expenseId)
+      if (target.incomeId) form.append('incomeId', target.incomeId)
+      const response = await fetch('/api/finance/documents', { method: 'POST', headers: { authorization: \`Bearer \${token}\` }, body: form })
+      const result = await response.json() as { error?: string; fileName?: string }
+      if (!response.ok) throw new Error(result.error || 'Document upload nahi hua.')
+      setNotice(\`Document upload hua: \${result.fileName || file.name}\`)
+      await load()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Document upload nahi hua.') }
+    finally { setBusy(false) }
+  }
+
+  async function downloadDocument(documentRecord: Record<string, unknown>) {
+    setError('')
+    try {
+      const response = await fetch(\`/api/finance/documents/\${String(documentRecord.id)}\`, { headers: { authorization: \`Bearer \${token}\` } })
+      if (!response.ok) {
+        const result = await response.json() as { error?: string }
+        throw new Error(result.error || 'Document download nahi hua.')
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = String(documentRecord.file_name || 'finance-document')
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Document download nahi hua.') }
+  }
+
   function exportCsv() {
     if (!data) return
     const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`
@@ -271,7 +308,7 @@ export default function Finance() {
     section('INCOME REGISTER')
     for (const x of data.incomes) {
       addLine(`${String(x.income_no ?? '')} | ${String(x.received_at ?? '')} | ${String(x.income_type ?? '')} | ${money(Number(x.amount_paise ?? 0))}`, 8)
-      addLine(`Received from: ${String(x.received_from ?? '')} | Mode: ${String(x.payment_mode ?? '')} | Receipt: ${String(x.receipt_no ?? '—')}`, 8)
+      addLine(`Received from: ${String(x.received_from ?? '')} | Mode: ${String(x.payment_mode ?? '')} | Receipt: $<div className="flex flex-col gap-2"><span>{String(x.receipt_no ?? '—')}</span>{String(x.id ?? '') && <label className="cursor-pointer rounded-md border px-2 py-1 text-center text-xs">Attach Receipt<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" className="hidden" disabled={busy} onChange={e=>{const input=e.currentTarget;const file=input.files?.[0];input.value="";if(file)void uploadDocument(file,{incomeId:String(x.id),documentType:"RECEIPT"})}} /></label>}</div>`, 8)
     }
     section('BUDGET REGISTER')
     for (const x of data.budgets) {
@@ -327,12 +364,13 @@ export default function Finance() {
     </form>}
     <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="flex items-center justify-between border-b p-4"><div><h2 className="font-semibold">Expense Register</h2><p className="text-sm text-muted-foreground">Recent expenses, approval and payment status</p></div><span className="text-sm text-muted-foreground">{data?.expenses.length ?? 0} records</span></div>
       <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr>{['Expense ID','Date / Category','Vendor & Purpose','Requested','Approved','Paid','Status','Actions'].map(x=><th key={x} className="px-4 py-3 font-medium">{x}</th>)}</tr></thead><tbody>
-        {(data?.expenses || []).map(x=><tr key={x.id} className="border-t align-top"><td className="px-4 py-3 font-medium">{x.expense_no}</td><td className="px-4 py-3">{x.expense_date}<p className="text-xs text-muted-foreground">{x.category_name}</p></td><td className="max-w-[240px] px-4 py-3"><p className="font-medium">{x.vendor_name}</p><p className="mt-1 whitespace-normal text-xs text-muted-foreground">{x.description}</p></td><td className="px-4 py-3">{money(x.requested_amount_paise)}</td><td className="px-4 py-3">{x.approved_amount_paise == null?'—':money(x.approved_amount_paise)}</td><td className="px-4 py-3">{money(x.paid_amount_paise)}</td><td className="px-4 py-3"><span className="rounded-full bg-muted px-2 py-1 text-xs">{x.approval_status}</span><p className="mt-2 text-xs text-muted-foreground">{x.payment_status}</p></td><td className="px-4 py-3"><div className="flex flex-col gap-2">{x.approval_status==='PENDING' && <><button disabled={busy} onClick={()=>void decide(x,'APPROVED')} className="rounded-md border px-2 py-1 text-xs">Approve</button><button disabled={busy} onClick={()=>void decide(x,'REJECTED')} className="rounded-md border border-destructive/30 px-2 py-1 text-xs text-destructive">Reject</button></>}{x.approval_status==='APPROVED' && x.payment_status!=='PAID' && <button disabled={busy} onClick={()=>void recordPayment(x)} className="rounded-md border px-2 py-1 text-xs">Record Payment</button>}</div></td></tr>)}
+        {(data?.expenses || []).map(x=><tr key={x.id} className="border-t align-top"><td className="px-4 py-3 font-medium">{x.expense_no}</td><td className="px-4 py-3">{x.expense_date}<p className="text-xs text-muted-foreground">{x.category_name}</p></td><td className="max-w-[240px] px-4 py-3"><p className="font-medium">{x.vendor_name}</p><p className="mt-1 whitespace-normal text-xs text-muted-foreground">{x.description}</p></td><td className="px-4 py-3">{money(x.requested_amount_paise)}</td><td className="px-4 py-3">{x.approved_amount_paise == null?'—':money(x.approved_amount_paise)}</td><td className="px-4 py-3">{money(x.paid_amount_paise)}</td><td className="px-4 py-3"><span className="rounded-full bg-muted px-2 py-1 text-xs">{x.approval_status}</span><p className="mt-2 text-xs text-muted-foreground">{x.payment_status}</p></td><td className="px-4 py-3"><div className="flex flex-col gap-2">{x.approval_status==='PENDING' && <><button disabled={busy} onClick={()=>void decide(x,'APPROVED')} className="rounded-md border px-2 py-1 text-xs">Approve</button><button disabled={busy} onClick={()=>void decide(x,'REJECTED')} className="rounded-md border border-destructive/30 px-2 py-1 text-xs text-destructive">Reject</button></>}{x.approval_status==='APPROVED' && x.payment_status!=='PAID' && <button disabled={busy} onClick={()=>void recordPayment(x)} className="rounded-md border px-2 py-1 text-xs">Record Payment</button>}<label className="cursor-pointer rounded-md border px-2 py-1 text-center text-xs">Attach Bill<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" className="hidden" disabled={busy} onChange={e=>{const input=e.currentTarget;const file=input.files?.[0];input.value="";if(file)void uploadDocument(file,{expenseId:x.id,documentType:"BILL"})}} /></label></div></td></tr>)}
         {(!data || data.expenses.length===0) && <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">{busy?'Loading finance records…':'No expenses recorded yet. Add your first expense request.'}</td></tr>}
       </tbody></table></div>
     </section>
     <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4"><h2 className="font-semibold">Budget Register</h2><p className="text-sm text-muted-foreground">Category-wise draft, approved and closed budgets</p></div><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr>{['Period','Category','Budget Amount','Status','Actions'].map(x=><th key={x} className="px-4 py-3 font-medium">{x}</th>)}</tr></thead><tbody>{(data?.budgets || []).map((b,i)=><tr key={String(b.id ?? i)} className="border-t"><td className="px-4 py-3">{String(b.budget_period ?? '')}</td><td className="px-4 py-3">{String(b.category_name ?? '')}</td><td className="px-4 py-3">{money(Number(b.approved_amount_paise ?? 0))}</td><td className="px-4 py-3">{String(b.status ?? '')}</td><td className="px-4 py-3"><div className="flex gap-2">{b.status==='DRAFT' && <button disabled={busy} onClick={()=>void decideBudget(b,'APPROVED')} className="rounded-md border px-2 py-1 text-xs">Approve</button>}{b.status==='APPROVED' && <button disabled={busy} onClick={()=>void decideBudget(b,'CLOSED')} className="rounded-md border px-2 py-1 text-xs">Close</button>}</div></td></tr>)}{(!data || data.budgets.length===0) && <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No budgets created yet.</td></tr>}</tbody></table></div></section>
     <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4"><h2 className="font-semibold">Income Register</h2><p className="text-sm text-muted-foreground">Recent income receipts (up to 200 records)</p></div><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr>{['Income ID','Date','Type','Received From','Amount','Mode','Receipt No.'].map(x=><th key={x} className="px-4 py-3 font-medium">{x}</th>)}</tr></thead><tbody>{(data?.incomes || []).map((x,i)=><tr key={String(x.income_no ?? i)} className="border-t"><td className="px-4 py-3 font-medium">{String(x.income_no ?? '')}</td><td className="px-4 py-3">{String(x.received_at ?? '')}</td><td className="px-4 py-3">{String(x.income_type ?? '')}</td><td className="px-4 py-3">{String(x.received_from ?? '')}</td><td className="px-4 py-3">{money(Number(x.amount_paise ?? 0))}</td><td className="px-4 py-3">{String(x.payment_mode ?? '')}</td><td className="px-4 py-3">{String(x.receipt_no ?? '—')}</td></tr>)}{(!data || data.incomes.length===0) && <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No income records yet.</td></tr>}</tbody></table></div></section>
+    <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4"><h2 className="font-semibold">Bill & Receipt Documents</h2><p className="text-sm text-muted-foreground">Private documents stored in R2; downloads require authenticated finance access. PDF, JPG, PNG and WebP up to 20 MB.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr>{['Document','Related Record','Type','Size','Uploaded','Action'].map(x=><th key={x} className="px-4 py-3 font-medium">{x}</th>)}</tr></thead><tbody>{(data?.documents || []).map((d,i)=><tr key={String(d.id ?? i)} className="border-t"><td className="max-w-[240px] break-words px-4 py-3">{String(d.file_name ?? '')}</td><td className="px-4 py-3">{String(d.expense_no ?? d.income_no ?? '—')}</td><td className="px-4 py-3">{String(d.document_type ?? '')}</td><td className="px-4 py-3">{(Number(d.size_bytes ?? 0)/1024/1024).toFixed(2)} MB</td><td className="px-4 py-3">{String(d.uploaded_at ?? '')}</td><td className="px-4 py-3"><button disabled={busy} onClick={()=>void downloadDocument(d)} className="rounded-md border px-2 py-1 text-xs">Download</button></td></tr>)}{(!data || data.documents.length===0) && <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No documents uploaded yet.</td></tr>}</tbody></table></div></section>
     <p className="mt-4 text-xs text-muted-foreground">CSV and PDF reports include summary totals plus the currently loaded expense, income and budget registers. Records are limited to the dashboard API response (up to 500 expenses and 200 income/budget records); secure bill upload and individual finance-role authentication remain prerequisites for production use.</p>
   </div></main>
 }
