@@ -810,7 +810,8 @@ if (
           UPDATE registrations
           SET status = ?,
               updated_at = ?,
-              rejection_email_sent_at = ?
+              rejection_email_sent_at = ?,
+              payment_reference = ''
           WHERE id = ?
         `)
           .bind(body.status, updatedAt, updatedAt, id)
@@ -819,10 +820,11 @@ if (
         await env.DB.prepare(`
           UPDATE registrations
           SET status = ?,
-              updated_at = ?
+              updated_at = ?,
+              payment_reference = CASE WHEN ? = 'REJECTED' THEN '' ELSE payment_reference END
           WHERE id = ?
         `)
-          .bind(body.status, updatedAt, id)
+          .bind(body.status, updatedAt, body.status, id)
           .run()
       }
 
