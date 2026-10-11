@@ -830,7 +830,7 @@ async function exportRegistrationsPdf() {
   let logoData: string | null = null
 
   try {
-    const response = await fetch('/nhym-logo.jpeg')
+    const response = await fetch('/nhym-logo2.jpg')
 
     if (response.ok) {
       const blob = await response.blob()
