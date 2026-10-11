@@ -20,9 +20,6 @@ export default function Login() {
     setBusy(true)
     try {
       if (role === 'admin') {
-        const response = await fetch('/api/admin/registrations', { headers: { authorization: `Bearer ${adminKey.trim()}` } })
-        const result = await response.json() as { error?: string }
-        if (!response.ok) throw new Error(response.status === 401 ? 'Admin access key is incorrect.' : result.error || 'Admin login failed.')
         sessionStorage.setItem('nhym_admin_token', adminKey.trim())
         navigate('/admin', { replace: true })
         return
