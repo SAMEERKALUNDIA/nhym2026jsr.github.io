@@ -109,6 +109,33 @@ export default function Finance() {
     finally { setBusy(false) }
   }
 
+  async function recordPayment(expense: Expense) {
+    const amountText = window.prompt(`Payment amount in ₹ (remaining approved: ₹${((Number(expense.approved_amount_paise || 0) - Number(expense.paid_amount_paise || 0)) / 100).toFixed(2)}):`, ((Number(expense.approved_amount_paise || 0) - Number(expense.paid_amount_paise || 0)) / 100).toFixed(2))
+    if (amountText === null) return
+    const amountPaise = Math.round(Number(amountText) * 100)
+    if (!Number.isSafeInteger(amountPaise) || amountPaise <= 0) { setError('Valid payment amount bhariye.'); return }
+    const mode = window.prompt('Payment mode type karein: UPI, BANK_TRANSFER, ya CASH', 'UPI')
+    if (mode === null) return
+    const paymentMode = mode.trim().toUpperCase()
+    if (!['UPI','BANK_TRANSFER','CASH'].includes(paymentMode)) { setError('Payment mode UPI, BANK_TRANSFER ya CASH hona chahiye.'); return }
+    const referenceNo = paymentMode === 'CASH' ? '' : (window.prompt('UPI/bank transaction reference number:', '') || '').trim()
+    if (paymentMode !== 'CASH' && !referenceNo) { setError('UPI/bank reference number required hai.'); return }
+    const remarks = window.prompt('Payment note (optional):', '') || ''
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const response = await fetch(`/api/finance/expenses/${expense.id}/payments`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ amountPaise, paymentMode, paidAt: today, referenceNo, remarks }),
+      })
+      const result = await response.json() as { error?: string; paymentNo?: string; paymentStatus?: string }
+      if (!response.ok) throw new Error(result.error || 'Payment record nahi hua.')
+      setNotice(`Payment ${result.paymentNo} record hua. Status: ${result.paymentStatus}.`)
+      await load()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Payment record nahi hua.') }
+    finally { setBusy(false) }
+  }
+
   function exportCsv() {
     if (!data) return
     const rows = [['Expense ID','Category','Vendor','Description','Date','Requested INR','Approved INR','Paid INR','Approval Status','Payment Status'],
@@ -149,10 +176,10 @@ export default function Finance() {
     </form>}
     <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="flex items-center justify-between border-b p-4"><div><h2 className="font-semibold">Expense Register</h2><p className="text-sm text-muted-foreground">Recent expenses, approval and payment status</p></div><span className="text-sm text-muted-foreground">{data?.expenses.length ?? 0} records</span></div>
       <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr>{['Expense ID','Date / Category','Vendor & Purpose','Requested','Approved','Paid','Status','Actions'].map(x=><th key={x} className="px-4 py-3 font-medium">{x}</th>)}</tr></thead><tbody>
-        {(data?.expenses || []).map(x=><tr key={x.id} className="border-t align-top"><td className="px-4 py-3 font-medium">{x.expense_no}</td><td className="px-4 py-3">{x.expense_date}<p className="text-xs text-muted-foreground">{x.category_name}</p></td><td className="max-w-[240px] px-4 py-3"><p className="font-medium">{x.vendor_name}</p><p className="mt-1 whitespace-normal text-xs text-muted-foreground">{x.description}</p></td><td className="px-4 py-3">{money(x.requested_amount_paise)}</td><td className="px-4 py-3">{x.approved_amount_paise == null?'—':money(x.approved_amount_paise)}</td><td className="px-4 py-3">{money(x.paid_amount_paise)}</td><td className="px-4 py-3"><span className="rounded-full bg-muted px-2 py-1 text-xs">{x.approval_status}</span><p className="mt-2 text-xs text-muted-foreground">{x.payment_status}</p></td><td className="px-4 py-3"><div className="flex flex-col gap-2">{x.approval_status==='PENDING' && <><button disabled={busy} onClick={()=>void decide(x,'APPROVED')} className="rounded-md border px-2 py-1 text-xs">Approve</button><button disabled={busy} onClick={()=>void decide(x,'REJECTED')} className="rounded-md border border-destructive/30 px-2 py-1 text-xs text-destructive">Reject</button></>}{x.approval_status==='APPROVED' && x.payment_status!=='PAID' && <button disabled className="rounded-md border px-2 py-1 text-xs opacity-50" title="Payment entry will be enabled in the next implementation step">Record Payment (next)</button>}</div></td></tr>)}
+        {(data?.expenses || []).map(x=><tr key={x.id} className="border-t align-top"><td className="px-4 py-3 font-medium">{x.expense_no}</td><td className="px-4 py-3">{x.expense_date}<p className="text-xs text-muted-foreground">{x.category_name}</p></td><td className="max-w-[240px] px-4 py-3"><p className="font-medium">{x.vendor_name}</p><p className="mt-1 whitespace-normal text-xs text-muted-foreground">{x.description}</p></td><td className="px-4 py-3">{money(x.requested_amount_paise)}</td><td className="px-4 py-3">{x.approved_amount_paise == null?'—':money(x.approved_amount_paise)}</td><td className="px-4 py-3">{money(x.paid_amount_paise)}</td><td className="px-4 py-3"><span className="rounded-full bg-muted px-2 py-1 text-xs">{x.approval_status}</span><p className="mt-2 text-xs text-muted-foreground">{x.payment_status}</p></td><td className="px-4 py-3"><div className="flex flex-col gap-2">{x.approval_status==='PENDING' && <><button disabled={busy} onClick={()=>void decide(x,'APPROVED')} className="rounded-md border px-2 py-1 text-xs">Approve</button><button disabled={busy} onClick={()=>void decide(x,'REJECTED')} className="rounded-md border border-destructive/30 px-2 py-1 text-xs text-destructive">Reject</button></>}{x.approval_status==='APPROVED' && x.payment_status!=='PAID' && <button disabled={busy} onClick={()=>void recordPayment(x)} className="rounded-md border px-2 py-1 text-xs">Record Payment</button>}</div></td></tr>)}
         {(!data || data.expenses.length===0) && <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">{busy?'Loading finance records…':'No expenses recorded yet. Add your first expense request.'}</td></tr>}
       </tbody></table></div>
     </section>
-    <p className="mt-4 text-xs text-muted-foreground">Initial implementation: approval and expense register. Payment entry, income entry, secure bill upload, role-specific accounts and PDF reports will be added in the next phases before production use.</p>
+    <p className="mt-4 text-xs text-muted-foreground">Initial implementation: expense requests, approval decisions, payment recording and CSV export. Income entry, secure bill upload, individual role accounts and PDF reports remain to be completed before production use.</p>
   </div></main>
 }
