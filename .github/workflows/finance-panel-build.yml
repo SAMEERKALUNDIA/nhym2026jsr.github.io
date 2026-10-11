@@ -70,6 +70,13 @@ jobs:
           except sqlite3.IntegrityError:
               pass
           db.execute("INSERT INTO finance_expenses (id,expense_no,category_id,vendor_name,description,requested_amount_paise,approved_amount_paise,expense_date,approval_status,created_by) VALUES ('e1','TEST-EXP-1','exp-food','Test Vendor','Migration test',10000,10000,'2026-10-11','APPROVED','u1')")
+          db.execute("INSERT INTO finance_approvals (id,expense_id,decision,approved_amount_paise,decided_by) VALUES ('a1','e1','APPROVED',10000,'u1')")
+          try:
+              db.execute("INSERT INTO finance_approvals (id,expense_id,decision,approved_amount_paise,decided_by) VALUES ('a2','e1','REJECTED',NULL,'u1')")
+              raise AssertionError('Multiple approval decisions for one expense were accepted')
+          except sqlite3.IntegrityError:
+              pass
+
           db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p1','e1','TEST-PAY-1','UPI',6000,'2026-10-11','ABC 123','u1')")
           assert db.execute("SELECT payment_status,final_amount_paise FROM finance_expenses WHERE id='e1'").fetchone() == ('PARTIAL',6000), 'Payment summary trigger did not update partial payment'
           try:
@@ -92,7 +99,7 @@ jobs:
               assert 'expense is not approved' in str(exc), f'Unexpected approval guard failure: {exc}'
           violations = list(db.execute('PRAGMA foreign_key_check'))
           assert not violations, f'Foreign key violations: {violations}'
-          print('Finance migration, roles, normalized references, overpayment/approval triggers, payment summaries and foreign keys passed.')
+          print('Finance migration, roles, normalized references, overpayment/approval triggers, payment summaries, single-decision guard and foreign keys passed.')
           PY
       - name: TypeScript and production build
         run: pnpm run build
