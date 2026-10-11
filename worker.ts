@@ -877,7 +877,8 @@ if (
         if (!object) return financeJson({ error: 'Stored document not found.' }, 404)
         const headers = new Headers()
         headers.set('content-type', record.mime_type || 'application/octet-stream')
-        headers.set('content-disposition', `attachment; filename="${record.file_name.replace(/["\\\\\\r\\n]/g, '_')}"`)
+        const downloadName = record.file_name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200) || 'document'
+        headers.set('content-disposition', `attachment; filename="${downloadName}"`)
         headers.set('cache-control', 'private, no-store')
         headers.set('x-content-type-options', 'nosniff')
         return new Response(object.body, { headers })
