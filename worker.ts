@@ -361,31 +361,32 @@ if (file.size > 20 * 1024 * 1024) {
   return json({ error: 'Image must be 20 MB or smaller' }, 400)
 }
 
-// Maximum total gallery storage: 10 GB
-const MAX_GALLERY_STORAGE = 10 * 1024 * 1024 * 1024
+// Gallery photos and finance documents share the same 10 GB R2 storage allowance.
+const MAX_SHARED_STORAGE = 10 * 1024 * 1024 * 1024
 
 const storageResult = await env.DB.prepare(`
-  SELECT COALESCE(SUM(file_size), 0) AS total_bytes
-  FROM gallery_photos
+  SELECT
+    (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+    (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) AS total_bytes
 `).first<{ total_bytes: number }>()
 
 const currentStorageBytes = Number(storageResult?.total_bytes ?? 0)
 const newTotalStorageBytes = currentStorageBytes + file.size
 
-if (newTotalStorageBytes > MAX_GALLERY_STORAGE) {
+if (newTotalStorageBytes > MAX_SHARED_STORAGE) {
   const availableBytes = Math.max(
     0,
-    MAX_GALLERY_STORAGE - currentStorageBytes
+    MAX_SHARED_STORAGE - currentStorageBytes
   )
 
   return json(
     {
-      error: 'Gallery storage limit reached.',
-      message: 'This upload would exceed the maximum 10 GB gallery storage limit.',
+      error: 'Shared R2 storage limit reached.',
+      message: 'This upload would exceed the shared 10 GB gallery and finance document storage limit.',
       currentStorageBytes,
       availableBytes,
       fileSize: file.size,
-      maxStorageBytes: MAX_GALLERY_STORAGE,
+      maxStorageBytes: MAX_SHARED_STORAGE,
     },
     400
   )
