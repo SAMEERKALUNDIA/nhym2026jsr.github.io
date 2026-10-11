@@ -10,7 +10,7 @@ type Expense = {
 type Dashboard = {
   totalIncomePaise: number; totalPaidPaise: number; pendingApprovalCount: number
   unpaidCount: number; categories: { id: string; name: string; category_type: string }[]
-  expenses: Expense[]; incomes: Array<Record<string, unknown>>
+  expenses: Expense[]; incomes: Array<Record<string, unknown>>; budgets: Array<Record<string, unknown>>
 }
 const money = (paise: number | null | undefined) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(paise || 0) / 100)
 const today = new Date().toISOString().slice(0, 10)
@@ -24,6 +24,10 @@ export default function Finance() {
   const [busy, setBusy] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [showIncomeForm, setShowIncomeForm] = useState(false)
+  const [showBudgetForm, setShowBudgetForm] = useState(false)
+  const [budgetCategory, setBudgetCategory] = useState('exp-food')
+  const [budgetAmount, setBudgetAmount] = useState('')
+  const [budgetPeriod, setBudgetPeriod] = useState('NHYM2026')
   const [incomeType, setIncomeType] = useState('Registration Collection')
   const [receivedFrom, setReceivedFrom] = useState('')
   const [incomeAmount, setIncomeAmount] = useState('')
@@ -93,6 +97,34 @@ export default function Finance() {
       setVendor(''); setDescription(''); setAmount(''); setShowForm(false)
       await load()
     } catch (e) { setError(e instanceof Error ? e.message : 'Expense save nahi hua.') }
+    finally { setBusy(false) }
+  }
+
+  async function submitBudget(e: React.FormEvent) {
+    e.preventDefault(); setError(''); setNotice('')
+    const amountPaise = Math.round(Number(budgetAmount) * 100)
+    if (!budgetCategory || !budgetPeriod.trim() || !Number.isSafeInteger(amountPaise) || amountPaise <= 0) { setError('Budget category, period aur valid amount bhariye.'); return }
+    setBusy(true)
+    try {
+      const response = await fetch('/api/finance/budgets', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ categoryId: budgetCategory, amountPaise, budgetPeriod: budgetPeriod.trim() }) })
+      const result = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(result.error || 'Budget save nahi hua.')
+      setNotice('Budget draft save ho gaya. Approval ke baad hi approved budget maana jayega.')
+      setBudgetAmount(''); setShowBudgetForm(false); await load()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Budget save nahi hua.') }
+    finally { setBusy(false) }
+  }
+
+  async function decideBudget(budget: Record<string, unknown>, decision: 'APPROVED' | 'CLOSED') {
+    const promptText = decision === 'APPROVED' ? 'Is budget ko approve karein?' : 'Is approved budget ko close karein?'
+    if (!window.confirm(promptText)) return
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const response = await fetch(`/api/finance/budgets/${String(budget.id)}/decision`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ decision }) })
+      const result = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(result.error || 'Budget status update nahi hua.')
+      setNotice(`Budget status: ${decision}`); await load()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Budget status update nahi hua.') }
     finally { setBusy(false) }
   }
 
@@ -193,7 +225,7 @@ export default function Finance() {
 
   return <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"><div className="mx-auto max-w-7xl">
     <div className="flex flex-wrap items-center justify-between gap-4"><div><Link to="/admin" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><ArrowLeft size={16}/> Admin dashboard</Link><p className="mt-4 text-xs font-semibold uppercase tracking-[.2em] text-primary">NHYM 2026 · Finance & Accounts</p><h1 className="mt-1 text-3xl font-semibold">Finance Management</h1><p className="mt-2 text-sm text-muted-foreground">Income, expenses, approvals and cash/bank records.</p></div>
-      <div className="flex flex-wrap gap-2"><button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" disabled={busy}><RefreshCw size={16}/> Refresh</button><button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><FileSpreadsheet size={16}/> Export CSV</button><button onClick={() => setShowIncomeForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Record Income</button><button onClick={() => setShowForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"><Plus size={16}/> Add Expense</button><button onClick={() => {sessionStorage.removeItem('nhym_admin_token');setToken('');setData(null)}} className="rounded-lg border px-3 py-2 text-sm">Logout</button></div>
+      <div className="flex flex-wrap gap-2"><button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" disabled={busy}><RefreshCw size={16}/> Refresh</button><button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><FileSpreadsheet size={16}/> Export CSV</button><button onClick={() => setShowBudgetForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Add Budget</button><button onClick={() => setShowIncomeForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Record Income</button><button onClick={() => setShowForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"><Plus size={16}/> Add Expense</button><button onClick={() => {sessionStorage.removeItem('nhym_admin_token');setToken('');setData(null)}} className="rounded-lg border px-3 py-2 text-sm">Logout</button></div>
     </div>
     {error && <p role="alert" className="mt-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
     {notice && <p role="status" className="mt-5 rounded-lg bg-emerald-500/10 p-3 text-sm">{notice}</p>}
@@ -201,6 +233,7 @@ export default function Finance() {
       {[{label:'Total Income',value:money(totals.income),icon:Wallet},{label:'Paid Expenses',value:money(totals.paid),icon:Banknote},{label:'Net Cash Movement*',value:money(totals.net),icon:ClipboardList},{label:'Pending Approval',value:String(data?.pendingApprovalCount ?? 0),icon:BadgeCheck}].map(item => <section key={item.label} className="rounded-xl border bg-card p-4"><item.icon className="text-muted-foreground" size={20}/><p className="mt-3 text-sm text-muted-foreground">{item.label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{item.value}</p></section>)}
     </div>
     <p className="mt-2 text-xs text-muted-foreground">*Net cash movement is total recorded income minus paid expenses; it is not a verified bank/cash balance.</p>
+    {showBudgetForm && <form onSubmit={submitBudget} className="mt-6 grid gap-4 rounded-xl border bg-card p-5 md:grid-cols-2"><div className="md:col-span-2"><h2 className="text-lg font-semibold">Create Category Budget</h2><p className="text-sm text-muted-foreground">Budget pehle Draft hoga; approve karne ke baad status Approved hoga.</p></div><label className="space-y-1 text-sm"><span>Expense Category</span><select value={budgetCategory} onChange={e=>setBudgetCategory(e.target.value)} className="w-full rounded-lg border bg-background p-3">{(data?.categories || []).filter(c=>c.category_type==='EXPENSE').map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="space-y-1 text-sm"><span>Budget Period</span><input value={budgetPeriod} onChange={e=>setBudgetPeriod(e.target.value)} className="w-full rounded-lg border bg-background p-3" maxLength={40} required/></label><label className="space-y-1 text-sm"><span>Budget Amount (₹)</span><input type="number" min="0.01" step="0.01" value={budgetAmount} onChange={e=>setBudgetAmount(e.target.value)} className="w-full rounded-lg border bg-background p-3" required/></label><div className="flex gap-2 md:col-span-2"><button disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-primary-foreground">Save Draft Budget</button><button type="button" onClick={()=>setShowBudgetForm(false)} className="rounded-lg border px-4 py-2">Cancel</button></div></form>}
     {showIncomeForm && <form onSubmit={submitIncome} className="mt-6 grid gap-4 rounded-xl border bg-card p-5 md:grid-cols-2">
       <div className="md:col-span-2"><h2 className="text-lg font-semibold">Record Income / Receipt</h2><p className="text-sm text-muted-foreground">Registration collection, donation, sponsorship aur anya income ko alag record karein.</p></div>
       <label className="space-y-1 text-sm"><span>Income Type</span><select value={incomeType} onChange={e=>setIncomeType(e.target.value)} className="w-full rounded-lg border bg-background p-3">{['Registration Collection','Donation','Sponsorship','Committee Contribution','Other Income'].map(x=><option key={x}>{x}</option>)}</select></label>
@@ -228,6 +261,7 @@ export default function Finance() {
         {(!data || data.expenses.length===0) && <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">{busy?'Loading finance records…':'No expenses recorded yet. Add your first expense request.'}</td></tr>}
       </tbody></table></div>
     </section>
+    <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4"><h2 className="font-semibold">Budget Register</h2><p className="text-sm text-muted-foreground">Category-wise draft, approved and closed budgets</p></div><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr>{['Period','Category','Budget Amount','Status','Actions'].map(x=><th key={x} className="px-4 py-3 font-medium">{x}</th>)}</tr></thead><tbody>{(data?.budgets || []).map((b,i)=><tr key={String(b.id ?? i)} className="border-t"><td className="px-4 py-3">{String(b.budget_period ?? '')}</td><td className="px-4 py-3">{String(b.category_name ?? '')}</td><td className="px-4 py-3">{money(Number(b.approved_amount_paise ?? 0))}</td><td className="px-4 py-3">{String(b.status ?? '')}</td><td className="px-4 py-3"><div className="flex gap-2">{b.status==='DRAFT' && <button disabled={busy} onClick={()=>void decideBudget(b,'APPROVED')} className="rounded-md border px-2 py-1 text-xs">Approve</button>}{b.status==='APPROVED' && <button disabled={busy} onClick={()=>void decideBudget(b,'CLOSED')} className="rounded-md border px-2 py-1 text-xs">Close</button>}</div></td></tr>)}{(!data || data.budgets.length===0) && <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No budgets created yet.</td></tr>}</tbody></table></div></section>
     <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4"><h2 className="font-semibold">Income Register</h2><p className="text-sm text-muted-foreground">Recent income receipts (up to 200 records)</p></div><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr>{['Income ID','Date','Type','Received From','Amount','Mode','Receipt No.'].map(x=><th key={x} className="px-4 py-3 font-medium">{x}</th>)}</tr></thead><tbody>{(data?.incomes || []).map((x,i)=><tr key={String(x.income_no ?? i)} className="border-t"><td className="px-4 py-3 font-medium">{String(x.income_no ?? '')}</td><td className="px-4 py-3">{String(x.received_at ?? '')}</td><td className="px-4 py-3">{String(x.income_type ?? '')}</td><td className="px-4 py-3">{String(x.received_from ?? '')}</td><td className="px-4 py-3">{money(Number(x.amount_paise ?? 0))}</td><td className="px-4 py-3">{String(x.payment_mode ?? '')}</td><td className="px-4 py-3">{String(x.receipt_no ?? '—')}</td></tr>)}{(!data || data.incomes.length===0) && <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No income records yet.</td></tr>}</tbody></table></div></section>
     <p className="mt-4 text-xs text-muted-foreground">Current phase: income entry, expense requests, approvals, payment recording and expense CSV export. Secure bill upload, individual role accounts, budget entry and PDF reports remain to be completed before production use.</p>
   </div></main>
