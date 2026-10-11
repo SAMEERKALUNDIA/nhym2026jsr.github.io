@@ -1051,8 +1051,15 @@ if (
           ])
         } catch (e) {
           const message = e instanceof Error ? e.message : ''
-          if (/unique constraint|constraint failed/i.test(message)) return financeJson({ error: 'This payment reference has already been recorded.' }, 409)
-          if (/payment exceeds approved amount|expense is not approved/i.test(message)) return financeJson({ error: 'The expense was changed or its approved balance is insufficient. Refresh and try again.' }, 409)
+          if (/payment exceeds approved amount|expense is not approved/i.test(message)) {
+            return financeJson({ error: 'The expense was changed or its approved balance is insufficient. Refresh and try again.' }, 409)
+          }
+          if (/uq_finance_payment_reference_normalized|finance_payments\.reference_no/i.test(message)) {
+            return financeJson({ error: 'This payment reference has already been recorded.' }, 409)
+          }
+          if (/unique constraint|constraint failed|foreign key constraint/i.test(message)) {
+            return financeJson({ error: 'Payment could not be recorded because it conflicts with existing finance data. Refresh and try again.' }, 409)
+          }
           throw e
         }
         // The database trigger maintains the total/status transactionally; do not overwrite it
