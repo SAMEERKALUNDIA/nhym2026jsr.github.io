@@ -59,7 +59,7 @@ jobs:
           db = sqlite3.connect(':memory:')
           db.execute('PRAGMA foreign_keys = ON')
           db.executescript(Path('migrations/0001_finance_management.sql').read_text())
-db.executescript(Path('migrations/0002_finance_force_password_change.sql').read_text())
+          db.executescript(Path('migrations/0002_finance_force_password_change.sql').read_text())
           tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
           required = {'finance_users','finance_sessions','finance_login_limits','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_storage_reservations','finance_audit_logs'}
           assert required <= tables, f'Missing tables: {required - tables}'
