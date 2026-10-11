@@ -660,6 +660,7 @@ if (
       const method = request.method
       const pathname = url.pathname
       const isDashboard = pathname === '/api/finance/dashboard' && method === 'GET'
+      const isAuditLogs = pathname === '/api/finance/audit' && method === 'GET'
       const isUserAdmin = (pathname === '/api/finance/users' && (method === 'GET' || method === 'POST')) || (/^\/api\/finance\/users\/[a-f0-9-]+\/status$/i.test(pathname) && method === 'POST')
       const isExpenseCreate = pathname === '/api/finance/expenses' && method === 'POST'
       const isIncomeCreate = pathname === '/api/finance/income' && method === 'POST'
@@ -672,13 +673,26 @@ if (
       const allowed = role === 'FINANCE_HEAD' ||
         (role === 'OPERATOR' && (isDashboard || isExpenseCreate || isIncomeCreate || isBudgetCreate || isPaymentCreate || isDocumentUpload || isDocumentDownload)) ||
         (role === 'APPROVER' && (isDashboard || isExpenseDecision || isBudgetDecision || isDocumentDownload)) ||
-        (role === 'AUDITOR' && (isDashboard || isDocumentDownload))
+        (role === 'AUDITOR' && (isDashboard || isAuditLogs || isDocumentDownload))
       if (!allowed && !isUserAdmin) return json({ error: 'Your finance role does not permit this action.' }, 403)
       if (isUserAdmin && role !== 'FINANCE_HEAD') return json({ error: 'Only the Finance Head can manage finance accounts.' }, 403)
 
       const audit = async (entityType: string, entityId: string, action: string, oldValues?: unknown, newValues?: unknown, reason?: string) => {
         await env.DB.prepare('INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .bind(crypto.randomUUID(), actorId, entityType, entityId, action, oldValues == null ? null : JSON.stringify(oldValues), newValues == null ? null : JSON.stringify(newValues), reason ?? null, request.headers.get('cf-ray')).run()
+      }
+
+      if (isAuditLogs) {
+        const requestedLimit = Number(url.searchParams.get('limit') ?? 200)
+        const limit = Number.isFinite(requestedLimit) ? Math.min(500, Math.max(1, Math.floor(requestedLimit))) : 200
+        const entityType = String(url.searchParams.get('entityType') ?? '').trim().toUpperCase()
+        if (entityType && !['EXPENSE', 'PAYMENT', 'INCOME', 'BUDGET', 'FINANCE_USER', 'DOCUMENT'].includes(entityType)) {
+          return json({ error: 'Invalid audit entity type.' }, 400)
+        }
+        const logs = entityType
+          ? await env.DB.prepare(`SELECT l.id, l.actor_user_id, u.display_name AS actor_name, l.entity_type, l.entity_id, l.action, l.old_values_json, l.new_values_json, l.reason, l.request_id, l.created_at FROM finance_audit_logs l LEFT JOIN finance_users u ON u.id = l.actor_user_id WHERE l.entity_type = ? ORDER BY l.created_at DESC LIMIT ?`).bind(entityType, limit).all()
+          : await env.DB.prepare(`SELECT l.id, l.actor_user_id, u.display_name AS actor_name, l.entity_type, l.entity_id, l.action, l.old_values_json, l.new_values_json, l.reason, l.request_id, l.created_at FROM finance_audit_logs l LEFT JOIN finance_users u ON u.id = l.actor_user_id ORDER BY l.created_at DESC LIMIT ?`).bind(limit).all()
+        return json({ logs: logs.results ?? [] })
       }
 
       if (pathname === '/api/finance/users' && method === 'GET') {
