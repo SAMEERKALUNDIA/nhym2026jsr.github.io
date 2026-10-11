@@ -43,12 +43,12 @@ import {
    gender options its form offers. Both are held as ids in the draft and as
    label-plus-detail pairs here, so the row, the stub and the confirmation
    cannot call the same choice two different things. */
-type GenderId = 'male' | 'female' | 'undisclosed'
+type GenderId = 'male' | 'female' | 'transgender'
 
 const GENDERS: { id: GenderId; label: string }[] = [
   { id: 'male', label: 'Male' },
   { id: 'female', label: 'Female' },
-  { id: 'undisclosed', label: 'Prefer not to say' },
+  { id: 'transgender', label: 'Transgender' },
 ]
 
 /* How the visitor answers the three yes/no questions on the sheet. The two
@@ -290,7 +290,7 @@ if (!row.dob.trim()) {
 }
         if (row.gender === '') {
           ok = false
-          return { ...row, error: 'Choose Male, Female, or Prefer not to say.' }
+          return { ...row, error: 'Choose Male, Female, or Transgender.' }
         }
         if (row.address.trim().length < 4) {
           ok = false
