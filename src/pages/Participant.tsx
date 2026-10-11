@@ -313,7 +313,7 @@ async function downloadRegistrationPdf() {
     }
   })()
 
-  let y = 51
+  let y = 54
 
   // -----------------------------
   // Header
@@ -350,20 +350,23 @@ async function downloadRegistrationPdf() {
   pdf.setFontSize(8.5)
   pdf.setTextColor(72, 30, 20)
   pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 29, { align: 'center' })
+  pdf.setFontSize(8)
+  pdf.setTextColor(72, 30, 20)
+  pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 34, { align: 'center' })
 
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(10)
   pdf.setTextColor(40)
-  pdf.text('Registration Confirmation', pageWidth / 2, 39, { align: 'center' })
+  pdf.text('Registration Confirmation', pageWidth / 2, 42, { align: 'center' })
 
   pdf.setDrawColor(30, 65, 42)
-  pdf.line(margin, 43, pageWidth - margin, 43)
+  pdf.line(margin, 46, pageWidth - margin, 46)
 
   // -----------------------------
   // Helper functions
   // -----------------------------
   function sectionTitle(title: string) {
-    pdf.setFillColor(245, 241, 234)
+    pdf.setFillColor(30, 95, 66)
 
     pdf.roundedRect(
       margin,
@@ -377,7 +380,7 @@ async function downloadRegistrationPdf() {
 
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(11)
-    pdf.setTextColor(72, 30, 20)
+    pdf.setTextColor(255, 255, 255)
 
     pdf.text(
       title,
