@@ -607,6 +607,10 @@ if (
 }
     // NHYM FINANCE PANEL — individually authenticated finance users.
     if (url.pathname.startsWith('/api/finance/')) {
+      if (url.pathname === '/api/finance/setup-status' && request.method === 'GET') {
+        const count = await env.DB.prepare('SELECT COUNT(*) AS total FROM finance_users').first<{ total: number }>()
+        return json({ setupComplete: Number(count?.total ?? 0) > 0 })
+      }
       if (url.pathname === '/api/finance/bootstrap' && request.method === 'POST') {
         if (!authorised(request, env)) return json({ error: 'Unauthorized' }, 401)
         let body: { displayName?: string; loginId?: string; password?: string }
@@ -641,7 +645,7 @@ if (
         return json({ ok: true, token, expiresAt, user: { id: user.id, displayName: user.display_name, loginId: user.login_id, role: user.role } })
       }
 
-      const bearer = request.headers.get('authorization')?.replace(/^Bearer\\s+/i, '') ?? ''
+      const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
       if (!bearer) return json({ error: 'Sign in to access Finance Management.' }, 401)
       const tokenHash = await financeDigest(bearer)
       const actor = await env.DB.prepare("SELECT u.id, u.display_name, u.login_id, u.role FROM finance_sessions s JOIN finance_users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = 1").bind(tokenHash).first<{ id: string; display_name: string; login_id: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR' }>()
@@ -655,11 +659,11 @@ if (
       const isExpenseCreate = pathname === '/api/finance/expenses' && method === 'POST'
       const isIncomeCreate = pathname === '/api/finance/income' && method === 'POST'
       const isBudgetCreate = pathname === '/api/finance/budgets' && method === 'POST'
-      const isExpenseDecision = /^\\/api\\/finance\\/expenses\\/[a-f0-9-]+\\/decision$/i.test(pathname) && method === 'POST'
-      const isBudgetDecision = /^\\/api\\/finance\\/budgets\\/[a-f0-9-]+\\/decision$/i.test(pathname) && method === 'POST'
-      const isPaymentCreate = /^\\/api\\/finance\\/expenses\\/[a-f0-9-]+\\/payments$/i.test(pathname) && method === 'POST'
+      const isExpenseDecision = /^\/api\/finance\/expenses\/[a-f0-9-]+\/decision$/i.test(pathname) && method === 'POST'
+      const isBudgetDecision = /^\/api\/finance\/budgets\/[a-f0-9-]+\/decision$/i.test(pathname) && method === 'POST'
+      const isPaymentCreate = /^\/api\/finance\/expenses\/[a-f0-9-]+\/payments$/i.test(pathname) && method === 'POST'
       const isDocumentUpload = pathname === '/api/finance/documents' && method === 'POST'
-      const isDocumentDownload = /^\\/api\\/finance\\/documents\\/[a-f0-9-]+$/i.test(pathname) && method === 'GET'
+      const isDocumentDownload = /^\/api\/finance\/documents\/[a-f0-9-]+$/i.test(pathname) && method === 'GET'
       const allowed = role === 'FINANCE_HEAD' ||
         (role === 'OPERATOR' && (isDashboard || isExpenseCreate || isIncomeCreate || isBudgetCreate || isPaymentCreate || isDocumentUpload || isDocumentDownload)) ||
         (role === 'APPROVER' && (isDashboard || isExpenseDecision || isBudgetDecision || isDocumentDownload)) ||
