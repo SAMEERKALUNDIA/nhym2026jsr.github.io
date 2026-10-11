@@ -660,7 +660,7 @@ if (
       const method = request.method
       const pathname = url.pathname
       const isDashboard = pathname === '/api/finance/dashboard' && method === 'GET'
-      const isUserAdmin = pathname === '/api/finance/users' && (method === 'GET' || method === 'POST')
+      const isUserAdmin = (pathname === '/api/finance/users' && (method === 'GET' || method === 'POST')) || (/^\\/api\\/finance\\/users\\/[a-f0-9-]+\\/status$/i.test(pathname) && method === 'POST')
       const isExpenseCreate = pathname === '/api/finance/expenses' && method === 'POST'
       const isIncomeCreate = pathname === '/api/finance/income' && method === 'POST'
       const isBudgetCreate = pathname === '/api/finance/budgets' && method === 'POST'
@@ -685,6 +685,24 @@ if (
         const users = await env.DB.prepare('SELECT id, display_name, login_id, role, is_active, created_at, last_login_at FROM finance_users ORDER BY created_at').all()
         return json({ users: users.results ?? [] })
       }
+      const userStatusMatch = pathname.match(/^\\/api\\/finance\\/users\\/([a-f0-9-]+)\\/status$/i)
+      if (userStatusMatch && method === 'POST') {
+        let body: { active?: boolean }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        if (typeof body.active !== 'boolean') return json({ error: 'Active must be true or false.' }, 400)
+        const target = await env.DB.prepare('SELECT id, display_name, login_id, role, is_active FROM finance_users WHERE id = ?').bind(userStatusMatch[1]).first<{ id: string; display_name: string; login_id: string; role: string; is_active: number }>()
+        if (!target) return json({ error: 'Finance user not found.' }, 404)
+        if (target.id === actorId && !body.active) return json({ error: 'You cannot deactivate your own account.' }, 400)
+        if (!body.active && target.role === 'FINANCE_HEAD' && Number(target.is_active) === 1) {
+          const activeHeads = await env.DB.prepare("SELECT COUNT(*) AS total FROM finance_users WHERE role = 'FINANCE_HEAD' AND is_active = 1").first<{ total: number }>()
+          if (Number(activeHeads?.total ?? 0) <= 1) return json({ error: 'At least one active Finance Head must remain.' }, 409)
+        }
+        await env.DB.prepare('UPDATE finance_users SET is_active = ? WHERE id = ?').bind(body.active ? 1 : 0, target.id).run()
+        if (!body.active) await env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ?').bind(target.id).run()
+        await audit('FINANCE_USER', target.id, body.active ? 'USER_ACTIVATED' : 'USER_DEACTIVATED', { isActive: Boolean(target.is_active) }, { isActive: body.active })
+        return json({ ok: true, active: body.active })
+      }
+
       if (pathname === '/api/finance/users' && method === 'POST') {
         let body: { displayName?: string; loginId?: string; password?: string; role?: string }
         try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
