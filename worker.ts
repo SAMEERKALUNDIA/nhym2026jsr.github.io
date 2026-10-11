@@ -1090,11 +1090,11 @@ if (
         if (expense.approval_status !== 'APPROVED') return financeJson({ error: 'Payment can only be recorded after approval.' }, 409)
         const paymentId = crypto.randomUUID()
         const paymentNo = `NHYM-PAY-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
-        let paymentResults
+        let paymentInserted = false
         try {
           // Guard the INSERT itself, not only a preceding SELECT: this keeps the approved
           // balance check and insert in one D1 transaction even when requests race.
-          paymentResults = await env.DB.batch([
+          const paymentResults = await env.DB.batch([
             env.DB.prepare(`INSERT INTO finance_payments
               (id, expense_id, payment_no, payment_mode, amount_paise, paid_at, reference_no, paid_by, remarks)
               SELECT ?, e.id, ?, ?, ?, ?, ?, ?, ?
@@ -1119,6 +1119,7 @@ if (
               WHERE EXISTS (SELECT 1 FROM finance_payments WHERE id = ?)`)
               .bind(crypto.randomUUID(), actorId, paymentId, JSON.stringify({ paymentNo, expenseId: expense.id, paymentMode, amountPaise, paidAt, referenceNo }), request.headers.get('cf-ray'), paymentId)
           ])
+          paymentInserted = Number(paymentResults[0]?.meta?.changes ?? 0) === 1
         } catch (e) {
           const message = e instanceof Error ? e.message : ''
           if (/payment exceeds approved amount|expense is not approved/i.test(message)) {
@@ -1132,7 +1133,7 @@ if (
           }
           throw e
         }
-        if (Number(paymentResults[0]?.meta?.changes ?? 0) !== 1) {
+        if (!paymentInserted) {
           const latest = await env.DB.prepare('SELECT approval_status, approved_amount_paise, COALESCE((SELECT SUM(amount_paise) FROM finance_payments WHERE expense_id = finance_expenses.id), 0) AS paid_amount_paise FROM finance_expenses WHERE id = ?')
             .bind(expense.id).first<{ approval_status: string; approved_amount_paise: number | null; paid_amount_paise: number }>()
           if (!latest) return financeJson({ error: 'Expense not found.' }, 404)
