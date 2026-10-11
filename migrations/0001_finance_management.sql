@@ -22,6 +22,14 @@ CREATE TABLE IF NOT EXISTS finance_sessions (
   FOREIGN KEY (user_id) REFERENCES finance_users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS finance_login_limits (
+  attempt_key TEXT PRIMARY KEY,
+  failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+  window_started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  locked_until TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS finance_categories (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
@@ -142,6 +150,7 @@ CREATE TABLE IF NOT EXISTS finance_audit_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_finance_sessions_user_expiry ON finance_sessions(user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_finance_login_limits_lock ON finance_login_limits(locked_until);
 CREATE INDEX IF NOT EXISTS idx_finance_expenses_status ON finance_expenses(approval_status, payment_status);
 CREATE INDEX IF NOT EXISTS idx_finance_expenses_date ON finance_expenses(expense_date);
 CREATE INDEX IF NOT EXISTS idx_finance_payments_expense ON finance_payments(expense_id, paid_at);
