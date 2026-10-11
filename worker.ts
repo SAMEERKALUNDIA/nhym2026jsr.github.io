@@ -863,7 +863,15 @@ if (
               .bind(crypto.randomUUID(), actorId, 'DOCUMENT', documentId, 'DOCUMENT_UPLOADED', null, JSON.stringify({ expenseId: expenseId || null, incomeId: incomeId || null, documentType, fileName: file.name, sizeBytes: file.size }), null, request.headers.get('cf-ray'))
           ])
         } catch (error) {
-          await env.GALLERY.delete(storageKey)
+          // Preserve the database failure if best-effort R2 cleanup also fails.
+          try {
+            await env.GALLERY.delete(storageKey)
+          } catch (cleanupError) {
+            console.error('Finance document cleanup failed after metadata/audit batch error', {
+              documentId,
+              cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+            })
+          }
           throw error
         }
         return financeJson({ ok: true, documentId, fileName: file.name, sizeBytes: file.size }, 201)
