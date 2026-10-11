@@ -880,7 +880,7 @@ async function exportRegistrationsPdf() {
     'Submitted',
   ]
 
-  let y = 56
+  let y = 59
 
   function addPageHeader(
     continuation = false
@@ -888,82 +888,37 @@ async function exportRegistrationsPdf() {
     addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
     addContainedPdfImage(pdf, logoData, pageWidth - margin - 25, 6, 25, 25)
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(72, 30, 20)
-
-    pdf.setFontSize(
-      continuation ? 13 : 17
-    )
-
-    pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, continuation ? 13 : 13, { align: 'center' })
-
-    pdf.setFont(
-      'helvetica',
-      continuation ? 'normal' : 'bold'
-    )
-
-    pdf.setFontSize(
-      continuation ? 8 : 11
-    )
-
-    pdf.setTextColor(50)
-
-    pdf.text(continuation ? 'Registration Summary Report - Continued' : 'Registration Summary Report', pageWidth / 2, continuation ? 19 : 19, { align: 'center' })
-
-    if (!continuation) {
+    if (continuation) {
+      if (continuation) {
       pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(13)
+      pdf.setTextColor(30, 65, 42)
+      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 13, { align: 'center' })
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.text('Participant Summary Report - Continued', pageWidth / 2, 20, { align: 'center' })
+    } else {
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(13)
+      pdf.setTextColor(30, 65, 42)
+      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
+      pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 14, { align: 'center' })
       pdf.setFontSize(10)
-      pdf.setTextColor(168, 94, 8)
-      pdf.text('2026 SIRJON', pageWidth / 2, 25, { align: 'center' })
+      pdf.text('2026', pageWidth / 2, 21, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
-      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
+      pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 29, { align: 'center' })
+      pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 34, { align: 'center' })
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(10)
+      pdf.setTextColor(40)
+      pdf.text('Participant Summary Report', pageWidth / 2, 42, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
-    }
-
-    if (!continuation) {
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(8)
+      pdf.setFontSize(7)
       pdf.setTextColor(100)
-
-      pdf.text(
-        'Jamshedpur, Jharkhand',
-        pageWidth / 2,
-        35,
-        { align: 'center' }
-      )
-
-      pdf.text(
-        `Generated: ${generatedAt}`,
-        pageWidth - margin,
-        34,
-        { align: 'right' }
-      )
-
-      pdf.text(
-        `Registrations: ${filteredRows.length}`,
-        pageWidth - margin,
-        38,
-        { align: 'right' }
-      )
-
-      const participantTotal =
-        filteredRows.reduce(
-          (sum, row) =>
-            sum +
-            Number(
-              row.participant_count || 0
-            ),
-          0
-        )
-
-      pdf.text(
-        `Participants: ${participantTotal}`,
-        pageWidth - margin,
-        27,
-        { align: 'right' }
-      )
+      pdf.text(`Generated: ${generatedAt}`, margin, 49)
+      pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin, 49, { align: 'right' })
     }
 
     pdf.setDrawColor(185)
@@ -1222,12 +1177,8 @@ async function exportRegistrationsPdf() {
     pdf.setFontSize(7)
     pdf.setTextColor(110)
 
-    pdf.text(
-      'Address: Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003',
-      pageWidth / 2,
-      pageHeight - 17,
-      { align: 'center' }
-    )
+    pdf.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003', pageWidth / 2, pageHeight - 18, { align: 'center' })
+    pdf.text('Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 12, { align: 'center' })
 
     pdf.text(
       `Page ${pageNumber} of ${pageCount}`,
@@ -1377,7 +1328,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
     console.error('Unable to load NHYM logo:', error)
   }
 
-  let y = 56
+  let y = 59
 
   function addHeader(continuation = false) {
     addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
@@ -2376,12 +2327,8 @@ async function exportParticipantsPdf() {
     pdf.setFontSize(7)
     pdf.setTextColor(110)
 
-    pdf.text(
-      'Address: Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003',
-      pageWidth / 2,
-      pageHeight - 17,
-      { align: 'center' }
-    )
+    pdf.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003', pageWidth / 2, pageHeight - 18, { align: 'center' })
+    pdf.text('Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 12, { align: 'center' })
 
     pdf.text(
       `Page ${pageNumber} of ${pageCount}`,
