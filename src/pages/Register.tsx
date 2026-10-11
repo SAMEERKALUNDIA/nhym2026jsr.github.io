@@ -382,7 +382,7 @@ if (!row.dob.trim()) {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(), total, paymentMode, paymentReference: paymentReference.trim(), agreed,
+          email: email.trim(), total, paymentMode, paymentReference: paymentReference.trim().replace(/\\s+/g, '').toUpperCase(), agreed,
           declarations: agreed,
           participants: rows.map((row) => ({ ...row, fee: feeOf(row) ?? 0 })),
         }),
@@ -924,7 +924,7 @@ if (!row.dob.trim()) {
                       <p className="max-w-lg text-sm text-muted-foreground">Pay the total using the bank/UPI details shown on this page, then enter the reference below. The committee will verify it before approval.</p>
                       <div className="mt-4 grid gap-4 sm:grid-cols-2">
                         <div><Label>Payment method</Label><Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent></Select></div>
-                        <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /></div>
+                        <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /><p className="mt-2 text-xs text-muted-foreground">Each payment reference can be used for only one registration. Enter it exactly as shown in your payment receipt.</p></div>
                       </div>
                     </fieldset>
 
