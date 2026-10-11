@@ -735,14 +735,17 @@ if (
           if (Number(activeHeads?.total ?? 0) <= 1) return financeJson({ error: 'At least one active Finance Head must remain.' }, 409)
         }
         const nextActive = body.active ? 1 : 0
+        if (Number(target.is_active) === nextActive) {
+          return financeJson({ ok: true, active: body.active, unchanged: true })
+        }
         const statusBatch = await env.DB.batch([
           // Re-check the final active Finance Head inside the write transaction to prevent concurrent deactivations removing every head.
           env.DB.prepare(`UPDATE finance_users SET is_active = ?
-            WHERE id = ?
+            WHERE id = ? AND is_active <> ?
               AND (? = 1 OR role <> 'FINANCE_HEAD' OR EXISTS (
                 SELECT 1 FROM finance_users
                 WHERE role = 'FINANCE_HEAD' AND is_active = 1 AND id <> ?
-              ))`).bind(nextActive, target.id, nextActive, target.id),
+              ))`).bind(nextActive, target.id, nextActive, nextActive, target.id),
           env.DB.prepare(`INSERT INTO finance_audit_logs
             (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id)
             SELECT ?, ?, 'FINANCE_USER', ?, ?, ?, ?, NULL, ?
@@ -756,7 +759,7 @@ if (
           env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ? AND ? = 0 AND changes() = 1').bind(target.id, nextActive)
         ])
         if (Number(statusBatch[0]?.meta?.changes ?? 0) !== 1) {
-          return financeJson({ error: 'At least one active Finance Head must remain; no changes were made.' }, 409)
+          return financeJson({ error: 'The account status changed concurrently or at least one active Finance Head must remain. Refresh and try again; no changes were made.' }, 409)
         }
         return financeJson({ ok: true, active: body.active })
       }
