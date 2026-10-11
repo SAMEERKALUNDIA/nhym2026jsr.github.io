@@ -707,7 +707,7 @@ if (
         const attemptKey = await financeDigest(`${loginId}:${clientIp}`)
         const limit = await env.DB.prepare("SELECT locked_until FROM finance_login_limits WHERE attempt_key = ? AND datetime(locked_until) > datetime('now')").bind(attemptKey).first<{ locked_until: string }>()
         if (limit) return financeJson({ error: 'Too many failed login attempts. Try again after 15 minutes.' }, 429)
-        const user = await env.DB.prepare('SELECT id, display_name, login_id, role, password_salt, password_hash FROM finance_users WHERE login_id = ? AND is_active = 1').bind(loginId).first<{ id: string; display_name: string; login_id: string; role: string; password_salt: string; password_hash: string }>()
+        const user = await env.DB.prepare('SELECT id, display_name, login_id, role, password_salt, password_hash, must_change_password FROM finance_users WHERE login_id = ? AND is_active = 1').bind(loginId).first<{ id: string; display_name: string; login_id: string; role: string; password_salt: string; password_hash: string; must_change_password: number }>()
         // Perform the same PBKDF2 work for unknown users to reduce login-ID timing leaks.
         const candidate = await financePasswordHash(password, user?.password_salt ?? 'NHYM-FINANCE-UNKNOWN-USER-SALT')
         if (!user || candidate !== user.password_hash) {
