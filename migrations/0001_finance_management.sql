@@ -168,5 +168,42 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_finance_payment_reference_normalized
 ON finance_payments(UPPER(REPLACE(REPLACE(REPLACE(TRIM(reference_no), ' ', ''), char(9), ''), char(10), '')))
 WHERE reference_no IS NOT NULL AND TRIM(reference_no) <> '';
 
+
+-- Enforce payment integrity inside SQLite, so simultaneous API requests cannot overpay.
+CREATE TRIGGER IF NOT EXISTS trg_finance_payment_validate_insert
+BEFORE INSERT ON finance_payments
+BEGIN
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1 FROM finance_expenses
+      WHERE id = NEW.expense_id AND approval_status = 'APPROVED'
+    )
+    THEN RAISE(ABORT, 'expense is not approved')
+  END;
+  SELECT CASE
+    WHEN COALESCE((
+      SELECT SUM(amount_paise) FROM finance_payments WHERE expense_id = NEW.expense_id
+    ), 0) + NEW.amount_paise > (
+      SELECT approved_amount_paise FROM finance_expenses WHERE id = NEW.expense_id
+    )
+    THEN RAISE(ABORT, 'payment exceeds approved amount')
+  END;
+END;
+
+-- Keep the denormalized payment summary consistent when a payment is recorded.
+CREATE TRIGGER IF NOT EXISTS trg_finance_payment_summary_insert
+AFTER INSERT ON finance_payments
+BEGIN
+  UPDATE finance_expenses
+  SET payment_status = CASE
+        WHEN (SELECT COALESCE(SUM(amount_paise),0) FROM finance_payments WHERE expense_id = NEW.expense_id)
+             >= approved_amount_paise THEN 'PAID'
+        ELSE 'PARTIAL'
+      END,
+      final_amount_paise = (SELECT COALESCE(SUM(amount_paise),0) FROM finance_payments WHERE expense_id = NEW.expense_id),
+      updated_at = CURRENT_TIMESTAMP
+  WHERE id = NEW.expense_id;
+END;
+
 -- The first FINANCE_HEAD account is created through the one-time authenticated bootstrap endpoint.
 -- No shared login is seeded; each finance user must have an individual password and session.
