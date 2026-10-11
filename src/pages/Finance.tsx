@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { ArrowLeft, BadgeCheck, Banknote, ClipboardList, Download, FileSpreadsheet, Plus, RefreshCw, Wallet } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Banknote, ClipboardList, FileSpreadsheet, Plus, RefreshCw, Wallet } from 'lucide-react'
 
 type Expense = {
   id: string; expense_no: string; category_name: string; vendor_name: string; description: string
