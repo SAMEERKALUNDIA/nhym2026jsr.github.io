@@ -741,6 +741,27 @@ if (
         await env.DB.prepare('DELETE FROM finance_sessions WHERE token_hash = ?').bind(tokenHash).run()
         return financeJson({ ok: true })
       }
+      if (url.pathname === '/api/finance/change-password' && request.method === 'POST') {
+        let body: { currentPassword?: string; newPassword?: string }
+        try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+        const currentPassword = String(body.currentPassword ?? '')
+        const newPassword = String(body.newPassword ?? '')
+        if (newPassword.length < 12 || newPassword.length > 200) return financeJson({ error: 'New password must be at least 12 characters.' }, 400)
+        const currentHash = await financePasswordHash(currentPassword, actor.password_salt)
+        if (!currentPassword || currentHash !== actor.password_hash) return financeJson({ error: 'Current password is incorrect.' }, 401)
+        if (currentPassword === newPassword) return financeJson({ error: 'Choose a new password different from the temporary password.' }, 400)
+        const newSalt = financeRandomHex(16)
+        const newHash = await financePasswordHash(newPassword, newSalt)
+        const updated = await env.DB.batch([
+          env.DB.prepare('UPDATE finance_users SET password_salt = ?, password_hash = ?, must_change_password = 0 WHERE id = ? AND must_change_password = 1').bind(newSalt, newHash, actor.id),
+          env.DB.prepare(`INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id)
+            SELECT ?, ?, 'FINANCE_USER', ?, 'PASSWORD_CHANGED_AFTER_RESET', ?, ?, 'User replaced temporary password.', ? WHERE changes() = 1`).bind(crypto.randomUUID(), actor.id, actor.id, JSON.stringify({ mustChangePassword: true }), JSON.stringify({ mustChangePassword: false }), request.headers.get('cf-ray')),
+          env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ? AND token_hash <> ?').bind(actor.id, tokenHash),
+        ])
+        if (Number(updated[0]?.meta?.changes ?? 0) !== 1) return financeJson({ error: 'Password-change state has changed. Sign in again.' }, 409)
+        return financeJson({ ok: true, message: 'Password changed successfully. You can now access Finance Management.' })
+      }
+      if (Number(actor.must_change_password) === 1) return financeJson({ error: 'You must change your temporary password before using Finance Management.', mustChangePassword: true }, 403)
       const actorId = actor.id
       const role = actor.role
       const method = request.method
