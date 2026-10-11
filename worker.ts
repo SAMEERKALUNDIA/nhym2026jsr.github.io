@@ -884,9 +884,14 @@ if (
         if (!current) return json({ error: 'Budget not found.' }, 404)
         if (current.status !== 'DRAFT' && !(current.status === 'APPROVED' && body.decision === 'CLOSED')) return json({ error: 'Only draft budgets can be approved, and only approved budgets can be closed.' }, 409)
         if (body.decision === 'APPROVED' && current.created_by === actorId) return json({ error: 'Maker-checker rule: the person who created a budget cannot approve it.' }, 403)
-        const changed = await env.DB.prepare('UPDATE finance_budgets SET status = ?, approved_by = ?, revision_no = revision_no + 1 WHERE id = ? AND status = ?').bind(body.decision, actorId, current.id, current.status).run()
-        if (Number(changed.meta.changes ?? 0) !== 1) return json({ error: 'This budget changed in another request. Refresh and try again.' }, 409)
-        await audit('BUDGET', current.id, String(body.decision), { status: current.status }, { status: body.decision, amountPaise: current.approved_amount_paise })
+        const budgetBatch = await env.DB.batch([
+          env.DB.prepare('UPDATE finance_budgets SET status = ?, approved_by = ?, revision_no = revision_no + 1 WHERE id = ? AND status = ?')
+            .bind(body.decision, actorId, current.id, current.status),
+          env.DB.prepare(`INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, request_id)
+            SELECT ?, ?, 'BUDGET', ?, ?, ?, ?, ? WHERE changes() = 1`)
+            .bind(crypto.randomUUID(), actorId, current.id, String(body.decision), JSON.stringify({ status: current.status }), JSON.stringify({ status: body.decision, amountPaise: current.approved_amount_paise }), request.headers.get('cf-ray'))
+        ])
+        if (Number(budgetBatch[0]?.meta?.changes ?? 0) !== 1) return json({ error: 'This budget changed in another request. Refresh and try again.' }, 409)
         return json({ ok: true, status: body.decision })
       }
 
@@ -930,22 +935,19 @@ if (
           return json({ error: 'Approved amount must be positive and cannot exceed the requested amount.' }, 400)
         }
         const approvalId = crypto.randomUUID()
-        // Claim the pending decision with a conditional update before writing its history row.
-        const claimed = await env.DB.prepare(`UPDATE finance_expenses
-          SET approval_status = ?, approved_amount_paise = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ? AND approval_status = 'PENDING'`)
-          .bind(decision, decision === 'APPROVED' ? approvedAmount : null, expense.id).run()
-        if (Number(claimed.meta.changes ?? 0) !== 1) return json({ error: 'This expense was already decided by another request. Refresh and try again.' }, 409)
-        try {
-          await env.DB.prepare(`INSERT INTO finance_approvals (id, expense_id, decision, approved_amount_paise, remarks, decided_by) VALUES (?, ?, ?, ?, ?, ?)`)
-            .bind(approvalId, expense.id, decision, decision === 'APPROVED' ? approvedAmount : null, remarks || null, actorId).run()
-        } catch (error) {
-          // Restore pending state if history could not be written; never leave an unlogged decision.
-          await env.DB.prepare(`UPDATE finance_expenses SET approval_status = 'PENDING', approved_amount_paise = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND approval_status = ?`)
-            .bind(expense.id, decision).run()
-          throw error
-        }
-        await audit('EXPENSE', expense.id, decision, { approvalStatus: expense.approval_status }, { approvalStatus: decision, approvedAmountPaise: decision === 'APPROVED' ? approvedAmount : null }, remarks)
+        // D1 batch is transactional: state change, approval history and audit row commit together.
+        // changes() makes both history inserts conditional on this request winning the pending-state update.
+        const decisionBatch = await env.DB.batch([
+          env.DB.prepare(`UPDATE finance_expenses SET approval_status = ?, approved_amount_paise = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND approval_status = 'PENDING'`)
+            .bind(decision, decision === 'APPROVED' ? approvedAmount : null, expense.id),
+          env.DB.prepare(`INSERT INTO finance_approvals (id, expense_id, decision, approved_amount_paise, remarks, decided_by)
+            SELECT ?, ?, ?, ?, ?, ? WHERE changes() = 1`)
+            .bind(approvalId, expense.id, decision, decision === 'APPROVED' ? approvedAmount : null, remarks || null, actorId),
+          env.DB.prepare(`INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id)
+            SELECT ?, ?, 'EXPENSE', ?, ?, ?, ?, ?, ? WHERE changes() = 1`)
+            .bind(crypto.randomUUID(), actorId, expense.id, decision, JSON.stringify({ approvalStatus: expense.approval_status }), JSON.stringify({ approvalStatus: decision, approvedAmountPaise: decision === 'APPROVED' ? approvedAmount : null }), remarks || null, request.headers.get('cf-ray'))
+        ])
+        if (Number(decisionBatch[0]?.meta?.changes ?? 0) !== 1) return json({ error: 'This expense was already decided by another request. Refresh and try again.' }, 409)
         return json({ ok: true, decision })
       }
 
@@ -969,9 +971,14 @@ if (
         const paymentId = crypto.randomUUID()
         const paymentNo = `NHYM-PAY-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
         try {
-          // SQLite triggers are the final guard against concurrent overpayment or stale approval state.
-          await env.DB.prepare(`INSERT INTO finance_payments (id, expense_id, payment_no, payment_mode, amount_paise, paid_at, reference_no, paid_by, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .bind(paymentId, expense.id, paymentNo, paymentMode, amountPaise, paidAt, referenceNo || null, actorId, remarks || null).run()
+          // Payment, trigger-maintained summary, and audit row commit as one transaction.
+          await env.DB.batch([
+            env.DB.prepare(`INSERT INTO finance_payments (id, expense_id, payment_no, payment_mode, amount_paise, paid_at, reference_no, paid_by, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+              .bind(paymentId, expense.id, paymentNo, paymentMode, amountPaise, paidAt, referenceNo || null, actorId, remarks || null),
+            env.DB.prepare(`INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, new_values_json, request_id)
+              SELECT ?, ?, 'PAYMENT', ?, 'PAYMENT_RECORDED', ?, ? WHERE changes() = 1`)
+              .bind(crypto.randomUUID(), actorId, paymentId, JSON.stringify({ paymentNo, expenseId: expense.id, paymentMode, amountPaise, paidAt, referenceNo }), request.headers.get('cf-ray'))
+          ])
         } catch (e) {
           const message = e instanceof Error ? e.message : ''
           if (/unique constraint|constraint failed/i.test(message)) return json({ error: 'This payment reference has already been recorded.' }, 409)
@@ -984,7 +991,6 @@ if (
         const paymentStatus = totalPaid >= Number(expense.approved_amount_paise) ? 'PAID' : 'PARTIAL'
         await env.DB.prepare(`UPDATE finance_expenses SET payment_status = ?, final_amount_paise = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND approval_status = 'APPROVED'`)
           .bind(paymentStatus, totalPaid, expense.id).run()
-        await audit('PAYMENT', paymentId, 'PAYMENT_RECORDED', null, { paymentNo, expenseId: expense.id, paymentMode, amountPaise, paidAt, referenceNo })
         return json({ ok: true, paymentNo, paymentStatus }, 201)
       }
 
