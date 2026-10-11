@@ -745,6 +745,7 @@ if (
         return financeJson({ ok: true })
       }
       if (url.pathname === '/api/finance/change-password' && request.method === 'POST') {
+        if (Number(actor.must_change_password) !== 1) return financeJson({ error: 'A temporary password change is not pending for this account.' }, 409)
         let body: { currentPassword?: string; newPassword?: string }
         try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
         const currentPassword = String(body.currentPassword ?? '')
