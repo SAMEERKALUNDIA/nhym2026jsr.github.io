@@ -1091,7 +1091,13 @@ if (
               .bind(crypto.randomUUID(), actorId, 'INCOME', id, 'INCOME_RECORDED', null, JSON.stringify({ incomeNo, incomeType, receivedFrom, amountPaise, receivedAt, paymentMode, referenceNo, receiptNo }), null, request.headers.get('cf-ray'))
           ])
         } catch (e) {
-          if (/unique constraint|constraint failed/i.test(e instanceof Error ? e.message : '')) return financeJson({ error: 'Receipt number has already been used.' }, 409)
+          const message = e instanceof Error ? e.message : ''
+          if (/finance_income\.receipt_no/i.test(message)) {
+            return financeJson({ error: 'Receipt number has already been used.' }, 409)
+          }
+          if (/unique constraint|constraint failed|foreign key constraint/i.test(message)) {
+            return financeJson({ error: 'Income could not be recorded because it conflicts with existing finance data. Refresh and try again.' }, 409)
+          }
           throw e
         }
         return financeJson({ ok: true, incomeNo }, 201)
