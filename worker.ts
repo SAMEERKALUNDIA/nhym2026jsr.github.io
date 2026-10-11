@@ -889,8 +889,11 @@ if (
         const category = await env.DB.prepare("SELECT id FROM finance_categories WHERE id = ? AND category_type = 'EXPENSE' AND is_active = 1").bind(categoryId).first()
         if (!category) return json({ error: 'Invalid expense category.' }, 400)
         const id = crypto.randomUUID()
-        await env.DB.prepare("INSERT INTO finance_budgets (id, category_id, budget_period, approved_amount_paise, status, created_by) VALUES (?, ?, ?, ?, 'DRAFT', ?)").bind(id, categoryId, budgetPeriod, amountPaise, actorId).run()
-        await audit('BUDGET', id, 'BUDGET_CREATED', null, { categoryId, budgetPeriod, amountPaise, status: 'DRAFT' })
+        await env.DB.batch([
+          env.DB.prepare("INSERT INTO finance_budgets (id, category_id, budget_period, approved_amount_paise, status, created_by) VALUES (?, ?, ?, ?, 'DRAFT', ?)").bind(id, categoryId, budgetPeriod, amountPaise, actorId),
+          env.DB.prepare('INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(crypto.randomUUID(), actorId, 'BUDGET', id, 'BUDGET_CREATED', null, JSON.stringify({ categoryId, budgetPeriod, amountPaise, status: 'DRAFT' }), null, request.headers.get('cf-ray'))
+        ])
         return json({ ok: true, id, status: 'DRAFT' }, 201)
       }
 
@@ -929,11 +932,14 @@ if (
         if (!category) return json({ error: 'Invalid expense category.' }, 400)
         const id = crypto.randomUUID()
         const expenseNo = `NHYM-EXP-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
-        await env.DB.prepare(`
-          INSERT INTO finance_expenses (id, expense_no, category_id, vendor_name, description, requested_amount_paise, expense_date, approval_status, payment_status, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 'UNPAID', ?)
-        `).bind(id, expenseNo, categoryId, vendorName, description, amountPaise, expenseDate, actorId).run()
-        await audit('EXPENSE', id, 'SUBMITTED_FOR_APPROVAL', null, { expenseNo, categoryId, vendorName, description, amountPaise, expenseDate })
+        await env.DB.batch([
+          env.DB.prepare(`
+            INSERT INTO finance_expenses (id, expense_no, category_id, vendor_name, description, requested_amount_paise, expense_date, approval_status, payment_status, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 'UNPAID', ?)
+          `).bind(id, expenseNo, categoryId, vendorName, description, amountPaise, expenseDate, actorId),
+          env.DB.prepare('INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(crypto.randomUUID(), actorId, 'EXPENSE', id, 'SUBMITTED_FOR_APPROVAL', null, JSON.stringify({ expenseNo, categoryId, vendorName, description, amountPaise, expenseDate }), null, request.headers.get('cf-ray'))
+        ])
         return json({ ok: true, id, expenseNo, approvalStatus: 'PENDING' }, 201)
       }
 
@@ -1026,8 +1032,12 @@ if (
         const id = crypto.randomUUID()
         const incomeNo = `NHYM-INC-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
         try {
-          await env.DB.prepare(`INSERT INTO finance_income (id, income_no, income_type, received_from, amount_paise, received_at, payment_mode, reference_no, receipt_no, remarks, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-            .bind(id, incomeNo, incomeType, receivedFrom, amountPaise, receivedAt, paymentMode, referenceNo || null, receiptNo || null, String(body.remarks ?? '').trim() || null, actorId).run()
+          await env.DB.batch([
+            env.DB.prepare(`INSERT INTO finance_income (id, income_no, income_type, received_from, amount_paise, received_at, payment_mode, reference_no, receipt_no, remarks, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+              .bind(id, incomeNo, incomeType, receivedFrom, amountPaise, receivedAt, paymentMode, referenceNo || null, receiptNo || null, String(body.remarks ?? '').trim() || null, actorId),
+            env.DB.prepare('INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+              .bind(crypto.randomUUID(), actorId, 'INCOME', id, 'INCOME_RECORDED', null, JSON.stringify({ incomeNo, incomeType, receivedFrom, amountPaise, receivedAt, paymentMode, referenceNo, receiptNo }), null, request.headers.get('cf-ray'))
+          ])
         } catch (e) {
           if (/unique constraint|constraint failed/i.test(e instanceof Error ? e.message : '')) return json({ error: 'Receipt number has already been used.' }, 409)
           throw e
