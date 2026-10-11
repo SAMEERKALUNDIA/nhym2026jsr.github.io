@@ -137,7 +137,7 @@ export default function Finance() {
       sessionStorage.setItem('nhym_finance_must_change_password', '0')
       setMustChangePassword(false); setCurrentPassword(''); setNewPassword('')
       setNotice(result.message || 'Password changed successfully.')
-      await load(token)
+      // The state change above triggers the guarded effect to load the dashboard once.
     } catch (e) { setError(e instanceof Error ? e.message : 'Password change failed.') }
   }
 
