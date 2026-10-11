@@ -117,6 +117,12 @@ CREATE TABLE IF NOT EXISTS finance_income (
   FOREIGN KEY (recorded_by) REFERENCES finance_users(id)
 );
 
+CREATE TABLE IF NOT EXISTS finance_storage_reservations (
+  id TEXT PRIMARY KEY,
+  size_bytes INTEGER NOT NULL CHECK (size_bytes > 0),
+  expires_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS finance_documents (
   id TEXT PRIMARY KEY,
   expense_id TEXT,
@@ -151,6 +157,7 @@ CREATE TABLE IF NOT EXISTS finance_audit_logs (
 
 CREATE INDEX IF NOT EXISTS idx_finance_sessions_user_expiry ON finance_sessions(user_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_finance_login_limits_lock ON finance_login_limits(locked_until);
+CREATE INDEX IF NOT EXISTS idx_finance_storage_reservations_expiry ON finance_storage_reservations(expires_at);
 CREATE INDEX IF NOT EXISTS idx_finance_expenses_status ON finance_expenses(approval_status, payment_status);
 CREATE INDEX IF NOT EXISTS idx_finance_expenses_date ON finance_expenses(expense_date);
 CREATE INDEX IF NOT EXISTS idx_finance_payments_expense ON finance_payments(expense_id, paid_at);
