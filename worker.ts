@@ -40,6 +40,22 @@ function authorised(request: Request, env: Env) {
   return Boolean(env.ADMIN_TOKEN && token === env.ADMIN_TOKEN)
 }
 
+async function financeDigest(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function financePasswordHash(password: string, saltHex: string): Promise<string> {
+  const salt = Uint8Array.from(saltHex.match(/.{2}/g) ?? [], (part) => Number.parseInt(part, 16))
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 120000 }, key, 256)
+  return Array.from(new Uint8Array(bits), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function financeRandomHex(bytes = 16): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
@@ -589,12 +605,97 @@ if (
     id,
   })
 }
-    // NHYM FINANCE PANEL — protected by the existing admin access key.
-    // The initial phase records all actions under the shared finance admin identity.
+    // NHYM FINANCE PANEL — individually authenticated finance users.
     if (url.pathname.startsWith('/api/finance/')) {
-      if (!authorised(request, env)) return json({ error: 'Unauthorized' }, 401)
+      if (url.pathname === '/api/finance/bootstrap' && request.method === 'POST') {
+        if (!authorised(request, env)) return json({ error: 'Unauthorized' }, 401)
+        let body: { displayName?: string; loginId?: string; password?: string }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        const count = await env.DB.prepare('SELECT COUNT(*) AS total FROM finance_users').first<{ total: number }>()
+        if (Number(count?.total ?? 0) !== 0) return json({ error: 'Finance setup is already complete. Ask a Finance Head to create accounts.' }, 409)
+        const displayName = String(body.displayName ?? '').trim().slice(0, 100)
+        const loginId = String(body.loginId ?? '').trim().toLowerCase().slice(0, 80)
+        const password = String(body.password ?? '')
+        if (displayName.length < 2 || !/^[a-z0-9._-]{3,80}$/.test(loginId) || password.length < 12 || password.length > 200) return json({ error: 'Name, login ID (3–80 letters/numbers/._-) and a password of at least 12 characters are required.' }, 400)
+        const salt = financeRandomHex(16)
+        const passwordHash = await financePasswordHash(password, salt)
+        const id = crypto.randomUUID()
+        await env.DB.prepare("INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) VALUES (?, ?, ?, 'FINANCE_HEAD', ?, ?)").bind(id, displayName, loginId, salt, passwordHash).run()
+        return json({ ok: true, message: 'Finance Head account created. Sign in using your individual credentials.' }, 201)
+      }
 
-      const actorId = 'finance-system-admin'
+      if (url.pathname === '/api/finance/login' && request.method === 'POST') {
+        let body: { loginId?: string; password?: string }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        const loginId = String(body.loginId ?? '').trim().toLowerCase()
+        const password = String(body.password ?? '')
+        if (!loginId || !password || password.length > 200) return json({ error: 'Login ID and password are required.' }, 400)
+        const user = await env.DB.prepare('SELECT id, display_name, login_id, role, password_salt, password_hash FROM finance_users WHERE login_id = ? AND is_active = 1').bind(loginId).first<{ id: string; display_name: string; login_id: string; role: string; password_salt: string; password_hash: string }>()
+        const candidate = user ? await financePasswordHash(password, user.password_salt) : ''
+        if (!user || candidate !== user.password_hash) return json({ error: 'Login ID or password is incorrect.' }, 401)
+        const token = financeRandomHex(32)
+        const tokenHash = await financeDigest(token)
+        const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+        await env.DB.prepare('INSERT INTO finance_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(crypto.randomUUID(), user.id, tokenHash, expiresAt).run()
+        await env.DB.prepare('UPDATE finance_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').bind(user.id).run()
+        return json({ ok: true, token, expiresAt, user: { id: user.id, displayName: user.display_name, loginId: user.login_id, role: user.role } })
+      }
+
+      const bearer = request.headers.get('authorization')?.replace(/^Bearer\\s+/i, '') ?? ''
+      if (!bearer) return json({ error: 'Sign in to access Finance Management.' }, 401)
+      const tokenHash = await financeDigest(bearer)
+      const actor = await env.DB.prepare("SELECT u.id, u.display_name, u.login_id, u.role FROM finance_sessions s JOIN finance_users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP AND u.is_active = 1").bind(tokenHash).first<{ id: string; display_name: string; login_id: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR' }>()
+      if (!actor) return json({ error: 'Finance session expired. Please sign in again.' }, 401)
+      const actorId = actor.id
+      const role = actor.role
+      const method = request.method
+      const pathname = url.pathname
+      const isDashboard = pathname === '/api/finance/dashboard' && method === 'GET'
+      const isUserAdmin = pathname === '/api/finance/users' && (method === 'GET' || method === 'POST')
+      const isExpenseCreate = pathname === '/api/finance/expenses' && method === 'POST'
+      const isIncomeCreate = pathname === '/api/finance/income' && method === 'POST'
+      const isBudgetCreate = pathname === '/api/finance/budgets' && method === 'POST'
+      const isExpenseDecision = /^\\/api\\/finance\\/expenses\\/[a-f0-9-]+\\/decision$/i.test(pathname) && method === 'POST'
+      const isBudgetDecision = /^\\/api\\/finance\\/budgets\\/[a-f0-9-]+\\/decision$/i.test(pathname) && method === 'POST'
+      const isPaymentCreate = /^\\/api\\/finance\\/expenses\\/[a-f0-9-]+\\/payments$/i.test(pathname) && method === 'POST'
+      const isDocumentUpload = pathname === '/api/finance/documents' && method === 'POST'
+      const isDocumentDownload = /^\\/api\\/finance\\/documents\\/[a-f0-9-]+$/i.test(pathname) && method === 'GET'
+      const allowed = role === 'FINANCE_HEAD' ||
+        (role === 'OPERATOR' && (isDashboard || isExpenseCreate || isIncomeCreate || isBudgetCreate || isPaymentCreate || isDocumentUpload || isDocumentDownload)) ||
+        (role === 'APPROVER' && (isDashboard || isExpenseDecision || isBudgetDecision || isDocumentDownload)) ||
+        (role === 'AUDITOR' && (isDashboard || isDocumentDownload))
+      if (!allowed && !isUserAdmin) return json({ error: 'Your finance role does not permit this action.' }, 403)
+      if (isUserAdmin && role !== 'FINANCE_HEAD') return json({ error: 'Only the Finance Head can manage finance accounts.' }, 403)
+
+      const audit = async (entityType: string, entityId: string, action: string, oldValues?: unknown, newValues?: unknown, reason?: string) => {
+        await env.DB.prepare('INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(crypto.randomUUID(), actorId, entityType, entityId, action, oldValues == null ? null : JSON.stringify(oldValues), newValues == null ? null : JSON.stringify(newValues), reason ?? null, request.headers.get('cf-ray')).run()
+      }
+
+      if (pathname === '/api/finance/users' && method === 'GET') {
+        const users = await env.DB.prepare('SELECT id, display_name, login_id, role, is_active, created_at, last_login_at FROM finance_users ORDER BY created_at').all()
+        return json({ users: users.results ?? [] })
+      }
+      if (pathname === '/api/finance/users' && method === 'POST') {
+        let body: { displayName?: string; loginId?: string; password?: string; role?: string }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        const displayName = String(body.displayName ?? '').trim().slice(0, 100)
+        const loginId = String(body.loginId ?? '').trim().toLowerCase().slice(0, 80)
+        const password = String(body.password ?? '')
+        const newRole = String(body.role ?? '')
+        if (displayName.length < 2 || !/^[a-z0-9._-]{3,80}$/.test(loginId) || password.length < 12 || password.length > 200 || !['FINANCE_HEAD','OPERATOR','APPROVER','AUDITOR'].includes(newRole)) return json({ error: 'Enter a valid name, login ID, password (at least 12 characters) and role.' }, 400)
+        const salt = financeRandomHex(16)
+        const passwordHash = await financePasswordHash(password, salt)
+        const id = crypto.randomUUID()
+        try {
+          await env.DB.prepare('INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) VALUES (?, ?, ?, ?, ?, ?)').bind(id, displayName, loginId, newRole, salt, passwordHash).run()
+        } catch (error) {
+          if (/unique constraint|constraint failed/i.test(error instanceof Error ? error.message : '')) return json({ error: 'This login ID is already in use.' }, 409)
+          throw error
+        }
+        await audit('FINANCE_USER', id, 'USER_CREATED', null, { displayName, loginId, role: newRole })
+        return json({ ok: true, user: { id, displayName, loginId, role: newRole } }, 201)
+      }
       const audit = async (entityType: string, entityId: string, action: string, oldValues?: unknown, newValues?: unknown, reason?: string) => {
         await env.DB.prepare(`
           INSERT INTO finance_audit_logs
