@@ -69,16 +69,30 @@ jobs:
               raise AssertionError('Invalid finance role was accepted')
           except sqlite3.IntegrityError:
               pass
-          db.execute("INSERT INTO finance_expenses (id,expense_no,category_id,vendor_name,description,requested_amount_paise,expense_date,created_by) VALUES ('e1','TEST-EXP-1','exp-food','Test Vendor','Migration test',10000,'2026-10-11','u1')")
-          db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p1','e1','TEST-PAY-1','UPI',10000,'2026-10-11','ABC 123','u1')")
+          db.execute("INSERT INTO finance_expenses (id,expense_no,category_id,vendor_name,description,requested_amount_paise,approved_amount_paise,expense_date,approval_status,created_by) VALUES ('e1','TEST-EXP-1','exp-food','Test Vendor','Migration test',10000,10000,'2026-10-11','APPROVED','u1')")
+          db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p1','e1','TEST-PAY-1','UPI',6000,'2026-10-11','ABC 123','u1')")
+          assert db.execute("SELECT payment_status,final_amount_paise FROM finance_expenses WHERE id='e1'").fetchone() == ('PARTIAL',6000), 'Payment summary trigger did not update partial payment'
           try:
-              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p2','e1','TEST-PAY-2','UPI',10000,'2026-10-11','abc123','u1')")
+              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p2','e1','TEST-PAY-2','UPI',5000,'2026-10-11','UNIQUE-2','u1')")
+              raise AssertionError('Payment exceeding approved amount was accepted')
+          except sqlite3.IntegrityError as exc:
+              assert 'payment exceeds approved amount' in str(exc), f'Unexpected overpayment failure: {exc}'
+          db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p3','e1','TEST-PAY-3','UPI',4000,'2026-10-11','XYZ 456','u1')")
+          assert db.execute("SELECT payment_status,final_amount_paise FROM finance_expenses WHERE id='e1'").fetchone() == ('PAID',10000), 'Payment summary trigger did not mark fully paid'
+          try:
+              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p4','e1','TEST-PAY-4','UPI',1,'2026-10-11','abc123','u1')")
               raise AssertionError('Duplicate normalized payment reference was accepted')
           except sqlite3.IntegrityError:
               pass
+          db.execute("INSERT INTO finance_expenses (id,expense_no,category_id,vendor_name,description,requested_amount_paise,approved_amount_paise,expense_date,approval_status,created_by) VALUES ('e2','TEST-EXP-2','exp-food','Test Vendor','Not approved',100,100,'2026-10-11','PENDING','u1')")
+          try:
+              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p5','e2','TEST-PAY-5','UPI',50,'2026-10-11','NOT-APPROVED','u1')")
+              raise AssertionError('Payment against a non-approved expense was accepted')
+          except sqlite3.IntegrityError as exc:
+              assert 'expense is not approved' in str(exc), f'Unexpected approval guard failure: {exc}'
           violations = list(db.execute('PRAGMA foreign_key_check'))
           assert not violations, f'Foreign key violations: {violations}'
-          print('Finance migration, role constraints, normalized duplicate-payment guard and foreign keys passed.')
+          print('Finance migration, roles, normalized references, overpayment/approval triggers, payment summaries and foreign keys passed.')
           PY
       - name: TypeScript and production build
         run: pnpm run build
