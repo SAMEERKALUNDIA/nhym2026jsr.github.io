@@ -735,7 +735,7 @@ if (
       const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
       if (!bearer) return financeJson({ error: 'Sign in to access Finance Management.' }, 401)
       const tokenHash = await financeDigest(bearer)
-      const actor = await env.DB.prepare("SELECT u.id, u.display_name, u.login_id, u.role FROM finance_sessions s JOIN finance_users u ON u.id = s.user_id WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now') AND u.is_active = 1").bind(tokenHash).first<{ id: string; display_name: string; login_id: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR' }>()
+      const actor = await env.DB.prepare("SELECT u.id, u.display_name, u.login_id, u.role, u.must_change_password, u.password_salt, u.password_hash FROM finance_sessions s JOIN finance_users u ON u.id = s.user_id WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now') AND u.is_active = 1").bind(tokenHash).first<{ id: string; display_name: string; login_id: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR'; must_change_password: number; password_salt: string; password_hash: string }>()
       if (!actor) return financeJson({ error: 'Finance session expired. Please sign in again.' }, 401)
       if (url.pathname === '/api/finance/logout' && request.method === 'POST') {
         await env.DB.prepare('DELETE FROM finance_sessions WHERE token_hash = ?').bind(tokenHash).run()
