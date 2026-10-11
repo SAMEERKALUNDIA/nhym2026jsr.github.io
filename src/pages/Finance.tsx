@@ -22,6 +22,15 @@ const safeAuditJson = (value: unknown) => {
   try { return JSON.parse(value) as unknown } catch { return value }
 }
 
+async function readApiJson<T>(response: Response): Promise<T> {
+  const text = await response.text()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(`Finance API returned an unexpected non-JSON response (HTTP ${response.status}). The server deployment or route still needs attention.`)
+  }
+}
+
 export default function Finance() {
   const [token, setToken] = useState(() => sessionStorage.getItem('nhym_finance_session') || '')
   const [currentUser, setCurrentUser] = useState<FinanceUser | null>(() => { try { return JSON.parse(sessionStorage.getItem('nhym_finance_user') || 'null') as FinanceUser | null } catch { return null } })
@@ -113,7 +122,7 @@ export default function Finance() {
     e.preventDefault(); setError(''); setNotice('')
     try {
       const response = await fetch('/api/finance/bootstrap', { method: 'POST', headers: { authorization: `Bearer ${bootstrapKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ displayName: bootstrapName, loginId: bootstrapLoginId, password: bootstrapPassword }) })
-      const result = await response.json() as { error?: string; message?: string }
+      const result = await readApiJson<{ error?: string; message?: string }>(response)
       if (!response.ok) throw new Error(result.error || 'Finance Head account create nahi hua.')
       setNotice(result.message || 'Finance Head account create ho gaya.')
       setSetupComplete(true); setShowBootstrap(false); setBootstrapKey(''); setBootstrapPassword('')
