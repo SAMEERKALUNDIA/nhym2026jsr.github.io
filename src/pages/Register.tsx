@@ -60,17 +60,16 @@ type YesNo = 'yes' | 'no' | 'maybe'
 type YesNoOptions = 'yesno' | 'yesnomaybe'
 
 const ACTIVITIES = [
-  'Cultural Programme',
-  'Traditional Dance / Music',
-  'Sports',
-  'Youth Conclave',
-  'Career & Education',
-  'Leadership',
-  'Entrepreneurship',
-  'Ho Language / Warang Citi',
-  'Ho Heritage & Culture',
-  'Community Service',
-  'General Sessions',
+  'Discussion on the Fifth Schedule of the Indian Constitution',
+  'Discussion on the PESA Act (Panchayats (Extension to Scheduled Areas) Act)',
+  'Constitutional Recognition of the Ho Language under the Eighth Schedule',
+  'Higher Education and Employment Opportunities',
+  'Skill Development, Jobs, Business and Entrepreneurship',
+  'Declining Women’s Participation in Social Activities and Women’s Empowerment',
+  'Social Inclusion and Participation of Transgender Persons',
+  'Career Counselling and Guidance',
+  'Child Marriage and Inter-caste Marriage',
+  'Strengthening Social Relationships and Community Bonds',
 ]
 
 type Draft = {
@@ -311,7 +310,11 @@ if (!row.dob.trim()) {
         }
         if (row.activities.length === 0) {
           ok = false
-          return { ...row, error: 'Tick at least one activity for this participant.' }
+          return { ...row, error: 'Select at least one Open Stage Discussion topic.' }
+        }
+        if (row.activities.length > 3) {
+          ok = false
+          return { ...row, error: 'You can select a maximum of three Open Stage Discussion topics.' }
         }
         if (row.cultural === '') {
           ok = false
@@ -612,7 +615,10 @@ if (!row.dob.trim()) {
                               Which NHYM activities are you interested in?
                             </legend>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              Tick as many as you like. At least one is needed.
+                              Please select the topic(s) you would like to participate in during the NHYM Open Stage Discussion. Select at least one and no more than three topics.
+                            </p>
+                            <p className="mt-1 text-xs font-medium text-brand" aria-live="polite">
+                              {row.activities.length} of 3 topics selected
                             </p>
                             <div className="mt-3 grid gap-2 sm:grid-cols-2">
                               {ACTIVITIES.map((activity) => {
@@ -629,15 +635,18 @@ if (!row.dob.trim()) {
                                     <input
                                       type="checkbox"
                                       checked={checked}
+                                      disabled={!checked && row.activities.length >= 3}
                                       onChange={(e) =>
                                         update(row.key, {
                                           activities: e.target.checked
-                                            ? [...row.activities, activity]
+                                            ? row.activities.length < 3
+                                              ? [...row.activities, activity]
+                                              : row.activities
                                             : row.activities.filter((item) => item !== activity),
                                           error: undefined,
                                         })
                                       }
-                                      className="size-4 shrink-0 accent-[var(--brand)]"
+                                      className="size-4 shrink-0 accent-[var(--brand)] disabled:cursor-not-allowed"
                                     />
                                     <span>{activity}</span>
                                   </label>
