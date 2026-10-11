@@ -624,6 +624,17 @@ if (
         if (!allowedMimeTypes.includes(file.type)) return json({ error: 'Only PDF, JPG, PNG and WebP files are allowed.' }, 400)
         const maxDocumentBytes = 20 * 1024 * 1024
         if (file.size <= 0 || file.size > maxDocumentBytes) return json({ error: 'Document must be between 1 byte and 20 MB.' }, 400)
+        // Gallery photos and finance documents share the same R2 bucket and 10 GB storage allowance.
+        const maxSharedStorageBytes = 10 * 1024 * 1024 * 1024
+        const storageUsage = await env.DB.prepare(`
+          SELECT
+            (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) AS total_bytes
+        `).first<{ total_bytes: number }>()
+        const usedBytes = Number(storageUsage?.total_bytes ?? 0)
+        if (usedBytes + file.size > maxSharedStorageBytes) {
+          return json({ error: 'Shared R2 storage limit reached. Delete unused gallery photos or documents before uploading more.', usedBytes, availableBytes: Math.max(0, maxSharedStorageBytes - usedBytes), fileSize: file.size, maxStorageBytes: maxSharedStorageBytes }, 400)
+        }
         if (expenseId) {
           const row = await env.DB.prepare('SELECT id FROM finance_expenses WHERE id = ?').bind(expenseId).first()
           if (!row) return json({ error: 'Expense record not found.' }, 404)
