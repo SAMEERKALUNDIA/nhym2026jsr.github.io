@@ -653,7 +653,7 @@ if (
         return json({ ok: true, documentId, fileName: file.name, sizeBytes: file.size }, 201)
       }
 
-      const documentDownload = url.pathname.match(/^\\/api\\/finance\\/documents\\/([a-f0-9-]+)$/i)
+      const documentDownload = url.pathname.match(/^\/api\/finance\/documents\/([a-f0-9-]+)$/i)
       if (documentDownload && request.method === 'GET') {
         const record = await env.DB.prepare('SELECT storage_key, file_name, mime_type FROM finance_documents WHERE id = ?').bind(documentDownload[1]).first<{ storage_key: string | null; file_name: string; mime_type: string | null }>()
         if (!record?.storage_key) return json({ error: 'Document not found.' }, 404)
