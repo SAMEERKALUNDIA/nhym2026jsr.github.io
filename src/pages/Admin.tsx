@@ -1402,7 +1402,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
   function sectionTitle(title: string) {
     ensureSpace(15)
 
-    pdf.setFillColor(245, 241, 234)
+    pdf.setFillColor(30, 95, 66)
 
     pdf.roundedRect(
       margin,
@@ -1416,7 +1416,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
 
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(11)
-    pdf.setTextColor(72, 30, 20)
+    pdf.setTextColor(255, 255, 255)
 
     pdf.text(
       title,
@@ -1851,10 +1851,12 @@ async function downloadAdminRegistrationPdf(row: Row) {
     pdf.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003', pageWidth / 2, pageHeight - 18, { align: 'center' })
     pdf.text('Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 12, { align: 'center' })
 
+    pdf.setFontSize(6.5)
+    pdf.setTextColor(110)
     pdf.text(
       `Page ${pageNumber} of ${pageCount}`,
       pageWidth - margin,
-      pageHeight - 12,
+      pageHeight - 5,
       {
         align: 'right',
       }
