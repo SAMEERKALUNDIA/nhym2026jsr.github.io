@@ -176,7 +176,7 @@ INSERT OR IGNORE INTO finance_categories (id, name, category_type) VALUES
 ('inc-other','Other Income','INCOME');
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_finance_payment_reference_normalized
-ON finance_payments(UPPER(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(reference_no), ' ', ''), char(9), ''), char(10), ''), char(13), '')))
+ON finance_payments(UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(reference_no), char(13), ''), char(12), ''), char(11), ''), char(10), ''), char(9), ''), char(160), ''), char(65279), ''), char(8232), ''), char(8233), ''), ' ', '')))
 WHERE reference_no IS NOT NULL AND TRIM(reference_no) <> '';
 
 
