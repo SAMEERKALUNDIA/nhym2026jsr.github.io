@@ -59,8 +59,24 @@ jobs:
           db.execute('PRAGMA foreign_keys = ON')
           db.executescript(Path('migrations/0001_finance_management.sql').read_text())
           tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-          required = {'finance_users','finance_sessions','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_audit_logs'}
+          required = {'finance_users','finance_sessions','finance_login_limits','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_audit_logs'}
           assert required <= tables, f'Missing tables: {required - tables}'
+          # Exercise the persisted failed-login counter and temporary lock used by the Worker.
+          db.execute("INSERT INTO finance_login_limits (attempt_key,failed_attempts,window_started_at) VALUES ('login-test',1,CURRENT_TIMESTAMP)")
+          for expected in range(2, 6):
+              db.execute("""INSERT INTO finance_login_limits (attempt_key,failed_attempts,window_started_at,locked_until,updated_at)
+                VALUES ('login-test',1,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP)
+                ON CONFLICT(attempt_key) DO UPDATE SET
+                  failed_attempts = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN 1 ELSE finance_login_limits.failed_attempts + 1 END,
+                  window_started_at = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN CURRENT_TIMESTAMP ELSE finance_login_limits.window_started_at END,
+                  locked_until = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN NULL ELSE finance_login_limits.locked_until END,
+                  updated_at = CURRENT_TIMESTAMP""")
+              db.execute("""UPDATE finance_login_limits SET locked_until=datetime('now','+15 minutes')
+                WHERE attempt_key='login-test' AND failed_attempts >= 5
+                  AND datetime(window_started_at) > datetime('now','-15 minutes')
+                  AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))""")
+          attempts, locked = db.execute("SELECT failed_attempts, datetime(locked_until)>datetime('now') FROM finance_login_limits WHERE attempt_key='login-test'").fetchone()
+          assert attempts == 5 and locked == 1, f'Login lockout did not activate after five failures: {attempts}, {locked}'
           assert db.execute('SELECT COUNT(*) FROM finance_users').fetchone()[0] == 0, 'Migration must not seed a shared finance account'
           assert db.execute("SELECT COUNT(*) FROM finance_categories WHERE category_type='EXPENSE'").fetchone()[0] >= 1
           db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u1','Test Head','test-head','FINANCE_HEAD','salt','hash')")
@@ -99,7 +115,7 @@ jobs:
               assert 'expense is not approved' in str(exc), f'Unexpected approval guard failure: {exc}'
           violations = list(db.execute('PRAGMA foreign_key_check'))
           assert not violations, f'Foreign key violations: {violations}'
-          print('Finance migration, roles, normalized references, overpayment/approval triggers, payment summaries, single-decision guard and foreign keys passed.')
+          print('Finance migration, roles, normalized references, overpayment/approval triggers, payment summaries, single-decision guard, login lockout and foreign keys passed.')
           PY
       - name: TypeScript and production build
         run: pnpm run build
