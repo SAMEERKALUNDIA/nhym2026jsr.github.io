@@ -123,6 +123,23 @@ export default function Finance() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Login nahi ho saka.') }
   }
 
+  async function changeTemporaryPassword(e: React.FormEvent) {
+    e.preventDefault(); setError(''); setNotice('')
+    if (newPassword.length < 12) { setError('New password must be at least 12 characters.'); return }
+    try {
+      const response = await fetch('/api/finance/change-password', {
+        method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      const result = await response.json() as { error?: string; message?: string }
+      if (!response.ok) throw new Error(result.error || 'Password change failed.')
+      sessionStorage.setItem('nhym_finance_must_change_password', '0')
+      setMustChangePassword(false); setCurrentPassword(''); setNewPassword('')
+      setNotice(result.message || 'Password changed successfully.')
+      await load(token)
+    } catch (e) { setError(e instanceof Error ? e.message : 'Password change failed.') }
+  }
+
   async function bootstrap(e: React.FormEvent) {
     e.preventDefault(); setError(''); setNotice('')
     try {
