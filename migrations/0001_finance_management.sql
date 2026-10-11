@@ -149,3 +149,10 @@ INSERT OR IGNORE INTO finance_categories (id, name, category_type) VALUES
 ('inc-sponsorship','Sponsorship','INCOME'),
 ('inc-contribution','Committee Contribution','INCOME'),
 ('inc-other','Other Income','INCOME');
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_finance_payment_reference_normalized
+ON finance_payments(UPPER(REPLACE(REPLACE(REPLACE(TRIM(reference_no), ' ', ''), char(9), ''), char(10), '')))
+WHERE reference_no IS NOT NULL AND TRIM(reference_no) <> '';
+
+INSERT OR IGNORE INTO finance_users (id, display_name, login_id, role, is_active)
+VALUES ('finance-system-admin', 'Finance System Admin', 'shared-admin', 'FINANCE_HEAD', 1);
