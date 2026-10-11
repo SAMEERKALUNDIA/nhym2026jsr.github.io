@@ -173,9 +173,32 @@ jobs:
           assert db.execute("SELECT is_active FROM finance_users WHERE id='u1'").fetchone()[0] == 1, 'Final Finance Head must remain active'
           assert db.execute("SELECT COUNT(*) FROM finance_audit_logs WHERE entity_id='u1' AND action='USER_DEACTIVATED'").fetchone()[0] == 0, 'Failed status change must not create audit entry'
 
+          # The Worker also enforces payment limits with a conditional INSERT, so the preview
+          # remains safe if trigger installation is unavailable. Exercise the triggerless path.
+          db.execute('DROP TRIGGER trg_finance_payment_validate_insert')
+          db.execute('DROP TRIGGER trg_finance_payment_summary_insert')
+          db.execute("INSERT INTO finance_expenses (id,expense_no,category_id,vendor_name,description,requested_amount_paise,approved_amount_paise,expense_date,approval_status,created_by) VALUES ('e3','TEST-EXP-3','exp-food','Test Vendor','Triggerless guard',1000,1000,'2026-10-11','APPROVED','u1')")
+          guarded_insert = """
+            INSERT INTO finance_payments
+              (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by,remarks)
+            SELECT ?, e.id, ?, ?, ?, ?, ?, ?, ?
+            FROM finance_expenses e
+            WHERE e.id = ? AND e.approval_status = 'APPROVED'
+              AND COALESCE((SELECT SUM(p.amount_paise) FROM finance_payments p WHERE p.expense_id = e.id), 0) + ? <= e.approved_amount_paise
+          """
+          first = db.execute(guarded_insert, ('p6','TEST-PAY-6','UPI',700,'2026-10-11','E3-REF-1','u1',None,'e3',700))
+          assert first.rowcount == 1, 'Conditional payment insert should accept payment within approved balance'
+          db.execute("""UPDATE finance_expenses
+            SET final_amount_paise=(SELECT COALESCE(SUM(amount_paise),0) FROM finance_payments WHERE expense_id='e3'),
+                payment_status=CASE WHEN (SELECT COALESCE(SUM(amount_paise),0) FROM finance_payments WHERE expense_id='e3') >= approved_amount_paise THEN 'PAID'
+                  WHEN (SELECT COALESCE(SUM(amount_paise),0) FROM finance_payments WHERE expense_id='e3') > 0 THEN 'PARTIAL' ELSE 'UNPAID' END
+            WHERE id='e3' AND EXISTS (SELECT 1 FROM finance_payments WHERE id='p6')""")
+          second = db.execute(guarded_insert, ('p7','TEST-PAY-7','UPI',400,'2026-10-11','E3-REF-2','u1',None,'e3',400))
+          assert second.rowcount == 0, 'Conditional insert must reject a payment exceeding remaining approved balance without triggers'
+          assert db.execute("SELECT payment_status,final_amount_paise FROM finance_expenses WHERE id='e3'").fetchone() == ('PARTIAL',700), 'Explicit summary update should work without triggers'
           violations = list(db.execute('PRAGMA foreign_key_check'))
           assert not violations, f'Foreign key violations: {violations}'
-          print('Finance migration, roles, normalized references, overpayment/approval triggers, payment summaries, single-decision guard, login lockout and foreign keys passed.')
+          print('Finance migration, roles, normalized references, overpayment/approval triggers, triggerless atomic payment guard, payment summaries, single-decision guard, login lockout and foreign keys passed.')
           PY
       - name: TypeScript and production build
         run: pnpm run build
