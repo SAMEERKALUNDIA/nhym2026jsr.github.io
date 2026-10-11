@@ -645,7 +645,7 @@ if (
       return financeJson({ users: users.results ?? [] })
     }
 
-    const adminFinancePasswordReset = url.pathname.match(/^\\/api\\/admin\\/finance-users\\/([a-f0-9-]+)\\/reset-password$/i)
+    const adminFinancePasswordReset = url.pathname.match(/^\/api\/admin\/finance-users\/([a-f0-9-]+)\/reset-password$/i)
     if (adminFinancePasswordReset && request.method === 'POST') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       let body: { password?: string }
