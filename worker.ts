@@ -1088,19 +1088,36 @@ if (
         const expense = await env.DB.prepare('SELECT * FROM finance_expenses WHERE id = ?').bind(paymentMatch[1]).first<any>()
         if (!expense) return financeJson({ error: 'Expense not found.' }, 404)
         if (expense.approval_status !== 'APPROVED') return financeJson({ error: 'Payment can only be recorded after approval.' }, 409)
-        const paid = await env.DB.prepare('SELECT COALESCE(SUM(amount_paise),0) AS total FROM finance_payments WHERE expense_id = ?').bind(expense.id).first<{ total: number }>()
-        const paidSoFar = Number(paid?.total ?? 0)
-        if (paidSoFar + amountPaise > Number(expense.approved_amount_paise)) return financeJson({ error: 'Payment total cannot exceed the approved amount.' }, 409)
         const paymentId = crypto.randomUUID()
         const paymentNo = `NHYM-PAY-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
+        let paymentResults: D1Result[]
         try {
-          // Payment, trigger-maintained summary, and audit row commit as one transaction.
-          await env.DB.batch([
-            env.DB.prepare(`INSERT INTO finance_payments (id, expense_id, payment_no, payment_mode, amount_paise, paid_at, reference_no, paid_by, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-              .bind(paymentId, expense.id, paymentNo, paymentMode, amountPaise, paidAt, referenceNo || null, actorId, remarks || null),
+          // Guard the INSERT itself, not only a preceding SELECT: this keeps the approved
+          // balance check and insert in one D1 transaction even when requests race.
+          paymentResults = await env.DB.batch([
+            env.DB.prepare(`INSERT INTO finance_payments
+              (id, expense_id, payment_no, payment_mode, amount_paise, paid_at, reference_no, paid_by, remarks)
+              SELECT ?, e.id, ?, ?, ?, ?, ?, ?, ?
+              FROM finance_expenses e
+              WHERE e.id = ? AND e.approval_status = 'APPROVED'
+                AND COALESCE((SELECT SUM(p.amount_paise) FROM finance_payments p WHERE p.expense_id = e.id), 0) + ? <= e.approved_amount_paise`)
+              .bind(paymentId, paymentNo, paymentMode, amountPaise, paidAt, referenceNo || null, actorId, remarks || null, expense.id, amountPaise),
+            // Explicitly maintain summary values so preview databases remain correct even if
+            // a trigger has not yet been installed. If present, the DB trigger remains a guard.
+            env.DB.prepare(`UPDATE finance_expenses
+              SET final_amount_paise = (SELECT COALESCE(SUM(amount_paise), 0) FROM finance_payments WHERE expense_id = ?),
+                  payment_status = CASE
+                    WHEN (SELECT COALESCE(SUM(amount_paise), 0) FROM finance_payments WHERE expense_id = ?) >= approved_amount_paise THEN 'PAID'
+                    WHEN (SELECT COALESCE(SUM(amount_paise), 0) FROM finance_payments WHERE expense_id = ?) > 0 THEN 'PARTIAL'
+                    ELSE 'UNPAID'
+                  END,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE id = ? AND EXISTS (SELECT 1 FROM finance_payments WHERE id = ?)`)
+              .bind(expense.id, expense.id, expense.id, expense.id, paymentId),
             env.DB.prepare(`INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, new_values_json, request_id)
-              SELECT ?, ?, 'PAYMENT', ?, 'PAYMENT_RECORDED', ?, ? WHERE changes() = 1`)
-              .bind(crypto.randomUUID(), actorId, paymentId, JSON.stringify({ paymentNo, expenseId: expense.id, paymentMode, amountPaise, paidAt, referenceNo }), request.headers.get('cf-ray'))
+              SELECT ?, ?, 'PAYMENT', ?, 'PAYMENT_RECORDED', ?, ?
+              WHERE EXISTS (SELECT 1 FROM finance_payments WHERE id = ?)`)
+              .bind(crypto.randomUUID(), actorId, paymentId, JSON.stringify({ paymentNo, expenseId: expense.id, paymentMode, amountPaise, paidAt, referenceNo }), request.headers.get('cf-ray'), paymentId)
           ])
         } catch (e) {
           const message = e instanceof Error ? e.message : ''
@@ -1115,8 +1132,13 @@ if (
           }
           throw e
         }
-        // The database trigger maintains the total/status transactionally; do not overwrite it
-        // with an application-side sum that could become stale under concurrent payments.
+        if (Number(paymentResults[0]?.meta?.changes ?? 0) !== 1) {
+          const latest = await env.DB.prepare('SELECT approval_status, approved_amount_paise, COALESCE((SELECT SUM(amount_paise) FROM finance_payments WHERE expense_id = finance_expenses.id), 0) AS paid_amount_paise FROM finance_expenses WHERE id = ?')
+            .bind(expense.id).first<{ approval_status: string; approved_amount_paise: number | null; paid_amount_paise: number }>()
+          if (!latest) return financeJson({ error: 'Expense not found.' }, 404)
+          if (latest.approval_status !== 'APPROVED') return financeJson({ error: 'Payment can only be recorded after approval.' }, 409)
+          return financeJson({ error: 'Payment total cannot exceed the approved amount.' }, 409)
+        }
         const updatedExpense = await env.DB.prepare('SELECT payment_status FROM finance_expenses WHERE id = ?').bind(expense.id).first<{ payment_status: string }>()
         const paymentStatus = String(updatedExpense?.payment_status ?? 'PARTIAL')
         return financeJson({ ok: true, paymentNo, paymentStatus }, 201)
