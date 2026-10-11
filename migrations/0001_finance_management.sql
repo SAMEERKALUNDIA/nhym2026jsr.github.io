@@ -5,8 +5,21 @@ CREATE TABLE IF NOT EXISTS finance_users (
   display_name TEXT NOT NULL,
   login_id TEXT NOT NULL UNIQUE,
   role TEXT NOT NULL CHECK (role IN ('FINANCE_HEAD','OPERATOR','APPROVER','AUDITOR')),
+  password_salt TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0,1)),
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_login_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS finance_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES finance_users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS finance_categories (
@@ -128,6 +141,7 @@ CREATE TABLE IF NOT EXISTS finance_audit_logs (
   FOREIGN KEY (actor_user_id) REFERENCES finance_users(id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_finance_sessions_user_expiry ON finance_sessions(user_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_finance_expenses_status ON finance_expenses(approval_status, payment_status);
 CREATE INDEX IF NOT EXISTS idx_finance_expenses_date ON finance_expenses(expense_date);
 CREATE INDEX IF NOT EXISTS idx_finance_payments_expense ON finance_payments(expense_id, paid_at);
@@ -154,5 +168,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_finance_payment_reference_normalized
 ON finance_payments(UPPER(REPLACE(REPLACE(REPLACE(TRIM(reference_no), ' ', ''), char(9), ''), char(10), '')))
 WHERE reference_no IS NOT NULL AND TRIM(reference_no) <> '';
 
-INSERT OR IGNORE INTO finance_users (id, display_name, login_id, role, is_active)
-VALUES ('finance-system-admin', 'Finance System Admin', 'shared-admin', 'FINANCE_HEAD', 1);
+-- The first FINANCE_HEAD account is created through the one-time authenticated bootstrap endpoint.
+-- No shared login is seeded; each finance user must have an individual password and session.
