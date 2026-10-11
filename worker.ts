@@ -668,7 +668,7 @@ if (
       }
 
       if (url.pathname === '/api/finance/dashboard' && request.method === 'GET') {
-        const [income, paid, pending, unpaid, categories, expenses, incomes, budgets] = await Promise.all([
+        const [income, paid, pending, unpaid, categories, expenses, incomes, budgets, documents] = await Promise.all([
           env.DB.prepare('SELECT COALESCE(SUM(amount_paise), 0) AS total FROM finance_income').first<{ total: number }>(),
           env.DB.prepare('SELECT COALESCE(SUM(amount_paise), 0) AS total FROM finance_payments').first<{ total: number }>(),
           env.DB.prepare("SELECT COUNT(*) AS total FROM finance_expenses WHERE approval_status = 'PENDING'").first<{ total: number }>(),
@@ -683,7 +683,8 @@ if (
             ORDER BY e.created_at DESC LIMIT 500
           `).all(),
           env.DB.prepare('SELECT id, income_no, income_type, received_from, amount_paise, received_at, payment_mode, receipt_no FROM finance_income ORDER BY received_at DESC LIMIT 200').all(),
-          env.DB.prepare(`SELECT b.id, b.budget_period, b.approved_amount_paise, b.revision_no, b.status, c.name AS category_name FROM finance_budgets b JOIN finance_categories c ON c.id = b.category_id ORDER BY b.created_at DESC LIMIT 200`).all()
+          env.DB.prepare(`SELECT b.id, b.budget_period, b.approved_amount_paise, b.revision_no, b.status, c.name AS category_name FROM finance_budgets b JOIN finance_categories c ON c.id = b.category_id ORDER BY b.created_at DESC LIMIT 200`).all(),
+          env.DB.prepare(`SELECT d.id, d.expense_id, d.income_id, d.document_type, d.file_name, d.mime_type, d.size_bytes, d.uploaded_at, e.expense_no, i.income_no FROM finance_documents d LEFT JOIN finance_expenses e ON e.id = d.expense_id LEFT JOIN finance_income i ON i.id = d.income_id ORDER BY d.uploaded_at DESC LIMIT 500`).all()
         ])
         return json({
           totalIncomePaise: Number(income?.total ?? 0),
@@ -693,7 +694,8 @@ if (
           categories: categories.results ?? [],
           expenses: expenses.results ?? [],
           incomes: incomes.results ?? [],
-          budgets: budgets.results ?? []
+          budgets: budgets.results ?? [],
+          documents: documents.results ?? []
         })
       }
 
