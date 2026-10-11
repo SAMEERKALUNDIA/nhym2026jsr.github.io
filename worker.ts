@@ -60,6 +60,19 @@ function financeRandomHex(bytes = 16): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+function isValidFinanceDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return false
+  const date = new Date(0)
+  date.setUTCHours(0, 0, 0, 0)
+  date.setUTCFullYear(year, month - 1, day)
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
@@ -979,7 +992,7 @@ if (
         const description = String(body.description ?? '').trim()
         const amountPaise = Number(body.amountPaise)
         const expenseDate = String(body.expenseDate ?? '')
-        if (!categoryId || !vendorName || !description || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(expenseDate)) {
+        if (!categoryId || !vendorName || !description || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !isValidFinanceDate(expenseDate)) {
           return financeJson({ error: 'Category, vendor, purpose, valid amount and date are required.' }, 400)
         }
         const category = await env.DB.prepare("SELECT id FROM finance_categories WHERE id = ? AND category_type = 'EXPENSE' AND is_active = 1").bind(categoryId).first()
@@ -1039,7 +1052,7 @@ if (
         const paidAt = String(body.paidAt ?? '')
         const referenceNo = String(body.referenceNo ?? '').trim()
         const remarks = String(body.remarks ?? '').trim()
-        if (!['UPI','BANK_TRANSFER','CASH'].includes(paymentMode) || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(paidAt)) return financeJson({ error: 'Valid payment mode, amount and date are required.' }, 400)
+        if (!['UPI','BANK_TRANSFER','CASH'].includes(paymentMode) || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !isValidFinanceDate(paidAt)) return financeJson({ error: 'Valid payment mode, amount and date are required.' }, 400)
         if (paymentMode !== 'CASH' && !referenceNo) return financeJson({ error: 'UPI/bank reference number is required.' }, 400)
         const expense = await env.DB.prepare('SELECT * FROM finance_expenses WHERE id = ?').bind(paymentMatch[1]).first<any>()
         if (!expense) return financeJson({ error: 'Expense not found.' }, 404)
@@ -1088,7 +1101,7 @@ if (
         const paymentMode = String(body.paymentMode ?? '')
         const referenceNo = String(body.referenceNo ?? '').trim()
         const receiptNo = String(body.receiptNo ?? '').trim()
-        if (!incomeType || !receivedFrom || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(receivedAt) || !['UPI','BANK_TRANSFER','CASH'].includes(paymentMode)) return financeJson({ error: 'Income type, source, valid amount, date and payment mode are required.' }, 400)
+        if (!incomeType || !receivedFrom || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !isValidFinanceDate(receivedAt) || !['UPI','BANK_TRANSFER','CASH'].includes(paymentMode)) return financeJson({ error: 'Income type, source, valid amount, date and payment mode are required.' }, 400)
         if (paymentMode !== 'CASH' && !referenceNo) return financeJson({ error: 'UPI/bank reference number is required.' }, 400)
         const id = crypto.randomUUID()
         const incomeNo = `NHYM-INC-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
