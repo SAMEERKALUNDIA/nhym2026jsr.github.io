@@ -9,6 +9,7 @@ const NotFound = lazy(() => import('@/pages/NotFound'))
 const Admin = lazy(() => import('@/pages/Admin'))
 const Participant = lazy(() => import('@/pages/Participant'))
 const Register = lazy(() => import('@/pages/Register'))
+const Finance = lazy(() => import('@/pages/Finance'))
 
 /* This is a one-page site with one action, so there is no site-wide header or
    footer above the routes: the page owns its own shell, its own main and its
@@ -46,6 +47,7 @@ export default function App() {
         {/* Separate admin management pages */}
         <Route path="admin/participants" element={<Admin />} />
         <Route path="admin/gallery" element={<Admin />} />
+        <Route path="admin/finance" element={<Finance />} />
 
         {/* Public gallery */}
         <Route path="/gallery" element={<Gallery />} />

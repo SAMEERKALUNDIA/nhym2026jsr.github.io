@@ -12,5 +12,19 @@
       "binding": "GALLERY",
       "bucket_name": "nhym-gallery"
     }
-  ]
+  ],
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_id": "dfea51ad-0f55-422c-98a9-90f4f48eec6e"
+      }
+    ],
+    "r2_buckets": [
+      {
+        "binding": "GALLERY",
+        "bucket_name": "nhym-gallery-preview"
+      }
+    ]
+  }
 }

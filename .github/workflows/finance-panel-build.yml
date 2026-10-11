@@ -1,0 +1,207 @@
+name: Finance Panel Build Validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - feature/nhym-finance-panel
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate Worker TypeScript syntax
+        run: |
+          node --input-type=module <<'NODE'
+          import ts from 'typescript'
+          import { readFileSync } from 'node:fs'
+          const source = readFileSync('worker.ts', 'utf8')
+          const result = ts.transpileModule(source, {
+            reportDiagnostics: true,
+            compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
+          })
+          const errors = (result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error)
+          if (errors.length) {
+            for (const diagnostic of errors) console.error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\\n'))
+            process.exit(1)
+          }
+          console.log('Worker TypeScript syntax is valid.')
+          NODE
+
+      - name: Test finance migration and database constraints
+        run: |
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          db = sqlite3.connect(':memory:')
+          db.execute('PRAGMA foreign_keys = ON')
+          db.executescript(Path('migrations/0001_finance_management.sql').read_text())
+          tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          required = {'finance_users','finance_sessions','finance_login_limits','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_storage_reservations','finance_audit_logs'}
+          assert required <= tables, f'Missing tables: {required - tables}'
+          # Exercise atomic shared-storage reservations across gallery and finance uploads.
+          db.execute('CREATE TABLE gallery_photos (file_size INTEGER NOT NULL)')
+          max_storage = 10 * 1024 * 1024 * 1024
+          db.execute('INSERT INTO gallery_photos (file_size) VALUES (?)', (max_storage - 10,))
+          first_reservation = db.execute("""
+            INSERT INTO finance_storage_reservations (id,size_bytes,expires_at)
+            SELECT 'reserve-1',6,datetime('now','+1 hour')
+            WHERE
+              (SELECT COALESCE(SUM(file_size),0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(size_bytes),0) FROM finance_documents) +
+              (SELECT COALESCE(SUM(size_bytes),0) FROM finance_storage_reservations WHERE expires_at>CURRENT_TIMESTAMP) + 6 <= ?
+          """, (max_storage,))
+          assert first_reservation.rowcount == 1, 'First shared-storage reservation should fit'
+          second_reservation = db.execute("""
+            INSERT INTO finance_storage_reservations (id,size_bytes,expires_at)
+            SELECT 'reserve-2',5,datetime('now','+1 hour')
+            WHERE
+              (SELECT COALESCE(SUM(file_size),0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(size_bytes),0) FROM finance_documents) +
+              (SELECT COALESCE(SUM(size_bytes),0) FROM finance_storage_reservations WHERE expires_at>CURRENT_TIMESTAMP) + 5 <= ?
+          """, (max_storage,))
+          assert second_reservation.rowcount == 0, 'Concurrent reservations must not exceed the shared 10 GB cap'
+          db.execute("DELETE FROM finance_storage_reservations WHERE id='reserve-1'")
+          # Exercise the persisted failed-login counter and temporary lock used by the Worker.
+          db.execute("INSERT INTO finance_login_limits (attempt_key,failed_attempts,window_started_at) VALUES ('login-test',1,CURRENT_TIMESTAMP)")
+          for expected in range(2, 6):
+              db.execute("""INSERT INTO finance_login_limits (attempt_key,failed_attempts,window_started_at,locked_until,updated_at)
+                VALUES ('login-test',1,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP)
+                ON CONFLICT(attempt_key) DO UPDATE SET
+                  failed_attempts = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN 1 ELSE finance_login_limits.failed_attempts + 1 END,
+                  window_started_at = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN CURRENT_TIMESTAMP ELSE finance_login_limits.window_started_at END,
+                  locked_until = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN NULL ELSE finance_login_limits.locked_until END,
+                  updated_at = CURRENT_TIMESTAMP""")
+              db.execute("""UPDATE finance_login_limits SET locked_until=datetime('now','+15 minutes')
+                WHERE attempt_key='login-test' AND failed_attempts >= 5
+                  AND datetime(window_started_at) > datetime('now','-15 minutes')
+                  AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))""")
+          attempts, locked = db.execute("SELECT failed_attempts, datetime(locked_until)>datetime('now') FROM finance_login_limits WHERE attempt_key='login-test'").fetchone()
+          assert attempts == 5 and locked == 1, f'Login lockout did not activate after five failures: {attempts}, {locked}'
+          # An expired 15-minute window must reset both the counter and any old lock.
+          db.execute("""UPDATE finance_login_limits SET failed_attempts=5,
+            window_started_at=datetime('now','-16 minutes'), locked_until=datetime('now','+10 minutes')
+            WHERE attempt_key='login-test'""")
+          db.execute("""INSERT INTO finance_login_limits (attempt_key,failed_attempts,window_started_at,locked_until,updated_at)
+            VALUES ('login-test',1,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP)
+            ON CONFLICT(attempt_key) DO UPDATE SET
+              failed_attempts = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN 1 ELSE finance_login_limits.failed_attempts + 1 END,
+              window_started_at = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN CURRENT_TIMESTAMP ELSE finance_login_limits.window_started_at END,
+              locked_until = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN NULL ELSE finance_login_limits.locked_until END,
+              updated_at = CURRENT_TIMESTAMP""")
+          attempts, locked = db.execute("SELECT failed_attempts, locked_until IS NULL FROM finance_login_limits WHERE attempt_key='login-test'").fetchone()
+          assert attempts == 1 and locked == 1, f'Expired login window did not reset: attempts={attempts}, lock_cleared={locked}'
+          assert db.execute('SELECT COUNT(*) FROM finance_users').fetchone()[0] == 0, 'Migration must not seed a shared finance account'
+          assert db.execute("SELECT COUNT(*) FROM finance_categories WHERE category_type='EXPENSE'").fetchone()[0] >= 1
+          db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u1','Test Head','test-head','FINANCE_HEAD','salt','hash')")
+          try:
+              db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u2','Bad Role','bad-role','ROOT','salt','hash')")
+              raise AssertionError('Invalid finance role was accepted')
+          except sqlite3.IntegrityError:
+              pass
+          db.execute("INSERT INTO finance_expenses (id,expense_no,category_id,vendor_name,description,requested_amount_paise,approved_amount_paise,expense_date,approval_status,created_by) VALUES ('e1','TEST-EXP-1','exp-food','Test Vendor','Migration test',10000,10000,'2026-10-11','APPROVED','u1')")
+          db.execute("INSERT INTO finance_approvals (id,expense_id,decision,approved_amount_paise,decided_by) VALUES ('a1','e1','APPROVED',10000,'u1')")
+          try:
+              db.execute("INSERT INTO finance_approvals (id,expense_id,decision,approved_amount_paise,decided_by) VALUES ('a2','e1','REJECTED',NULL,'u1')")
+              raise AssertionError('Multiple approval decisions for one expense were accepted')
+          except sqlite3.IntegrityError:
+              pass
+
+          db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p1','e1','TEST-PAY-1','UPI',6000,'2026-10-11','ABC 123','u1')")
+          assert db.execute("SELECT payment_status,final_amount_paise FROM finance_expenses WHERE id='e1'").fetchone() == ('PARTIAL',6000), 'Payment summary trigger did not update partial payment'
+          try:
+              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p2','e1','TEST-PAY-2','UPI',5000,'2026-10-11','UNIQUE-2','u1')")
+              raise AssertionError('Payment exceeding approved amount was accepted')
+          except sqlite3.IntegrityError as exc:
+              assert 'payment exceeds approved amount' in str(exc), f'Unexpected overpayment failure: {exc}'
+          try:
+              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p2dup','e1','TEST-PAY-DUP','UPI',1000,'2026-10-11','abc\u00a0123','u1')")
+              raise AssertionError('Duplicate normalized payment reference with Unicode whitespace was accepted')
+          except sqlite3.IntegrityError as exc:
+              assert 'UNIQUE constraint failed' in str(exc), f'Duplicate reference did not hit unique index: {exc}'
+          db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p3','e1','TEST-PAY-3','UPI',4000,'2026-10-11','XYZ 456','u1')")
+          assert db.execute("SELECT payment_status,final_amount_paise FROM finance_expenses WHERE id='e1'").fetchone() == ('PAID',10000), 'Payment summary trigger did not mark fully paid'
+          db.execute("INSERT INTO finance_expenses (id,expense_no,category_id,vendor_name,description,requested_amount_paise,approved_amount_paise,expense_date,approval_status,created_by) VALUES ('e2','TEST-EXP-2','exp-food','Test Vendor','Not approved',100,100,'2026-10-11','PENDING','u1')")
+          try:
+              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p5','e2','TEST-PAY-5','UPI',50,'2026-10-11','NOT-APPROVED','u1')")
+              raise AssertionError('Payment against a non-approved expense was accepted')
+          except sqlite3.IntegrityError as exc:
+              assert 'expense is not approved' in str(exc), f'Unexpected approval guard failure: {exc}'
+          # Exercise the same conditional update/audit/session-revocation ordering used for Finance Head status changes.
+          db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u3','Second Head','second-head','FINANCE_HEAD','salt','hash')")
+          db.execute("INSERT INTO finance_sessions (id,user_id,token_hash,expires_at) VALUES ('s1','u3','token-hash-1','2099-01-01')")
+          status_change = db.execute("""UPDATE finance_users SET is_active=0
+            WHERE id='u3' AND (role <> 'FINANCE_HEAD' OR EXISTS (
+              SELECT 1 FROM finance_users WHERE role='FINANCE_HEAD' AND is_active=1 AND id <> 'u3'
+            ))""")
+          assert status_change.rowcount == 1, 'Should allow deactivation when another Finance Head remains'
+          db.execute("""INSERT INTO finance_audit_logs (id,actor_user_id,entity_type,entity_id,action,old_values_json,new_values_json)
+            SELECT 'audit-u3','u1','FINANCE_USER','u3','USER_DEACTIVATED','{"isActive":true}','{"isActive":false}'
+            WHERE changes()=1""")
+          db.execute("DELETE FROM finance_sessions WHERE user_id='u3' AND 0=0 AND changes()=1")
+          assert db.execute("SELECT COUNT(*) FROM finance_sessions WHERE user_id='u3'").fetchone()[0] == 0, 'Successful deactivation must revoke sessions'
+          status_change = db.execute("""UPDATE finance_users SET is_active=0
+            WHERE id='u1' AND (role <> 'FINANCE_HEAD' OR EXISTS (
+              SELECT 1 FROM finance_users WHERE role='FINANCE_HEAD' AND is_active=1 AND id <> 'u1'
+            ))""")
+          assert status_change.rowcount == 0, 'Must not deactivate the final active Finance Head'
+          db.execute("""INSERT INTO finance_audit_logs (id,actor_user_id,entity_type,entity_id,action)
+            SELECT 'audit-u1','u3','FINANCE_USER','u1','USER_DEACTIVATED' WHERE changes()=1""")
+          db.execute("DELETE FROM finance_sessions WHERE user_id='u1' AND 0=0 AND changes()=1")
+          assert db.execute("SELECT is_active FROM finance_users WHERE id='u1'").fetchone()[0] == 1, 'Final Finance Head must remain active'
+          assert db.execute("SELECT COUNT(*) FROM finance_audit_logs WHERE entity_id='u1' AND action='USER_DEACTIVATED'").fetchone()[0] == 0, 'Failed status change must not create audit entry'
+
+          # The Worker also enforces payment limits with a conditional INSERT, so the preview
+          # remains safe if trigger installation is unavailable. Exercise the triggerless path.
+          db.execute('DROP TRIGGER trg_finance_payment_validate_insert')
+          db.execute('DROP TRIGGER trg_finance_payment_summary_insert')
+          db.execute("INSERT INTO finance_expenses (id,expense_no,category_id,vendor_name,description,requested_amount_paise,approved_amount_paise,expense_date,approval_status,created_by) VALUES ('e3','TEST-EXP-3','exp-food','Test Vendor','Triggerless guard',1000,1000,'2026-10-11','APPROVED','u1')")
+          guarded_insert = """
+            INSERT INTO finance_payments
+              (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by,remarks)
+            SELECT ?, e.id, ?, ?, ?, ?, ?, ?, ?
+            FROM finance_expenses e
+            WHERE e.id = ? AND e.approval_status = 'APPROVED'
+              AND COALESCE((SELECT SUM(p.amount_paise) FROM finance_payments p WHERE p.expense_id = e.id), 0) + ? <= e.approved_amount_paise
+          """
+          first = db.execute(guarded_insert, ('p6','TEST-PAY-6','UPI',700,'2026-10-11','E3-REF-1','u1',None,'e3',700))
+          assert first.rowcount == 1, 'Conditional payment insert should accept payment within approved balance'
+          db.execute("""UPDATE finance_expenses
+            SET final_amount_paise=(SELECT COALESCE(SUM(amount_paise),0) FROM finance_payments WHERE expense_id='e3'),
+                payment_status=CASE WHEN (SELECT COALESCE(SUM(amount_paise),0) FROM finance_payments WHERE expense_id='e3') >= approved_amount_paise THEN 'PAID'
+                  WHEN (SELECT COALESCE(SUM(amount_paise),0) FROM finance_payments WHERE expense_id='e3') > 0 THEN 'PARTIAL' ELSE 'UNPAID' END
+            WHERE id='e3' AND EXISTS (SELECT 1 FROM finance_payments WHERE id='p6')""")
+          second = db.execute(guarded_insert, ('p7','TEST-PAY-7','UPI',400,'2026-10-11','E3-REF-2','u1',None,'e3',400))
+          assert second.rowcount == 0, 'Conditional insert must reject a payment exceeding remaining approved balance without triggers'
+          assert db.execute("SELECT payment_status,final_amount_paise FROM finance_expenses WHERE id='e3'").fetchone() == ('PARTIAL',700), 'Explicit summary update should work without triggers'
+          violations = list(db.execute('PRAGMA foreign_key_check'))
+          assert not violations, f'Foreign key violations: {violations}'
+          print('Finance migration, roles, normalized references, overpayment/approval triggers, triggerless atomic payment guard, payment summaries, single-decision guard, login lockout and foreign keys passed.')
+          PY
+      - name: TypeScript and production build
+        run: pnpm run build
+
+      - name: Bundle checks
+        run: pnpm run check:bundle
