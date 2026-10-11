@@ -8,6 +8,7 @@ type Expense = {
   requested_amount_paise: number; approved_amount_paise: number | null; expense_date: string
   approval_status: string; payment_status: string; paid_amount_paise: number
 }
+type FinanceUser = { id: string; displayName: string; loginId: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR' }
 type Dashboard = {
   totalIncomePaise: number; totalPaidPaise: number; pendingApprovalCount: number
   unpaidCount: number; categories: { id: string; name: string; category_type: string }[]
@@ -17,8 +18,22 @@ const money = (paise: number | null | undefined) => new Intl.NumberFormat('en-IN
 const today = new Date().toISOString().slice(0, 10)
 
 export default function Finance() {
-  const [token, setToken] = useState(() => sessionStorage.getItem('nhym_admin_token') || '')
-  const [loginToken, setLoginToken] = useState('')
+  const [token, setToken] = useState(() => sessionStorage.getItem('nhym_finance_session') || '')
+  const [currentUser, setCurrentUser] = useState<FinanceUser | null>(() => { try { return JSON.parse(sessionStorage.getItem('nhym_finance_user') || 'null') as FinanceUser | null } catch { return null } })
+  const [setupComplete, setSetupComplete] = useState<boolean | null>(null)
+  const [loginId, setLoginId] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [bootstrapKey, setBootstrapKey] = useState('')
+  const [bootstrapName, setBootstrapName] = useState('')
+  const [bootstrapLoginId, setBootstrapLoginId] = useState('')
+  const [bootstrapPassword, setBootstrapPassword] = useState('')
+  const [showBootstrap, setShowBootstrap] = useState(false)
+  const [users, setUsers] = useState<FinanceUser[]>([])
+  const [showUsers, setShowUsers] = useState(false)
+  const [newUserName, setNewUserName] = useState('')
+  const [newUserLogin, setNewUserLogin] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newUserRole, setNewUserRole] = useState<FinanceUser['role']>('OPERATOR')
   const [data, setData] = useState<Dashboard | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -63,18 +78,56 @@ export default function Finance() {
     return { paid, income, net: income - paid }
   }, [data])
 
+  useEffect(() => {
+    void fetch('/api/finance/setup-status').then(async response => {
+      if (!response.ok) throw new Error('Finance setup status unavailable')
+      const result = await response.json() as { setupComplete: boolean }
+      setSetupComplete(result.setupComplete)
+    }).catch(() => setError('Finance database setup is not available yet. The finance migration must be applied to a test database first.'))
+  }, [])
+
   async function login(e: React.FormEvent) {
     e.preventDefault()
-    const value = loginToken.trim()
-    if (!value) return
     setError('')
     try {
-      const response = await fetch('/api/finance/dashboard', { headers: { authorization: `Bearer ${value}` } })
-      const result = await response.json() as Dashboard & { error?: string }
-      if (!response.ok) throw new Error(result.error || 'Admin access key sahi nahi hai.')
-      sessionStorage.setItem('nhym_admin_token', value)
-      setToken(value); setData(result); setLoginToken('')
+      const response = await fetch('/api/finance/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ loginId, password: loginPassword }) })
+      const result = await response.json() as { error?: string; token?: string; user?: FinanceUser }
+      if (!response.ok || !result.token || !result.user) throw new Error(result.error || 'Login nahi ho saka.')
+      sessionStorage.setItem('nhym_finance_session', result.token)
+      sessionStorage.setItem('nhym_finance_user', JSON.stringify(result.user))
+      setToken(result.token); setCurrentUser(result.user); setLoginPassword('')
+      await load(result.token)
     } catch (e) { setError(e instanceof Error ? e.message : 'Login nahi ho saka.') }
+  }
+
+  async function bootstrap(e: React.FormEvent) {
+    e.preventDefault(); setError(''); setNotice('')
+    try {
+      const response = await fetch('/api/finance/bootstrap', { method: 'POST', headers: { authorization: `Bearer ${bootstrapKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ displayName: bootstrapName, loginId: bootstrapLoginId, password: bootstrapPassword }) })
+      const result = await response.json() as { error?: string; message?: string }
+      if (!response.ok) throw new Error(result.error || 'Finance Head account create nahi hua.')
+      setNotice(result.message || 'Finance Head account create ho gaya.')
+      setSetupComplete(true); setShowBootstrap(false); setBootstrapKey(''); setBootstrapPassword('')
+    } catch (e) { setError(e instanceof Error ? e.message : 'Finance Head account create nahi hua.') }
+  }
+
+  async function loadUsers() {
+    const response = await fetch('/api/finance/users', { headers: { authorization: `Bearer ${token}` } })
+    const result = await response.json() as { error?: string; users?: Array<Record<string, unknown>> }
+    if (!response.ok) throw new Error(result.error || 'Finance users load nahi hue.')
+    setUsers((result.users || []).map(u => ({ id: String(u.id), displayName: String(u.display_name), loginId: String(u.login_id), role: String(u.role) as FinanceUser['role'] })))
+  }
+
+  async function createFinanceUser(e: React.FormEvent) {
+    e.preventDefault(); setError(''); setNotice('')
+    try {
+      const response = await fetch('/api/finance/users', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ displayName: newUserName, loginId: newUserLogin, password: newUserPassword, role: newUserRole }) })
+      const result = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(result.error || 'Finance user create nahi hua.')
+      setNotice('Finance user create ho gaya. Password ko secure tareeke se us user ko share karein.')
+      setNewUserName(''); setNewUserLogin(''); setNewUserPassword('')
+      await loadUsers()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Finance user create nahi hua.') }
   }
 
   async function submitExpense(e: React.FormEvent) {
@@ -325,14 +378,17 @@ export default function Finance() {
   if (!token) return <main className="min-h-screen bg-background px-4 py-12 text-foreground"><div className="mx-auto max-w-md rounded-2xl border bg-card p-6 shadow-sm">
     <Link to="/admin" className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground"><ArrowLeft size={16}/> Admin dashboard</Link>
     <p className="text-xs font-semibold uppercase tracking-[.2em] text-primary">NHYM 2026 · Finance</p><h1 className="mt-2 text-3xl font-semibold">Finance Panel</h1>
-    <p className="mt-2 text-sm text-muted-foreground">Finance records ko access karne ke liye existing admin access key se login karein.</p>
-    <form onSubmit={login} className="mt-6 space-y-3"><input autoComplete="current-password" type="password" value={loginToken} onChange={e => setLoginToken(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Admin access key" required/><button className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">Secure Login</button></form>
+    {setupComplete === false ? <><p className="mt-2 text-sm text-muted-foreground">First setup: existing website admin key se ek individual Finance Head account banaiye. Ye setup sirf tab chalega jab koi finance user pehle se nahi hai.</p>
+      {!showBootstrap ? <button onClick={()=>setShowBootstrap(true)} className="mt-5 w-full rounded-lg border px-4 py-3 font-medium">Set Up Finance Head</button> :
+      <form onSubmit={bootstrap} className="mt-5 space-y-3"><input value={bootstrapName} onChange={e=>setBootstrapName(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Finance Head full name" required minLength={2}/><input value={bootstrapLoginId} onChange={e=>setBootstrapLoginId(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Login ID (letters/numbers/._-)" required minLength={3}/><input type="password" autoComplete="new-password" value={bootstrapPassword} onChange={e=>setBootstrapPassword(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Strong password (12+ characters)" required minLength={12}/><input type="password" autoComplete="current-password" value={bootstrapKey} onChange={e=>setBootstrapKey(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Existing website admin key" required/><button className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">Create Finance Head</button><button type="button" onClick={()=>setShowBootstrap(false)} className="w-full rounded-lg border px-4 py-3">Cancel</button></form>}
+    </> : <><p className="mt-2 text-sm text-muted-foreground">Individual finance account se login karein. Sessions 12 hours mein expire ho jaate hain.</p><form onSubmit={login} className="mt-6 space-y-3"><input autoComplete="username" value={loginId} onChange={e=>setLoginId(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Finance login ID" required/><input autoComplete="current-password" type="password" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Password" required/><button className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">Secure Login</button></form></>}
+    {notice && <p role="status" className="mt-4 rounded-lg bg-emerald-500/10 p-3 text-sm">{notice}</p>}
     {error && <p role="alert" className="mt-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
   </div></main>
 
   return <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"><div className="mx-auto max-w-7xl">
     <div className="flex flex-wrap items-center justify-between gap-4"><div><Link to="/admin" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><ArrowLeft size={16}/> Admin dashboard</Link><p className="mt-4 text-xs font-semibold uppercase tracking-[.2em] text-primary">NHYM 2026 · Finance & Accounts</p><h1 className="mt-1 text-3xl font-semibold">Finance Management</h1><p className="mt-2 text-sm text-muted-foreground">Income, expenses, approvals and cash/bank records.</p></div>
-      <div className="flex flex-wrap gap-2"><button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" disabled={busy}><RefreshCw size={16}/> Refresh</button><button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><FileSpreadsheet size={16}/> Export CSV</button><button onClick={exportPdf} disabled={!data} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><FileText size={16}/> Export PDF</button><button onClick={() => setShowBudgetForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Add Budget</button><button onClick={() => setShowIncomeForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Record Income</button><button onClick={() => setShowForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"><Plus size={16}/> Add Expense</button><button onClick={() => {sessionStorage.removeItem('nhym_admin_token');setToken('');setData(null)}} className="rounded-lg border px-3 py-2 text-sm">Logout</button></div>
+      <div className="flex flex-wrap gap-2"><button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" disabled={busy}><RefreshCw size={16}/> Refresh</button><button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><FileSpreadsheet size={16}/> Export CSV</button><button onClick={exportPdf} disabled={!data} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><FileText size={16}/> Export PDF</button><button onClick={() => setShowBudgetForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Add Budget</button><button onClick={() => setShowIncomeForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><Plus size={16}/> Record Income</button><button onClick={() => setShowForm(v => !v)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"><Plus size={16}/> Add Expense</button><button onClick={() => {sessionStorage.removeItem('nhym_finance_session');sessionStorage.removeItem('nhym_finance_user');setToken('');setCurrentUser(null);setData(null)}} className="rounded-lg border px-3 py-2 text-sm">Logout</button></div>
     </div>
     {error && <p role="alert" className="mt-5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
     {notice && <p role="status" className="mt-5 rounded-lg bg-emerald-500/10 p-3 text-sm">{notice}</p>}
