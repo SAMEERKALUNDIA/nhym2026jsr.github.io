@@ -660,11 +660,14 @@ if (
       const salt = financeRandomHex(16)
       const passwordHash = await financePasswordHash(password, salt)
       await env.DB.batch([
-        env.DB.prepare('UPDATE finance_users SET password_salt = ?, password_hash = ? WHERE id = ?')
+        env.DB.prepare('UPDATE finance_users SET password_salt = ?, password_hash = ?, must_change_password = 1 WHERE id = ?')
           .bind(salt, passwordHash, target.id),
         env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ?').bind(target.id),
+        env.DB.prepare(`INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id)
+          VALUES (?, NULL, 'FINANCE_USER', ?, 'ADMIN_PASSWORD_RESET', NULL, ?, 'Authorized by Main Admin using ADMIN_TOKEN; password value is never logged.', ?)`)
+          .bind(crypto.randomUUID(), target.id, JSON.stringify({ mustChangePassword: true, sessionsRevoked: true }), request.headers.get('cf-ray')),
       ])
-      return financeJson({ ok: true, message: 'Password reset. All existing sessions for this account have been revoked.' })
+      return financeJson({ ok: true, message: 'Password reset. The user must set a new password at next login; all existing sessions have been revoked.' })
     }
 
     // NHYM FINANCE PANEL — individually authenticated finance users.
