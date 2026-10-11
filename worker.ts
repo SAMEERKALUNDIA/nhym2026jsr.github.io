@@ -608,6 +608,65 @@ if (
         ).run()
       }
 
+      // Finance documents are private: downloads require the same authenticated finance API.
+      if (url.pathname === '/api/finance/documents' && request.method === 'POST') {
+        let form: FormData
+        try { form = await request.formData() } catch { return json({ error: 'Invalid multipart form.' }, 400) }
+        const file = form.get('file')
+        const expenseId = String(form.get('expenseId') ?? '').trim()
+        const incomeId = String(form.get('incomeId') ?? '').trim()
+        const documentType = String(form.get('documentType') ?? '').trim().toUpperCase()
+        const allowedTypes = ['BILL', 'RECEIPT', 'PAYMENT_PROOF', 'APPROVAL', 'VOUCHER', 'OTHER']
+        if (!(file instanceof File)) return json({ error: 'Choose a document file.' }, 400)
+        if (Boolean(expenseId) === Boolean(incomeId)) return json({ error: 'Select exactly one expense or income record.' }, 400)
+        if (!allowedTypes.includes(documentType)) return json({ error: 'Invalid document type.' }, 400)
+        const allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+        if (!allowedMimeTypes.includes(file.type)) return json({ error: 'Only PDF, JPG, PNG and WebP files are allowed.' }, 400)
+        const maxDocumentBytes = 20 * 1024 * 1024
+        if (file.size <= 0 || file.size > maxDocumentBytes) return json({ error: 'Document must be between 1 byte and 20 MB.' }, 400)
+        if (expenseId) {
+          const row = await env.DB.prepare('SELECT id FROM finance_expenses WHERE id = ?').bind(expenseId).first()
+          if (!row) return json({ error: 'Expense record not found.' }, 404)
+        }
+        if (incomeId) {
+          const row = await env.DB.prepare('SELECT id FROM finance_income WHERE id = ?').bind(incomeId).first()
+          if (!row) return json({ error: 'Income record not found.' }, 404)
+        }
+        const documentId = crypto.randomUUID()
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120) || 'document'
+        const storageKey = `finance-documents/${expenseId ? 'expenses' : 'income'}/${documentId}-${safeName}`
+        await env.GALLERY.put(storageKey, file.stream(), {
+          httpMetadata: { contentType: file.type },
+          customMetadata: { documentId, documentType, uploadedBy: actorId }
+        })
+        try {
+          await env.DB.prepare(`
+            INSERT INTO finance_documents
+              (id, expense_id, income_id, document_type, storage_key, file_name, mime_type, size_bytes, uploaded_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(documentId, expenseId || null, incomeId || null, documentType, storageKey, file.name.slice(0, 255), file.type, file.size, actorId).run()
+        } catch (error) {
+          await env.GALLERY.delete(storageKey)
+          throw error
+        }
+        await audit('DOCUMENT', documentId, 'DOCUMENT_UPLOADED', null, { expenseId: expenseId || null, incomeId: incomeId || null, documentType, fileName: file.name, sizeBytes: file.size })
+        return json({ ok: true, documentId, fileName: file.name, sizeBytes: file.size }, 201)
+      }
+
+      const documentDownload = url.pathname.match(/^\\/api\\/finance\\/documents\\/([a-f0-9-]+)$/i)
+      if (documentDownload && request.method === 'GET') {
+        const record = await env.DB.prepare('SELECT storage_key, file_name, mime_type FROM finance_documents WHERE id = ?').bind(documentDownload[1]).first<{ storage_key: string | null; file_name: string; mime_type: string | null }>()
+        if (!record?.storage_key) return json({ error: 'Document not found.' }, 404)
+        const object = await env.GALLERY.get(record.storage_key)
+        if (!object) return json({ error: 'Stored document not found.' }, 404)
+        const headers = new Headers()
+        headers.set('content-type', record.mime_type || 'application/octet-stream')
+        headers.set('content-disposition', `attachment; filename="${record.file_name.replace(/["\\\\\\r\\n]/g, '_')}"`)
+        headers.set('cache-control', 'private, no-store')
+        headers.set('x-content-type-options', 'nosniff')
+        return new Response(object.body, { headers })
+      }
+
       if (url.pathname === '/api/finance/dashboard' && request.method === 'GET') {
         const [income, paid, pending, unpaid, categories, expenses, incomes, budgets] = await Promise.all([
           env.DB.prepare('SELECT COALESCE(SUM(amount_paise), 0) AS total FROM finance_income').first<{ total: number }>(),
@@ -623,7 +682,7 @@ if (
             FROM finance_expenses e JOIN finance_categories c ON c.id = e.category_id
             ORDER BY e.created_at DESC LIMIT 500
           `).all(),
-          env.DB.prepare('SELECT income_no, income_type, received_from, amount_paise, received_at, payment_mode, receipt_no FROM finance_income ORDER BY received_at DESC LIMIT 200').all(),
+          env.DB.prepare('SELECT id, income_no, income_type, received_from, amount_paise, received_at, payment_mode, receipt_no FROM finance_income ORDER BY received_at DESC LIMIT 200').all(),
           env.DB.prepare(`SELECT b.id, b.budget_period, b.approved_amount_paise, b.revision_no, b.status, c.name AS category_name FROM finance_budgets b JOIN finance_categories c ON c.id = b.category_id ORDER BY b.created_at DESC LIMIT 200`).all()
         ])
         return json({
