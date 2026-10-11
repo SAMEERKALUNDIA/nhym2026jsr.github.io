@@ -318,19 +318,20 @@ async function downloadRegistrationPdf() {
   // -----------------------------
   // Header
   // -----------------------------
-  if (logoData) {
-    const props = pdf.getImageProperties(logoData)
-    const scale = Math.min(27 / props.width, 27 / props.height)
-    const width = props.width * scale
-    const height = props.height * scale
-    pdf.addImage(logoData, 'JPEG', margin + (27 - width) / 2, 7 + (27 - height) / 2, width, height)
-  }
+  // Approved sample: Ho Samaj emblem on the left, NHYM India logo on the right.
   if (hoSamajLogoData) {
     const props = pdf.getImageProperties(hoSamajLogoData)
     const scale = Math.min(27 / props.width, 27 / props.height)
     const width = props.width * scale
     const height = props.height * scale
-    pdf.addImage(hoSamajLogoData, 'JPEG', pageWidth - margin - 27 + (27 - width) / 2, 7 + (27 - height) / 2, width, height)
+    pdf.addImage(hoSamajLogoData, 'JPEG', margin + (27 - width) / 2, 7 + (27 - height) / 2, width, height)
+  }
+  if (logoData) {
+    const props = pdf.getImageProperties(logoData)
+    const scale = Math.min(27 / props.width, 27 / props.height)
+    const width = props.width * scale
+    const height = props.height * scale
+    pdf.addImage(logoData, 'JPEG', pageWidth - margin - 27 + (27 - width) / 2, 7 + (27 - height) / 2, width, height)
   }
 
   pdf.setFont('helvetica', 'bold')
