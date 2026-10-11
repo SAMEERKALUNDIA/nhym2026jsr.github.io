@@ -985,12 +985,10 @@ if (
           if (/payment exceeds approved amount|expense is not approved/i.test(message)) return json({ error: 'The expense was changed or its approved balance is insufficient. Refresh and try again.' }, 409)
           throw e
         }
-        // Re-read after insert so the status reflects the ledger rather than the stale pre-insert sum.
-        const paidAfterInsert = await env.DB.prepare('SELECT COALESCE(SUM(amount_paise),0) AS total FROM finance_payments WHERE expense_id = ?').bind(expense.id).first<{ total: number }>()
-        const totalPaid = Number(paidAfterInsert?.total ?? 0)
-        const paymentStatus = totalPaid >= Number(expense.approved_amount_paise) ? 'PAID' : 'PARTIAL'
-        await env.DB.prepare(`UPDATE finance_expenses SET payment_status = ?, final_amount_paise = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND approval_status = 'APPROVED'`)
-          .bind(paymentStatus, totalPaid, expense.id).run()
+        // The database trigger maintains the total/status transactionally; do not overwrite it
+        // with an application-side sum that could become stale under concurrent payments.
+        const updatedExpense = await env.DB.prepare('SELECT payment_status FROM finance_expenses WHERE id = ?').bind(expense.id).first<{ payment_status: string }>()
+        const paymentStatus = String(updatedExpense?.payment_status ?? 'PARTIAL')
         return json({ ok: true, paymentNo, paymentStatus }, 201)
       }
 
