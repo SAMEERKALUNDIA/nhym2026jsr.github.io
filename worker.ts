@@ -855,17 +855,6 @@ if (
         if (!detectedType || detectedType !== file.type) return financeJson({ error: 'File contents do not match the declared PDF/image type.' }, 400)
         const maxDocumentBytes = 20 * 1024 * 1024
         if (file.size <= 0 || file.size > maxDocumentBytes) return financeJson({ error: 'Document must be between 1 byte and 20 MB.' }, 400)
-        // Gallery photos and finance documents share the same R2 bucket and 10 GB storage allowance.
-        const maxSharedStorageBytes = 10 * 1024 * 1024 * 1024
-        const storageUsage = await env.DB.prepare(`
-          SELECT
-            (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
-            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) AS total_bytes
-        `).first<{ total_bytes: number }>()
-        const usedBytes = Number(storageUsage?.total_bytes ?? 0)
-        if (usedBytes + file.size > maxSharedStorageBytes) {
-          return financeJson({ error: 'Shared R2 storage limit reached. Delete unused gallery photos or documents before uploading more.', usedBytes, availableBytes: Math.max(0, maxSharedStorageBytes - usedBytes), fileSize: file.size, maxStorageBytes: maxSharedStorageBytes }, 400)
-        }
         if (expenseId) {
           const row = await env.DB.prepare('SELECT id FROM finance_expenses WHERE id = ?').bind(expenseId).first()
           if (!row) return financeJson({ error: 'Expense record not found.' }, 404)
@@ -874,13 +863,45 @@ if (
           const row = await env.DB.prepare('SELECT id FROM finance_income WHERE id = ?').bind(incomeId).first()
           if (!row) return financeJson({ error: 'Income record not found.' }, 404)
         }
+        // Atomically reserve shared gallery/document storage before writing to R2.
+        const maxSharedStorageBytes = 10 * 1024 * 1024 * 1024
+        const storageReservationId = crypto.randomUUID()
+        const reservationBatch = await env.DB.batch([
+          env.DB.prepare("DELETE FROM finance_storage_reservations WHERE expires_at <= CURRENT_TIMESTAMP"),
+          env.DB.prepare(`
+            INSERT INTO finance_storage_reservations (id, size_bytes, expires_at)
+            SELECT ?, ?, datetime('now', '+1 hour')
+            WHERE
+              (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
+              (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) +
+              ? <= ?
+          `).bind(storageReservationId, file.size, file.size, maxSharedStorageBytes),
+        ])
+        if (Number(reservationBatch[1]?.meta?.changes ?? 0) !== 1) {
+          const storageUsage = await env.DB.prepare(`
+            SELECT
+              (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
+              (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) AS total_bytes
+          `).first<{ total_bytes: number }>()
+          const usedBytes = Number(storageUsage?.total_bytes ?? 0)
+          return financeJson({ error: 'Shared R2 storage limit reached. Delete unused gallery photos or documents before uploading more.', usedBytes, availableBytes: Math.max(0, maxSharedStorageBytes - usedBytes), fileSize: file.size, maxStorageBytes: maxSharedStorageBytes }, 400)
+        }
         const documentId = crypto.randomUUID()
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120) || 'document'
         const storageKey = `finance-documents/${expenseId ? 'expenses' : 'income'}/${documentId}-${safeName}`
-        await env.GALLERY.put(storageKey, file.stream(), {
-          httpMetadata: { contentType: file.type },
-          customMetadata: { documentId, documentType, uploadedBy: actorId }
-        })
+        try {
+          await env.GALLERY.put(storageKey, file.stream(), {
+            httpMetadata: { contentType: file.type },
+            customMetadata: { documentId, documentType, uploadedBy: actorId }
+          })
+        } catch (error) {
+          try { await env.DB.prepare('DELETE FROM finance_storage_reservations WHERE id = ?').bind(storageReservationId).run() } catch (cleanupError) {
+            console.error('Finance storage reservation cleanup failed after R2 upload error', { storageReservationId, cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) })
+          }
+          throw error
+        }
         try {
           await env.DB.batch([
             env.DB.prepare(`
@@ -889,15 +910,18 @@ if (
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).bind(documentId, expenseId || null, incomeId || null, documentType, storageKey, file.name.slice(0, 255), file.type, file.size, actorId),
             env.DB.prepare('INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-              .bind(crypto.randomUUID(), actorId, 'DOCUMENT', documentId, 'DOCUMENT_UPLOADED', null, JSON.stringify({ expenseId: expenseId || null, incomeId: incomeId || null, documentType, fileName: file.name, sizeBytes: file.size }), null, request.headers.get('cf-ray'))
+              .bind(crypto.randomUUID(), actorId, 'DOCUMENT', documentId, 'DOCUMENT_UPLOADED', null, JSON.stringify({ expenseId: expenseId || null, incomeId: incomeId || null, documentType, fileName: file.name, sizeBytes: file.size }), null, request.headers.get('cf-ray')),
+            env.DB.prepare('DELETE FROM finance_storage_reservations WHERE id = ?').bind(storageReservationId)
           ])
         } catch (error) {
           // Preserve the database failure if best-effort R2 cleanup also fails.
           try {
             await env.GALLERY.delete(storageKey)
+            await env.DB.prepare('DELETE FROM finance_storage_reservations WHERE id = ?').bind(storageReservationId).run()
           } catch (cleanupError) {
             console.error('Finance document cleanup failed after metadata/audit batch error', {
               documentId,
+              storageReservationId,
               cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
             })
           }
