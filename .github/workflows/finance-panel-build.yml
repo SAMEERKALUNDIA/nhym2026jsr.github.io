@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - feature/nhym-finance-panel
+      - feature/admin-finance-password-recovery
   workflow_dispatch:
 
 permissions:
