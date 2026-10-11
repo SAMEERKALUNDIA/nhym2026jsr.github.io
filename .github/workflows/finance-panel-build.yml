@@ -113,6 +113,30 @@ jobs:
               raise AssertionError('Payment against a non-approved expense was accepted')
           except sqlite3.IntegrityError as exc:
               assert 'expense is not approved' in str(exc), f'Unexpected approval guard failure: {exc}'
+          # Exercise the same conditional update/audit/session-revocation ordering used for Finance Head status changes.
+          db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u3','Second Head','second-head','FINANCE_HEAD','salt','hash')")
+          db.execute("INSERT INTO finance_sessions (id,user_id,token_hash,expires_at) VALUES ('s1','u3','token-hash-1','2099-01-01')")
+          status_change = db.execute("""UPDATE finance_users SET is_active=0
+            WHERE id='u3' AND (role <> 'FINANCE_HEAD' OR EXISTS (
+              SELECT 1 FROM finance_users WHERE role='FINANCE_HEAD' AND is_active=1 AND id <> 'u3'
+            ))""")
+          assert status_change.rowcount == 1, 'Should allow deactivation when another Finance Head remains'
+          db.execute("""INSERT INTO finance_audit_logs (id,actor_user_id,entity_type,entity_id,action,old_values_json,new_values_json)
+            SELECT 'audit-u3','u1','FINANCE_USER','u3','USER_DEACTIVATED','{"isActive":true}','{"isActive":false}'
+            WHERE changes()=1""")
+          db.execute("DELETE FROM finance_sessions WHERE user_id='u3' AND 0=0 AND changes()=1")
+          assert db.execute("SELECT COUNT(*) FROM finance_sessions WHERE user_id='u3'").fetchone()[0] == 0, 'Successful deactivation must revoke sessions'
+          status_change = db.execute("""UPDATE finance_users SET is_active=0
+            WHERE id='u1' AND (role <> 'FINANCE_HEAD' OR EXISTS (
+              SELECT 1 FROM finance_users WHERE role='FINANCE_HEAD' AND is_active=1 AND id <> 'u1'
+            ))""")
+          assert status_change.rowcount == 0, 'Must not deactivate the final active Finance Head'
+          db.execute("""INSERT INTO finance_audit_logs (id,actor_user_id,entity_type,entity_id,action)
+            SELECT 'audit-u1','u3','FINANCE_USER','u1','USER_DEACTIVATED' WHERE changes()=1""")
+          db.execute("DELETE FROM finance_sessions WHERE user_id='u1' AND 0=0 AND changes()=1")
+          assert db.execute("SELECT is_active FROM finance_users WHERE id='u1'").fetchone()[0] == 1, 'Final Finance Head must remain active'
+          assert db.execute("SELECT COUNT(*) FROM finance_audit_logs WHERE entity_id='u1' AND action='USER_DEACTIVATED'").fetchone()[0] == 0, 'Failed status change must not create audit entry'
+
           violations = list(db.execute('PRAGMA foreign_key_check'))
           assert not violations, f'Foreign key violations: {violations}'
           print('Finance migration, roles, normalized references, overpayment/approval triggers, payment summaries, single-decision guard, login lockout and foreign keys passed.')
