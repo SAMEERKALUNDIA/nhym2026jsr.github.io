@@ -749,7 +749,7 @@ if (
               JSON.stringify({ isActive: body.active }),
               request.headers.get('cf-ray')
             ),
-          env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ? AND ? = 0').bind(target.id, nextActive)
+          env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ? AND ? = 0 AND changes() = 1').bind(target.id, nextActive)
         ])
         if (Number(statusBatch[0]?.meta?.changes ?? 0) !== 1) {
           return json({ error: 'At least one active Finance Head must remain; no changes were made.' }, 409)
