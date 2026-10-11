@@ -33,7 +33,7 @@ async function createWarangCitiTextImage(text: string): Promise<string | null> {
     document.fonts.add(fontFace)
 
     const canvas = document.createElement('canvas')
-    canvas.width = 900
+    canvas.width = 1800
     canvas.height = 110
     const context = canvas.getContext('2d')
     if (!context) return null
@@ -818,7 +818,7 @@ async function exportRegistrationsPdf() {
   })
 
   await registerWarangCitiFont(pdf)
-  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢽𑢢𑢼𑢮𑢩𑢳')
+  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳')
   const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
 
   const pageWidth = pdf.internal.pageSize.getWidth()
@@ -918,7 +918,7 @@ async function exportRegistrationsPdf() {
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
-      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 12, 26, 24, 3.2)
+      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
       pdf.setFont('helvetica', 'normal')
     }
 
@@ -1212,12 +1212,7 @@ async function exportRegistrationsPdf() {
 
     pdf.setDrawColor(30, 65, 42)
 
-    pdf.line(
-      margin,
-      pageHeight - 14,
-      pageWidth - margin,
-      pageHeight - 14
-    )
+    pdf.line(margin, pageHeight - 24, pageWidth - margin, pageHeight - 24)
 
     pdf.setFont(
       'helvetica',
@@ -1228,9 +1223,10 @@ async function exportRegistrationsPdf() {
     pdf.setTextColor(110)
 
     pdf.text(
-      'Confidential Admin Report - National Ho Youth Meet 2026',
-      margin,
-      pageHeight - 8
+      'Address: Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003',
+      pageWidth / 2,
+      pageHeight - 17,
+      { align: 'center' }
     )
 
     pdf.text(
@@ -1345,7 +1341,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
   })
 
   await registerWarangCitiFont(pdf)
-  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢽𑢢𑢼𑢮𑢩𑢳')
+  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳')
   const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
 
   const pageWidth = pdf.internal.pageSize.getWidth()
@@ -1422,7 +1418,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
     pdf.setTextColor(168, 94, 8)
     pdf.setFontSize(9.5)
     pdf.text('2026 SIRJON', pageWidth / 2, 24, { align: 'center' })
-    if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 12, 26, 24, 3.2)
+    if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7.5)
     pdf.setTextColor(72, 30, 20)
@@ -1897,21 +1893,17 @@ async function downloadAdminRegistrationPdf(row: Row) {
 
     pdf.setDrawColor(30, 65, 42)
 
-    pdf.line(
-      margin,
-      pageHeight - 18,
-      pageWidth - margin,
-      pageHeight - 18
-    )
+    pdf.line(margin, pageHeight - 24, pageWidth - margin, pageHeight - 24)
 
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7.5)
     pdf.setTextColor(110)
 
     pdf.text(
-      'Confidential Admin Record - National Ho Youth Meet 2026',
-      margin,
-      pageHeight - 12
+      'Email: nhym2026jsr@gmail.com | Phone: 9931333025, 7870979751',
+      pageWidth / 2,
+      pageHeight - 17,
+      { align: 'center' }
     )
 
     pdf.text(
@@ -1949,7 +1941,7 @@ async function exportParticipantsPdf() {
   })
 
   await registerWarangCitiFont(pdf)
-  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢽𑢢𑢼𑢮𑢩𑢳')
+  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳')
   const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
 
   const pageWidth = pdf.internal.pageSize.getWidth()
@@ -2094,7 +2086,7 @@ async function exportParticipantsPdf() {
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(72, 30, 20)
-      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 12, 26, 24, 3.2)
+      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
       pdf.setFont('helvetica', 'normal')
     }
 
@@ -2374,12 +2366,7 @@ async function exportParticipantsPdf() {
 
     pdf.setDrawColor(30, 65, 42)
 
-    pdf.line(
-      margin,
-      pageHeight - 14,
-      pageWidth - margin,
-      pageHeight - 14
-    )
+    pdf.line(margin, pageHeight - 24, pageWidth - margin, pageHeight - 24)
 
     pdf.setFont(
       'helvetica',
@@ -2390,9 +2377,10 @@ async function exportParticipantsPdf() {
     pdf.setTextColor(110)
 
     pdf.text(
-      'Confidential Participant Report - National Ho Youth Meet 2026',
-      margin,
-      pageHeight - 8
+      'Address: Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003',
+      pageWidth / 2,
+      pageHeight - 17,
+      { align: 'center' }
     )
 
     pdf.text(
