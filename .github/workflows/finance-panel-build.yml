@@ -77,6 +77,19 @@ jobs:
                   AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))""")
           attempts, locked = db.execute("SELECT failed_attempts, datetime(locked_until)>datetime('now') FROM finance_login_limits WHERE attempt_key='login-test'").fetchone()
           assert attempts == 5 and locked == 1, f'Login lockout did not activate after five failures: {attempts}, {locked}'
+          # An expired 15-minute window must reset both the counter and any old lock.
+          db.execute("""UPDATE finance_login_limits SET failed_attempts=5,
+            window_started_at=datetime('now','-16 minutes'), locked_until=datetime('now','+10 minutes')
+            WHERE attempt_key='login-test'""")
+          db.execute("""INSERT INTO finance_login_limits (attempt_key,failed_attempts,window_started_at,locked_until,updated_at)
+            VALUES ('login-test',1,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP)
+            ON CONFLICT(attempt_key) DO UPDATE SET
+              failed_attempts = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN 1 ELSE finance_login_limits.failed_attempts + 1 END,
+              window_started_at = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN CURRENT_TIMESTAMP ELSE finance_login_limits.window_started_at END,
+              locked_until = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now','-15 minutes') THEN NULL ELSE finance_login_limits.locked_until END,
+              updated_at = CURRENT_TIMESTAMP""")
+          attempts, locked = db.execute("SELECT failed_attempts, locked_until IS NULL FROM finance_login_limits WHERE attempt_key='login-test'").fetchone()
+          assert attempts == 1 and locked == 1, f'Expired login window did not reset: attempts={attempts}, lock_cleared={locked}'
           assert db.execute('SELECT COUNT(*) FROM finance_users').fetchone()[0] == 0, 'Migration must not seed a shared finance account'
           assert db.execute("SELECT COUNT(*) FROM finance_categories WHERE category_type='EXPENSE'").fetchone()[0] >= 1
           db.execute("INSERT INTO finance_users (id,display_name,login_id,role,password_salt,password_hash) VALUES ('u1','Test Head','test-head','FINANCE_HEAD','salt','hash')")
