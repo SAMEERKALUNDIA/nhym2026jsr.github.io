@@ -730,9 +730,30 @@ if (
           const activeHeads = await env.DB.prepare("SELECT COUNT(*) AS total FROM finance_users WHERE role = 'FINANCE_HEAD' AND is_active = 1").first<{ total: number }>()
           if (Number(activeHeads?.total ?? 0) <= 1) return json({ error: 'At least one active Finance Head must remain.' }, 409)
         }
-        await env.DB.prepare('UPDATE finance_users SET is_active = ? WHERE id = ?').bind(body.active ? 1 : 0, target.id).run()
-        if (!body.active) await env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ?').bind(target.id).run()
-        await audit('FINANCE_USER', target.id, body.active ? 'USER_ACTIVATED' : 'USER_DEACTIVATED', { isActive: Boolean(target.is_active) }, { isActive: body.active })
+        const nextActive = body.active ? 1 : 0
+        const statusBatch = await env.DB.batch([
+          // Re-check the final active Finance Head inside the write transaction to prevent concurrent deactivations removing every head.
+          env.DB.prepare(`UPDATE finance_users SET is_active = ?
+            WHERE id = ?
+              AND (? = 1 OR role <> 'FINANCE_HEAD' OR EXISTS (
+                SELECT 1 FROM finance_users
+                WHERE role = 'FINANCE_HEAD' AND is_active = 1 AND id <> ?
+              ))`).bind(nextActive, target.id, nextActive, target.id),
+          env.DB.prepare(`INSERT INTO finance_audit_logs
+            (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id)
+            SELECT ?, ?, 'FINANCE_USER', ?, ?, ?, ?, NULL, ?
+            WHERE changes() = 1`).bind(
+              crypto.randomUUID(), actorId, target.id,
+              body.active ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+              JSON.stringify({ isActive: Boolean(target.is_active) }),
+              JSON.stringify({ isActive: body.active }),
+              request.headers.get('cf-ray')
+            ),
+          env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ? AND is_active = 0').bind(target.id)
+        ])
+        if (Number(statusBatch[0]?.meta?.changes ?? 0) !== 1) {
+          return json({ error: 'At least one active Finance Head must remain; no changes were made.' }, 409)
+        }
         return json({ ok: true, active: body.active })
       }
 
