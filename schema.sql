@@ -12,10 +12,11 @@ CREATE TABLE IF NOT EXISTS registrations (
 );
 CREATE INDEX IF NOT EXISTS idx_reg_status ON registrations(status);
 CREATE INDEX IF NOT EXISTS idx_reg_payment_ref ON registrations(payment_reference);
--- Prevent reuse of a transaction reference regardless of spaces or letter case.
--- Run only after reviewing and resolving any duplicate legacy references.
+-- Prevent reuse of a non-empty transaction reference regardless of spaces or letter case.
+-- Rejected registrations have payment_reference cleared, so the participant may resubmit.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_reg_payment_reference_normalized
-ON registrations(UPPER(REPLACE(REPLACE(REPLACE(TRIM(payment_reference), ' ', ''), char(9), ''), char(10), '')));
+ON registrations(UPPER(REPLACE(REPLACE(REPLACE(TRIM(payment_reference), ' ', ''), char(9), ''), char(10), '')))
+WHERE TRIM(payment_reference) <> '';
 
 CREATE TABLE IF NOT EXISTS participants (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
