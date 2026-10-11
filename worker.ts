@@ -1090,7 +1090,7 @@ if (
         if (expense.approval_status !== 'APPROVED') return financeJson({ error: 'Payment can only be recorded after approval.' }, 409)
         const paymentId = crypto.randomUUID()
         const paymentNo = `NHYM-PAY-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
-        let paymentResults: D1Result[]
+        let paymentResults
         try {
           // Guard the INSERT itself, not only a preceding SELECT: this keeps the approved
           // balance check and insert in one D1 transaction even when requests race.
