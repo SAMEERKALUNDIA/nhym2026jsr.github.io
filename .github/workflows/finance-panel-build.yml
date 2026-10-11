@@ -114,8 +114,8 @@ jobs:
           except sqlite3.IntegrityError as exc:
               assert 'payment exceeds approved amount' in str(exc), f'Unexpected overpayment failure: {exc}'
           try:
-              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p2dup','e1','TEST-PAY-DUP','UPI',1000,'2026-10-11','abc\r123','u1')")
-              raise AssertionError('Duplicate normalized payment reference with carriage return was accepted')
+              db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p2dup','e1','TEST-PAY-DUP','UPI',1000,'2026-10-11','abc\u00a0123','u1')")
+              raise AssertionError('Duplicate normalized payment reference with Unicode whitespace was accepted')
           except sqlite3.IntegrityError as exc:
               assert 'UNIQUE constraint failed' in str(exc), f'Duplicate reference did not hit unique index: {exc}'
           db.execute("INSERT INTO finance_payments (id,expense_id,payment_no,payment_mode,amount_paise,paid_at,reference_no,paid_by) VALUES ('p3','e1','TEST-PAY-3','UPI',4000,'2026-10-11','XYZ 456','u1')")
