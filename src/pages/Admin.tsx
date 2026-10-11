@@ -2550,12 +2550,14 @@ if (!authenticated) {
         </form>
 
         <div className="mt-5 text-center">
-          <a
-            href="/"
-            className="text-sm underline underline-offset-4"
-          >
-            ← Back to NHYM website
+          <a href="/login" className="text-sm font-medium underline underline-offset-4">
+            Use shared Admin / Finance login
           </a>
+          <div className="mt-3">
+            <a href="/" className="text-sm underline underline-offset-4">
+              ← Back to NHYM website
+            </a>
+          </div>
         </div>
       </div>
     </main>
