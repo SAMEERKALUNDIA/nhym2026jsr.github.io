@@ -1330,60 +1330,55 @@ async function downloadAdminRegistrationPdf(row: Row) {
   let y = 59
 
   function addHeader(continuation = false) {
-    addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
-    addContainedPdfImage(pdf, logoData, pageWidth - margin - 25, 6, 25, 25)
+    // Compact, balanced header: smaller corner logos and less vertical whitespace.
+    addContainedPdfImage(pdf, hoSamajLogoData, margin, 4, 20, 20)
+    addContainedPdfImage(pdf, logoData, pageWidth - margin - 20, 4, 20, 20)
 
     pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(72, 30, 20)
+    pdf.setTextColor(30, 65, 42)
 
     if (continuation) {
-      pdf.setFontSize(13)
-
-      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 14, { align: 'center' })
+      pdf.setFontSize(12)
+      pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 12, { align: 'center' })
 
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
       pdf.setTextColor(100)
+      pdf.text(`Registration ID: ${row.registration_id}`, pageWidth / 2, 19, { align: 'center' })
 
-      pdf.text(`Registration ID: ${row.registration_id}`, pageWidth / 2, 21, { align: 'center' })
-
-      pdf.setDrawColor(190)
-      pdf.line(
-        margin,
-        30,
-        pageWidth - margin,
-        30
-      )
-
-      y = 38
+      pdf.setDrawColor(180)
+      pdf.line(margin, 25, pageWidth - margin, 25)
+      y = 32
       return
     }
 
-    pdf.setFont('helvetica', 'bold')
+    if (warangCitiHeaderImage) {
+      pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
+    }
+
     pdf.setFontSize(13)
-    pdf.setTextColor(30, 65, 42)
-    if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
-    pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 14, { align: 'center' })
-    pdf.setFontSize(10)
-    pdf.text('2026', pageWidth / 2, 21, { align: 'center' })
+    pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 12, { align: 'center' })
+
+    pdf.setFontSize(9)
+    pdf.text('2026', pageWidth / 2, 17)
+
     pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(8)
+    pdf.setFontSize(7.5)
     pdf.setTextColor(72, 30, 20)
-    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 29, { align: 'center' })
-    pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 34, { align: 'center' })
+    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 21.5, { align: 'center' })
+    pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 25.5, { align: 'center' })
+
+    // A subtle green title band makes the document type easy to identify.
+    pdf.setFillColor(237, 244, 239)
+    pdf.roundedRect(pageWidth / 2 - 35, 28, 70, 6, 1.5, 1.5, 'F')
     pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(10)
-    pdf.setTextColor(40)
-    pdf.text('Admin Registration Record', pageWidth / 2, 42, { align: 'center' })
+    pdf.setFontSize(9)
+    pdf.setTextColor(30, 95, 66)
+    pdf.text('Admin Registration Record', pageWidth / 2, 32, { align: 'center' })
 
     pdf.setDrawColor(180)
-
-    pdf.line(
-      margin,
-      46,
-      pageWidth - margin,
-      46
-    )
+    pdf.line(margin, 36, pageWidth - margin, 36)
+    y = 41
   }
 
   function addContinuationPage() {
