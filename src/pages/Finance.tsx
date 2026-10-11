@@ -16,7 +16,7 @@ type Dashboard = {
   expenses: Expense[]; incomes: Array<Record<string, unknown>>; budgets: Array<Record<string, unknown>>; documents: Array<Record<string, unknown>>
 }
 const money = (paise: number | null | undefined) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(paise || 0) / 100)
-const today = new Date().toISOString().slice(0, 10)
+const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
 const safeAuditJson = (value: unknown) => {
   if (typeof value !== 'string' || !value) return null
   try { return JSON.parse(value) as unknown } catch { return value }
