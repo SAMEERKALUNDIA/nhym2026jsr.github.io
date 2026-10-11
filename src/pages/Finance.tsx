@@ -215,10 +215,10 @@ export default function Finance() {
       form.append('documentType', target.documentType)
       if (target.expenseId) form.append('expenseId', target.expenseId)
       if (target.incomeId) form.append('incomeId', target.incomeId)
-      const response = await fetch('/api/finance/documents', { method: 'POST', headers: { authorization: \`Bearer \${token}\` }, body: form })
+      const response = await fetch('/api/finance/documents', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form })
       const result = await response.json() as { error?: string; fileName?: string }
       if (!response.ok) throw new Error(result.error || 'Document upload nahi hua.')
-      setNotice(\`Document upload hua: \${result.fileName || file.name}\`)
+      setNotice(`Document upload hua: ${result.fileName || file.name}`)
       await load()
     } catch (e) { setError(e instanceof Error ? e.message : 'Document upload nahi hua.') }
     finally { setBusy(false) }
@@ -227,7 +227,7 @@ export default function Finance() {
   async function downloadDocument(documentRecord: Record<string, unknown>) {
     setError('')
     try {
-      const response = await fetch(\`/api/finance/documents/\${String(documentRecord.id)}\`, { headers: { authorization: \`Bearer \${token}\` } })
+      const response = await fetch(`/api/finance/documents/${String(documentRecord.id)}`, { headers: { authorization: `Bearer ${token}` } })
       if (!response.ok) {
         const result = await response.json() as { error?: string }
         throw new Error(result.error || 'Document download nahi hua.')
