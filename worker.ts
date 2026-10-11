@@ -653,7 +653,7 @@ if (
         return json({ ok: true, id, status: 'DRAFT' }, 201)
       }
 
-      const budgetDecision = url.pathname.match(/^\\/api\\/finance\\/budgets\\/([a-f0-9-]+)\\/decision$/i)
+      const budgetDecision = url.pathname.match(/^\/api\/finance\/budgets\/([a-f0-9-]+)\/decision$/i)
       if (budgetDecision && request.method === 'POST') {
         let body: { decision?: string }
         try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
