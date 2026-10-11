@@ -660,7 +660,7 @@ if (
       const method = request.method
       const pathname = url.pathname
       const isDashboard = pathname === '/api/finance/dashboard' && method === 'GET'
-      const isUserAdmin = (pathname === '/api/finance/users' && (method === 'GET' || method === 'POST')) || (/^\\/api\\/finance\\/users\\/[a-f0-9-]+\\/status$/i.test(pathname) && method === 'POST')
+      const isUserAdmin = (pathname === '/api/finance/users' && (method === 'GET' || method === 'POST')) || (/^\/api\/finance\/users\/[a-f0-9-]+\/status$/i.test(pathname) && method === 'POST')
       const isExpenseCreate = pathname === '/api/finance/expenses' && method === 'POST'
       const isIncomeCreate = pathname === '/api/finance/income' && method === 'POST'
       const isBudgetCreate = pathname === '/api/finance/budgets' && method === 'POST'
@@ -685,7 +685,7 @@ if (
         const users = await env.DB.prepare('SELECT id, display_name, login_id, role, is_active, created_at, last_login_at FROM finance_users ORDER BY created_at').all()
         return json({ users: users.results ?? [] })
       }
-      const userStatusMatch = pathname.match(/^\\/api\\/finance\\/users\\/([a-f0-9-]+)\\/status$/i)
+      const userStatusMatch = pathname.match(/^\/api\/finance\/users\/([a-f0-9-]+)\/status$/i)
       if (userStatusMatch && method === 'POST') {
         let body: { active?: boolean }
         try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
