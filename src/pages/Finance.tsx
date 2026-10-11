@@ -335,7 +335,7 @@ export default function Finance() {
     const csvCell = (value: unknown) => {
       const raw = String(value ?? '')
       // Prevent spreadsheet formula execution when reports are opened in Excel/Sheets.
-      const safe = /^[\u0000-\u0020]*[=+\-@]/.test(raw) ? `'${raw}` : raw
+      const safe = /^\s*[=+\-@]/.test(raw) ? `'${raw}` : raw
       return `"${safe.replace(/"/g, '""')}"`
     }
     const sections: unknown[][] = [
