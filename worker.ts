@@ -589,6 +589,164 @@ if (
     id,
   })
 }
+    // NHYM FINANCE PANEL — protected by the existing admin access key.
+    // The initial phase records all actions under the shared finance admin identity.
+    if (url.pathname.startsWith('/api/finance/')) {
+      if (!authorised(request, env)) return json({ error: 'Unauthorized' }, 401)
+
+      const actorId = 'finance-system-admin'
+      const audit = async (entityType: string, entityId: string, action: string, oldValues?: unknown, newValues?: unknown, reason?: string) => {
+        await env.DB.prepare(`
+          INSERT INTO finance_audit_logs
+            (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          crypto.randomUUID(), actorId, entityType, entityId, action,
+          oldValues == null ? null : JSON.stringify(oldValues),
+          newValues == null ? null : JSON.stringify(newValues),
+          reason ?? null, request.headers.get('cf-ray')
+        ).run()
+      }
+
+      if (url.pathname === '/api/finance/dashboard' && request.method === 'GET') {
+        const [income, paid, pending, unpaid, categories, expenses, incomes] = await Promise.all([
+          env.DB.prepare('SELECT COALESCE(SUM(amount_paise), 0) AS total FROM finance_income').first<{ total: number }>(),
+          env.DB.prepare('SELECT COALESCE(SUM(amount_paise), 0) AS total FROM finance_payments').first<{ total: number }>(),
+          env.DB.prepare("SELECT COUNT(*) AS total FROM finance_expenses WHERE approval_status = 'PENDING'").first<{ total: number }>(),
+          env.DB.prepare("SELECT COUNT(*) AS total FROM finance_expenses WHERE approval_status = 'APPROVED' AND payment_status <> 'PAID'").first<{ total: number }>(),
+          env.DB.prepare('SELECT id, name, category_type FROM finance_categories WHERE is_active = 1 ORDER BY category_type, name').all(),
+          env.DB.prepare(`
+            SELECT e.id, e.expense_no, c.name AS category_name, e.vendor_name, e.description,
+              e.requested_amount_paise, e.approved_amount_paise, e.expense_date,
+              e.approval_status, e.payment_status,
+              COALESCE((SELECT SUM(p.amount_paise) FROM finance_payments p WHERE p.expense_id = e.id), 0) AS paid_amount_paise
+            FROM finance_expenses e JOIN finance_categories c ON c.id = e.category_id
+            ORDER BY e.created_at DESC LIMIT 500
+          `).all(),
+          env.DB.prepare('SELECT income_no, income_type, received_from, amount_paise, received_at, payment_mode, receipt_no FROM finance_income ORDER BY received_at DESC LIMIT 200').all()
+        ])
+        return json({
+          totalIncomePaise: Number(income?.total ?? 0),
+          totalPaidPaise: Number(paid?.total ?? 0),
+          pendingApprovalCount: Number(pending?.total ?? 0),
+          unpaidCount: Number(unpaid?.total ?? 0),
+          categories: categories.results ?? [],
+          expenses: expenses.results ?? [],
+          incomes: incomes.results ?? []
+        })
+      }
+
+      if (url.pathname === '/api/finance/expenses' && request.method === 'POST') {
+        let body: { categoryId?: string; vendorName?: string; description?: string; amountPaise?: number; expenseDate?: string }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        const categoryId = String(body.categoryId ?? '')
+        const vendorName = String(body.vendorName ?? '').trim()
+        const description = String(body.description ?? '').trim()
+        const amountPaise = Number(body.amountPaise)
+        const expenseDate = String(body.expenseDate ?? '')
+        if (!categoryId || !vendorName || !description || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(expenseDate)) {
+          return json({ error: 'Category, vendor, purpose, valid amount and date are required.' }, 400)
+        }
+        const category = await env.DB.prepare("SELECT id FROM finance_categories WHERE id = ? AND category_type = 'EXPENSE' AND is_active = 1").bind(categoryId).first()
+        if (!category) return json({ error: 'Invalid expense category.' }, 400)
+        const id = crypto.randomUUID()
+        const expenseNo = `NHYM-EXP-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
+        await env.DB.prepare(`
+          INSERT INTO finance_expenses (id, expense_no, category_id, vendor_name, description, requested_amount_paise, expense_date, approval_status, payment_status, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 'UNPAID', ?)
+        `).bind(id, expenseNo, categoryId, vendorName, description, amountPaise, expenseDate, actorId).run()
+        await audit('EXPENSE', id, 'SUBMITTED_FOR_APPROVAL', null, { expenseNo, categoryId, vendorName, description, amountPaise, expenseDate })
+        return json({ ok: true, id, expenseNo, approvalStatus: 'PENDING' }, 201)
+      }
+
+      const decisionMatch = url.pathname.match(/^\\/api\\/finance\\/expenses\\/([a-f0-9-]+)\\/decision$/i)
+      if (decisionMatch && request.method === 'POST') {
+        let body: { decision?: string; remarks?: string; approvedAmountPaise?: number }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        const decision = String(body.decision ?? '')
+        const remarks = String(body.remarks ?? '').trim()
+        if (!['APPROVED', 'REJECTED'].includes(decision)) return json({ error: 'Invalid decision.' }, 400)
+        if (decision === 'REJECTED' && !remarks) return json({ error: 'Rejection reason is required.' }, 400)
+        const expense = await env.DB.prepare('SELECT * FROM finance_expenses WHERE id = ?').bind(decisionMatch[1]).first<any>()
+        if (!expense) return json({ error: 'Expense not found.' }, 404)
+        if (expense.approval_status !== 'PENDING') return json({ error: 'Only pending expenses can be decided.' }, 409)
+        const approvedAmount = decision === 'APPROVED' ? Number(body.approvedAmountPaise) : 0
+        if (decision === 'APPROVED' && (!Number.isSafeInteger(approvedAmount) || approvedAmount <= 0 || approvedAmount > Number(expense.requested_amount_paise))) {
+          return json({ error: 'Approved amount must be positive and cannot exceed the requested amount.' }, 400)
+        }
+        const approvalId = crypto.randomUUID()
+        await env.DB.batch([
+          env.DB.prepare(`INSERT INTO finance_approvals (id, expense_id, decision, approved_amount_paise, remarks, decided_by) VALUES (?, ?, ?, ?, ?, ?)`)
+            .bind(approvalId, expense.id, decision, decision === 'APPROVED' ? approvedAmount : null, remarks || null, actorId),
+          env.DB.prepare(`UPDATE finance_expenses SET approval_status = ?, approved_amount_paise = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND approval_status = 'PENDING'`)
+            .bind(decision, decision === 'APPROVED' ? approvedAmount : null, expense.id)
+        ])
+        await audit('EXPENSE', expense.id, decision, { approvalStatus: expense.approval_status }, { approvalStatus: decision, approvedAmountPaise: decision === 'APPROVED' ? approvedAmount : null }, remarks)
+        return json({ ok: true, decision })
+      }
+
+      const paymentMatch = url.pathname.match(/^\\/api\\/finance\\/expenses\\/([a-f0-9-]+)\\/payments$/i)
+      if (paymentMatch && request.method === 'POST') {
+        let body: { paymentMode?: string; amountPaise?: number; paidAt?: string; referenceNo?: string; remarks?: string }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        const paymentMode = String(body.paymentMode ?? '')
+        const amountPaise = Number(body.amountPaise)
+        const paidAt = String(body.paidAt ?? '')
+        const referenceNo = String(body.referenceNo ?? '').trim()
+        const remarks = String(body.remarks ?? '').trim()
+        if (!['UPI','BANK_TRANSFER','CASH'].includes(paymentMode) || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(paidAt)) return json({ error: 'Valid payment mode, amount and date are required.' }, 400)
+        if (paymentMode !== 'CASH' && !referenceNo) return json({ error: 'UPI/bank reference number is required.' }, 400)
+        const expense = await env.DB.prepare('SELECT * FROM finance_expenses WHERE id = ?').bind(paymentMatch[1]).first<any>()
+        if (!expense) return json({ error: 'Expense not found.' }, 404)
+        if (expense.approval_status !== 'APPROVED') return json({ error: 'Payment can only be recorded after approval.' }, 409)
+        const paid = await env.DB.prepare('SELECT COALESCE(SUM(amount_paise),0) AS total FROM finance_payments WHERE expense_id = ?').bind(expense.id).first<{ total: number }>()
+        const paidSoFar = Number(paid?.total ?? 0)
+        if (paidSoFar + amountPaise > Number(expense.approved_amount_paise)) return json({ error: 'Payment total cannot exceed the approved amount.' }, 409)
+        const paymentId = crypto.randomUUID()
+        const paymentNo = `NHYM-PAY-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
+        try {
+          await env.DB.prepare(`INSERT INTO finance_payments (id, expense_id, payment_no, payment_mode, amount_paise, paid_at, reference_no, paid_by, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .bind(paymentId, expense.id, paymentNo, paymentMode, amountPaise, paidAt, referenceNo || null, actorId, remarks || null).run()
+        } catch (e) {
+          if (/unique constraint|constraint failed/i.test(e instanceof Error ? e.message : '')) return json({ error: 'This payment reference has already been recorded.' }, 409)
+          throw e
+        }
+        const totalPaid = paidSoFar + amountPaise
+        const paymentStatus = totalPaid >= Number(expense.approved_amount_paise) ? 'PAID' : 'PARTIAL'
+        await env.DB.prepare('UPDATE finance_expenses SET payment_status = ?, final_amount_paise = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .bind(paymentStatus, totalPaid, expense.id).run()
+        await audit('PAYMENT', paymentId, 'PAYMENT_RECORDED', null, { paymentNo, expenseId: expense.id, paymentMode, amountPaise, paidAt, referenceNo })
+        return json({ ok: true, paymentNo, paymentStatus }, 201)
+      }
+
+      if (url.pathname === '/api/finance/income' && request.method === 'POST') {
+        let body: { incomeType?: string; receivedFrom?: string; amountPaise?: number; receivedAt?: string; paymentMode?: string; referenceNo?: string; receiptNo?: string; remarks?: string }
+        try { body = await request.json() } catch { return json({ error: 'Invalid JSON body.' }, 400) }
+        const incomeType = String(body.incomeType ?? '').trim()
+        const receivedFrom = String(body.receivedFrom ?? '').trim()
+        const amountPaise = Number(body.amountPaise)
+        const receivedAt = String(body.receivedAt ?? '')
+        const paymentMode = String(body.paymentMode ?? '')
+        const referenceNo = String(body.referenceNo ?? '').trim()
+        const receiptNo = String(body.receiptNo ?? '').trim()
+        if (!incomeType || !receivedFrom || !Number.isSafeInteger(amountPaise) || amountPaise <= 0 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(receivedAt) || !['UPI','BANK_TRANSFER','CASH'].includes(paymentMode)) return json({ error: 'Income type, source, valid amount, date and payment mode are required.' }, 400)
+        if (paymentMode !== 'CASH' && !referenceNo) return json({ error: 'UPI/bank reference number is required.' }, 400)
+        const id = crypto.randomUUID()
+        const incomeNo = `NHYM-INC-${Date.now().toString().slice(-8)}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`
+        try {
+          await env.DB.prepare(`INSERT INTO finance_income (id, income_no, income_type, received_from, amount_paise, received_at, payment_mode, reference_no, receipt_no, remarks, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+            .bind(id, incomeNo, incomeType, receivedFrom, amountPaise, receivedAt, paymentMode, referenceNo || null, receiptNo || null, String(body.remarks ?? '').trim() || null, actorId).run()
+        } catch (e) {
+          if (/unique constraint|constraint failed/i.test(e instanceof Error ? e.message : '')) return json({ error: 'Receipt number has already been used.' }, 409)
+          throw e
+        }
+        await audit('INCOME', id, 'INCOME_RECORDED', null, { incomeNo, incomeType, receivedFrom, amountPaise, receivedAt, paymentMode, referenceNo, receiptNo })
+        return json({ ok: true, incomeNo }, 201)
+      }
+
+      return json({ error: 'Finance endpoint not found.' }, 404)
+    }
+
     if (url.pathname === '/api/admin/registrations' && request.method === 'GET') {
   if (!authorised(request, env)) {
     return json({ error: 'Unauthorized' }, 401)
