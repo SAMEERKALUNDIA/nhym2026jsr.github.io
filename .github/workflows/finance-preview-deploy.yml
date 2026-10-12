@@ -43,6 +43,8 @@ jobs:
             { path: '/', expected: 200, name: 'preview homepage' },
             { path: '/login', expected: 200, name: 'shared login page' },
             { path: '/api/admin/finance-users', expected: 401, name: 'admin-only Finance account list rejects anonymous requests' },
+            { path: '/api/admin/finance-users/test-id/reset-password', method: 'POST', body: { temporaryPassword: 'not-a-real-password' }, expected: 401, name: 'password reset rejects anonymous requests' },
+            { path: '/api/finance/change-password', method: 'POST', body: { currentPassword: 'not-a-real-password', newPassword: 'another-not-real-password' }, expected: 401, name: 'password change rejects requests without a Finance session' },
             { path: '/api/finance/login', method: 'POST', body: { loginId: 'missing-preview-user', password: 'not-a-real-password' }, expected: 401, name: 'Finance login rejects unknown account' }
           ];
           for (const check of checks) {
