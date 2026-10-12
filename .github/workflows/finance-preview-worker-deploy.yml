@@ -72,7 +72,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           node --input-type=module <<'NODE'
-          const base = 'https://nhymindia-finance-preview.' + process.env.CLOUDFLARE_ACCOUNT_ID + '.workers.dev';
+          const base = 'https://nhymindia-finance-preview.2026jsr.workers.dev';
           const checks = [
             { path: '/api/finance/setup-status', expected: 200 },
             { path: '/api/admin/finance-users', expected: 401 },
