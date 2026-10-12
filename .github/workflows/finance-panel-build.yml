@@ -211,6 +211,32 @@ jobs:
           assert not violations, f'Foreign key violations: {violations}'
           print('Finance migration, roles, normalized references, overpayment/approval triggers, triggerless atomic payment guard, payment summaries, single-decision guard, login lockout and foreign keys passed.')
           PY
+      - name: Validate Preview isolation and secret configuration
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const production = JSON.parse(readFileSync('wrangler.jsonc', 'utf8'))
+          const dedicatedPreview = JSON.parse(readFileSync('wrangler.preview.jsonc', 'utf8'))
+          const requiredSecrets = ['ADMIN_TOKEN', 'NHYM_EMAIL_SECRET']
+          for (const [name, config] of [['production/preview config', production], ['dedicated preview config', dedicatedPreview]]) {
+            const required = config.secrets?.required || []
+            for (const secret of requiredSecrets) {
+              if (!required.includes(secret)) throw new Error(name + ' does not declare required secret ' + secret)
+              if (Object.hasOwn(config.vars || {}, secret)) throw new Error(name + ' stores sensitive ' + secret + ' in vars')
+            }
+          }
+          const prodDb = production.d1_databases?.find(binding => binding.binding === 'DB')?.database_id
+          const previewDb = production.previews?.d1_databases?.find(binding => binding.binding === 'DB')?.database_id
+          if (!prodDb || !previewDb || prodDb === previewDb) throw new Error('Worker preview must bind to a separate D1 database')
+          const prodR2 = production.r2_buckets?.find(binding => binding.binding === 'GALLERY')?.bucket_name
+          const previewR2 = production.previews?.r2_buckets?.find(binding => binding.binding === 'GALLERY')?.bucket_name
+          if (!prodR2 || !previewR2 || prodR2 === previewR2) throw new Error('Worker preview must bind to a separate R2 bucket')
+          const dedicatedDb = dedicatedPreview.d1_databases?.find(binding => binding.binding === 'DB')?.database_id
+          const dedicatedR2 = dedicatedPreview.r2_buckets?.find(binding => binding.binding === 'GALLERY')?.bucket_name
+          if (dedicatedDb !== previewDb || dedicatedR2 !== previewR2) throw new Error('Dedicated preview config must use the isolated preview D1 and R2 resources')
+          console.log('Preview isolation and required-secret configuration checks passed; no secret values are stored in vars.')
+          NODE
+
       - name: TypeScript and production build
         run: pnpm run build
 
