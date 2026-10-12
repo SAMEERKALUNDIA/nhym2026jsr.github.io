@@ -917,20 +917,6 @@ if (!row.dob.trim()) {
                           </div>
                         )}
 
-                        <div className="mt-4">
-                          <Label htmlFor={`note-${row.key}`}>
-                            Village or district{' '}
-                            <span className="font-normal text-muted-foreground">(optional)</span>
-                          </Label>
-                          <Input
-                            id={`note-${row.key}`}
-                            value={row.note}
-                            onChange={(e) => update(row.key, { note: e.target.value })}
-                            placeholder="Town, village or block"
-                            className="mt-2 h-11"
-                          />
-                        </div>
-
                         {row.error && (
                           <p
                             id={`name-error-${row.key}`}
@@ -1242,7 +1228,6 @@ function FeeStub({ rows, total }: { rows: Draft[]; total: number }) {
   const lines = rows.map((row, index) => ({
     key: row.key,
     kind: row.category === 'visitor' ? EVENT.terms.audience : EVENT.terms[row.category],
-    place: row.note.trim(),
     index: index + 1,
     amount: feeOf(row),
     mode: row.mode,
@@ -1265,7 +1250,6 @@ function FeeStub({ rows, total }: { rows: Draft[]; total: number }) {
               <li key={line.key} className="flex items-baseline justify-between gap-4">
                 <span className="text-muted-foreground">
                   Participant {line.index} · {line.kind}
-                  {line.place ? ` · ${line.place}` : ''}
                   {line.reference ? (
                     <span className="mt-0.5 block font-mono text-xs break-all text-muted-foreground/80">
                       {labelOfMode(line.mode)} · {line.reference}
