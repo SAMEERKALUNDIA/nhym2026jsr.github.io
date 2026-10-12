@@ -24,8 +24,9 @@
     }
   ],
   "vars": {
-    "ADMIN_TOKEN": "preview-only-token-do-not-use-in-production",
-    "EMAIL_SERVICE_URL": "https://example.invalid",
-    "NHYM_EMAIL_SECRET": "preview-only-placeholder"
+    "EMAIL_SERVICE_URL": "https://example.invalid"
+  },
+  "secrets": {
+    "required": ["ADMIN_TOKEN", "NHYM_EMAIL_SECRET"]
   }
 }
