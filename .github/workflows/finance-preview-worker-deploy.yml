@@ -16,6 +16,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/finance-preview-worker-deploy.yml"
+      - ".github/workflows/finance-authenticated-api-tests.yml"
 
 permissions:
   contents: read
