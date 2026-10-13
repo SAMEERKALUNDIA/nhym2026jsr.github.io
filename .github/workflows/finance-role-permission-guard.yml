@@ -43,7 +43,7 @@ jobs:
             console.log('PASS', label)
           }
           const uiMustContain = [
-            ["Operator creation controls are role-gated", "currentUser?.role === "FINANCE_HEAD" || currentUser?.role === "OPERATOR""],
+            ["Operator creation controls are role-gated", `currentUser?.role === "FINANCE_HEAD" || currentUser?.role === "OPERATOR"`],
             ["Approver decision controls are role-gated", "currentUser?.role==='FINANCE_HEAD' || currentUser?.role==='APPROVER'"],
             ["Audit history controls are role-gated", "currentUser?.role === 'FINANCE_HEAD' || currentUser?.role === 'AUDITOR'"],
             ["Finance user management is role-gated", "currentUser?.role === 'FINANCE_HEAD'"]
