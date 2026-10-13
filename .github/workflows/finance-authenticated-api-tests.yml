@@ -14,6 +14,7 @@ jobs:
     environment: finance-preview
     env:
       PREVIEW_BASE_URL: https://nhymindia-finance-preview.2026jsr.workers.dev
+      PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
       FINANCE_HEAD_LOGIN_ID: ${{ secrets.FINANCE_TEST_HEAD_LOGIN_ID }}
       FINANCE_HEAD_PASSWORD: ${{ secrets.FINANCE_TEST_HEAD_PASSWORD }}
       OPERATOR_LOGIN_ID: ${{ secrets.FINANCE_TEST_OPERATOR_LOGIN_ID }}
@@ -39,6 +40,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const base = process.env.PREVIEW_BASE_URL;
+          const adminToken = process.env.PREVIEW_ADMIN_TOKEN;
           const roles = {
             FINANCE_HEAD: [process.env.FINANCE_HEAD_LOGIN_ID, process.env.FINANCE_HEAD_PASSWORD],
             OPERATOR: [process.env.OPERATOR_LOGIN_ID, process.env.OPERATOR_PASSWORD],
@@ -87,6 +89,13 @@ jobs:
           }
           check('FINANCE_HEAD', 'finance user list allowed', await request('/api/finance/users', token('FINANCE_HEAD')), 200);
           check('NO TOKEN', 'dashboard requires authentication', await request('/api/finance/dashboard', null), 401);
+          check('NO TOKEN', 'Main Admin finance account list requires ADMIN_TOKEN', await request('/api/admin/finance-users', null), 401);
+          check('NO TOKEN', 'Main Admin password reset requires ADMIN_TOKEN', await request('/api/admin/finance-users/00000000-0000-4000-8000-000000000000/reset-password', null, 'POST', { password: 'NotARealPassword123!' }), 401);
+          if (!adminToken) {
+            console.error('Missing PREVIEW_ADMIN_TOKEN environment secret; cannot validate Main Admin reset guard.');
+            process.exit(1);
+          }
+          check('ADMIN_TOKEN', 'password reset rejects too-short temporary password before mutation', await request('/api/admin/finance-users/00000000-0000-4000-8000-000000000000/reset-password', adminToken, 'POST', { password: 'short' }), 400);
           // Empty payloads must fail validation before any database write; a 400 proves the role gate permits the route without creating records.
           for (const role of ['FINANCE_HEAD', 'OPERATOR']) {
             check(role, 'expense route reaches validation without creating a record', await postEmpty('/api/finance/expenses', role), 400);
