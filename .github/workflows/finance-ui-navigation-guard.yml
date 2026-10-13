@@ -3,6 +3,8 @@ name: Finance UI Navigation Guard
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [feature/admin-finance-password-recovery]
   workflow_dispatch:
 
 permissions:
