@@ -1,0 +1,66 @@
+name: Finance UI Navigation Guard
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  finance-ui-navigation-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Finance UI exposes no Participant or Gallery management navigation
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const finance = readFileSync('src/pages/Finance.tsx', 'utf8');
+          const admin = readFileSync('src/pages/Admin.tsx', 'utf8');
+          const app = readFileSync('src/App.tsx', 'utf8');
+
+          const forbiddenFinanceNavigation = [
+            /admin\/participants/i,
+            /admin\/gallery/i,
+            /Manage Participants/i,
+            /Manage Gallery/i,
+            /Participant Management/i,
+            /Gallery Management/i,
+          ];
+          const exposed = forbiddenFinanceNavigation.filter((pattern) => pattern.test(finance));
+          if (exposed.length) {
+            console.error('FAIL Finance page contains participant/gallery navigation:', exposed.map(String).join(', '));
+            process.exit(1);
+          }
+          console.log('PASS Finance page has no Participant/Gallery management routes or navigation labels.');
+
+          if (!app.includes('<Route path="admin/participants" element={<Admin />} />') ||
+              !app.includes('<Route path="admin/gallery" element={<Admin />} />') ||
+              !app.includes('<Route path="admin/finance" element={<Finance />} />')) {
+            console.error('FAIL Expected separate Admin and Finance routes were not found.');
+            process.exit(1);
+          }
+          console.log('PASS Participant, Gallery, and Finance routes remain separate.');
+
+          const participantLink = admin.indexOf("window.location.href = '/admin/participants'");
+          const galleryLink = admin.indexOf("window.location.href = '/admin/gallery'");
+          const adminDashboardGate = admin.indexOf('{!isGalleryPage && !isParticipantPage && (');
+          if (adminDashboardGate < 0 || participantLink < adminDashboardGate || galleryLink < adminDashboardGate) {
+            console.error('FAIL Participant/Gallery navigation is not located within the Main Admin dashboard section.');
+            process.exit(1);
+          }
+          console.log('PASS Participant/Gallery navigation is rendered only in the Main Admin dashboard section.');
+          NODE
+      - name: Build and type-check UI
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
