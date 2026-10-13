@@ -7,7 +7,7 @@ type FinanceUser = { id: string; displayName: string; loginId: string; role: 'FI
 
 export default function Login() {
   const navigate = useNavigate()
-  const [role, setRole] = useState<'admin' | 'finance'>('admin')
+  const [role, setRole] = useState<'admin' | 'finance'>(() => new URLSearchParams(window.location.search).get('role') === 'finance' ? 'finance' : 'admin')
   const [adminKey, setAdminKey] = useState('')
   const [loginId, setLoginId] = useState('')
   const [password, setPassword] = useState('')
