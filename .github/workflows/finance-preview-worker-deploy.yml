@@ -63,6 +63,8 @@ jobs:
           pnpm dlx wrangler@4 deploy --config wrangler.preview.jsonc
 
       - name: Verify Worker and Preview isolation
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
         run: |
           node --input-type=module <<'NODE'
           const base = 'https://nhymindia-finance-preview.2026jsr.workers.dev';
@@ -102,4 +104,21 @@ jobs:
             }
           }
           if (process.exitCode) process.exit(1);
+
+          // Verify the configured preview admin secret matches the deployed Worker.
+          // Invalid payload intentionally cannot create a Finance Head; authenticated
+          // requests should pass authorization and fail only payload validation (HTTP 400).
+          if (!process.env.PREVIEW_ADMIN_TOKEN) throw new Error('PREVIEW_ADMIN_TOKEN is not available to the verification step.');
+          const authCheck = await fetch(base + '/api/finance/bootstrap', {
+            method: 'POST',
+            headers: { authorization: process.env.PREVIEW_ADMIN_TOKEN, 'content-type': 'application/json', 'cache-control': 'no-store' },
+            body: JSON.stringify({ displayName: 'x', loginId: 'x', password: 'x' }),
+            cache: 'no-store'
+          });
+          const authBody = (await authCheck.text()).slice(0, 180);
+          if (authCheck.status !== 400) {
+            console.error('FAIL authenticated preview bootstrap authorization: expected 400 (authorized, invalid payload), got', authCheck.status, 'body:', authBody);
+            process.exit(1);
+          }
+          console.log('PASS authenticated preview bootstrap authorization (400 for intentionally invalid payload)');
           NODE
