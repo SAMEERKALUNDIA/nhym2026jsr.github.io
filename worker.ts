@@ -635,6 +635,14 @@ if (
   })
 }
 
+    // Main Admin login verification for the isolated preview dashboard.
+    // This validates the ADMIN_TOKEN without querying registration tables, which are
+    // intentionally not present in the finance-only preview database.
+    if (url.pathname === '/api/admin/auth-check' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      return financeJson({ ok: true })
+    }
+
     // MAIN ADMIN ONLY — finance account listing and password recovery.
     // Finance sessions cannot use these endpoints; they require the website ADMIN_TOKEN.
     if (url.pathname === '/api/admin/finance-users' && request.method === 'GET') {
