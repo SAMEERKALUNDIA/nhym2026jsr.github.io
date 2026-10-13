@@ -1323,6 +1323,26 @@ async function downloadAdminRegistrationPdf(row: Row) {
   const green: [number, number, number] = [221, 239, 227]
   let y = 41
 
+  function categoryLabel(category: string) {
+    switch (category) {
+      case 'student': return 'Student Participant'
+      case 'non-earning':
+      case 'non_earning': return 'Non-Earning Participant'
+      case 'earning': return 'Earning Participant'
+      case 'visitor': return 'Audience / Visitor'
+      default: return category || '—'
+    }
+  }
+
+  function yesNo(value: string) {
+    switch (value?.toLowerCase()) {
+      case 'yes': return 'Yes'
+      case 'no': return 'No'
+      case 'maybe': return 'Maybe'
+      default: return value || '—'
+    }
+  }
+
   function addHeader(continuation = false) {
     addContainedPdfImage(pdf, hoSamajLogoData, margin, 5, 20, 20)
     addContainedPdfImage(pdf, logoData, pageWidth - margin - 20, 5, 20, 20)
