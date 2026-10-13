@@ -5,6 +5,7 @@ export interface Env {
   ADMIN_TOKEN: string
   EMAIL_SERVICE_URL: string
   NHYM_EMAIL_SECRET: string
+  FINANCE_PREVIEW_MODE?: string
 }
 
 type RegistrationPayload = {
@@ -1260,7 +1261,7 @@ if (
 
       // Finance preview uses an isolated database without NHYM registration tables.
       // Return an empty, correctly-shaped result rather than throwing a D1 error.
-      if (env.DB.database_id === 'dfea51ad-0f55-422c-98a9-90f4f48eec6e') {
+      if (env.FINANCE_PREVIEW_MODE === 'true') {
         return financeJson({ registrations: [] })
       }
 
