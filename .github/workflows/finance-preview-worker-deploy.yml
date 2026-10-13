@@ -121,4 +121,20 @@ jobs:
             process.exit(1);
           }
           console.log('PASS authenticated preview admin auth-check (200)');
+
+          // Verify the Admin dashboard's registration API returns JSON in the
+          // isolated preview instead of an HTML SPA fallback or missing-table error.
+          const registrations = await fetch(base + '/api/admin/registrations', {
+            headers: { authorization: `Bearer ${process.env.PREVIEW_ADMIN_TOKEN}` },
+            cache: 'no-store'
+          });
+          const registrationsType = registrations.headers.get('content-type') || '';
+          const registrationsBody = await registrations.text();
+          let registrationsJson;
+          try { registrationsJson = JSON.parse(registrationsBody); } catch {}
+          if (registrations.status !== 200 || !registrationsType.includes('application/json') || !Array.isArray(registrationsJson?.registrations)) {
+            console.error('FAIL authenticated preview registrations API: expected 200 JSON with registrations array, got', registrations.status, 'content-type:', registrationsType, 'body:', registrationsBody.slice(0, 180));
+            process.exit(1);
+          }
+          console.log('PASS authenticated preview registrations API (200 JSON, array length', registrationsJson.registrations.length, ')');
           NODE
