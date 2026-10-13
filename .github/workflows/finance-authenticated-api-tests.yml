@@ -86,6 +86,13 @@ jobs:
             check(role, 'finance user creation denied', await postEmpty('/api/finance/users', role), 403);
           }
           check('FINANCE_HEAD', 'finance user list allowed', await request('/api/finance/users', token('FINANCE_HEAD')), 200);
+          check('NO TOKEN', 'dashboard requires authentication', await request('/api/finance/dashboard', null), 401);
+          // Empty payloads must fail validation before any database write; a 400 proves the role gate permits the route without creating records.
+          for (const role of ['FINANCE_HEAD', 'OPERATOR']) {
+            check(role, 'expense route reaches validation without creating a record', await postEmpty('/api/finance/expenses', role), 400);
+            check(role, 'income route reaches validation without creating a record', await postEmpty('/api/finance/income', role), 400);
+            check(role, 'budget route reaches validation without creating a record', await postEmpty('/api/finance/budgets', role), 400);
+          }
           check('FINANCE_HEAD', 'audit history allowed', await request('/api/finance/audit', token('FINANCE_HEAD')), 200);
           check('OPERATOR', 'audit history denied', await request('/api/finance/audit', token('OPERATOR')), 403);
           check('APPROVER', 'audit history denied', await request('/api/finance/audit', token('APPROVER')), 403);
