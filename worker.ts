@@ -1254,9 +1254,15 @@ if (
     }
 
     if (url.pathname === '/api/admin/registrations' && request.method === 'GET') {
-  if (!authorised(request, env)) {
-    return financeJson({ error: 'Unauthorized' }, 401)
-  }
+      if (!authorised(request, env)) {
+        return financeJson({ error: 'Unauthorized' }, 401)
+      }
+
+      // Finance preview uses an isolated database without NHYM registration tables.
+      // Return an empty, correctly-shaped result rather than throwing a D1 error.
+      if (env.DB.database_id === 'dfea51ad-0f55-422c-98a9-90f4f48eec6e') {
+        return financeJson({ registrations: [] })
+      }
 
   const rows = await env.DB.prepare(`
     SELECT
