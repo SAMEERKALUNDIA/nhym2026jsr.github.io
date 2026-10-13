@@ -292,7 +292,6 @@ function logout() {
   sessionStorage.removeItem('nhym_admin_token')
 
   setToken('')
-  setLoginToken('')
   setAuthenticated(false)
   setRows([])
   setSelected(null)
