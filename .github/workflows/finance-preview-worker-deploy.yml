@@ -70,6 +70,7 @@ jobs:
           const base = 'https://nhymindia-finance-preview.2026jsr.workers.dev';
           const checks = [
             { path: '/api/finance/setup-status', expected: 200 },
+            { path: '/api/admin/auth-check', expected: 401 },
             { path: '/api/admin/finance-users', expected: 401 },
             { path: '/api/admin/finance-users/00000000-0000-4000-8000-000000000000/reset-password', method: 'POST', body: { password: 'not-a-real-password' }, expected: 401 },
             { path: '/api/finance/bootstrap', method: 'POST', body: { displayName: 'Smoke Test', loginId: 'smoke.test', password: 'not-a-real-password' }, expected: 401 },
@@ -109,16 +110,14 @@ jobs:
           // Invalid payload intentionally cannot create a Finance Head; authenticated
           // requests should pass authorization and fail only payload validation (HTTP 400).
           if (!process.env.PREVIEW_ADMIN_TOKEN) throw new Error('PREVIEW_ADMIN_TOKEN is not available to the verification step.');
-          const authCheck = await fetch(base + '/api/finance/bootstrap', {
-            method: 'POST',
-            headers: { authorization: process.env.PREVIEW_ADMIN_TOKEN, 'content-type': 'application/json', 'cache-control': 'no-store' },
-            body: JSON.stringify({ displayName: 'x', loginId: 'x', password: 'x' }),
+          const authCheck = await fetch(base + '/api/admin/auth-check', {
+            headers: { authorization: `Bearer ${process.env.PREVIEW_ADMIN_TOKEN}` },
             cache: 'no-store'
           });
           const authBody = (await authCheck.text()).slice(0, 180);
-          if (authCheck.status !== 400) {
-            console.error('FAIL authenticated preview bootstrap authorization: expected 400 (authorized, invalid payload), got', authCheck.status, 'body:', authBody);
+          if (authCheck.status !== 200) {
+            console.error('FAIL authenticated preview admin auth-check: expected 200, got', authCheck.status, 'body:', authBody);
             process.exit(1);
           }
-          console.log('PASS authenticated preview bootstrap authorization (400 for intentionally invalid payload)');
+          console.log('PASS authenticated preview admin auth-check (200)');
           NODE
