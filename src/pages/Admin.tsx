@@ -302,18 +302,24 @@ async function login(event: React.FormEvent) {
   setError('')
   setSuccess('')
 
-  const ok = await load(enteredToken)
+  try {
+    const response = await fetch('/api/admin/auth-check', {
+      headers: { authorization: `Bearer ${enteredToken}` },
+      cache: 'no-store'
+    })
+    const result = await response.json() as { error?: string }
+    if (!response.ok) throw new Error(result.error || 'Invalid admin password / access key.')
 
-  if (!ok) return
-
-  sessionStorage.setItem(
-    'nhym_admin_token',
-    enteredToken
-  )
-
-  setToken(enteredToken)
-  setLoginToken('')
-  setAuthenticated(true)
+    sessionStorage.setItem('nhym_admin_token', enteredToken)
+    setToken(enteredToken)
+    setLoginToken('')
+    setAuthenticated(true)
+    // Load registrations separately. The isolated finance preview database intentionally
+    // has no registration tables, but Main Admin still needs access to Finance User Management.
+    void load(enteredToken)
+  } catch (e) {
+    setError(e instanceof Error ? e.message : 'Admin sign-in failed.')
+  }
 }
 
 function logout() {
