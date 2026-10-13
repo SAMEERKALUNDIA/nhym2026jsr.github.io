@@ -50,7 +50,7 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
           test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
-          pnpm exec wrangler d1 migrations apply nhym2026-finance-preview --remote --config wrangler.preview.jsonc
+          pnpm dlx wrangler@4 d1 migrations apply nhym2026-finance-preview --remote --config wrangler.preview.jsonc
 
       - name: Deploy isolated Preview Worker
         env:
@@ -63,9 +63,9 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
           test -n "$ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
           test -n "$NHYM_EMAIL_SECRET" || (echo "Missing finance-preview environment secret PREVIEW_NHYM_EMAIL_SECRET" && exit 1)
-          printf '%s' "$ADMIN_TOKEN" | pnpm exec wrangler secret put ADMIN_TOKEN --config wrangler.preview.jsonc
-          printf '%s' "$NHYM_EMAIL_SECRET" | pnpm exec wrangler secret put NHYM_EMAIL_SECRET --config wrangler.preview.jsonc
-          pnpm exec wrangler deploy --config wrangler.preview.jsonc
+          printf '%s' "$ADMIN_TOKEN" | pnpm dlx wrangler@4 secret put ADMIN_TOKEN --config wrangler.preview.jsonc
+          printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.preview.jsonc
+          pnpm dlx wrangler@4 deploy --config wrangler.preview.jsonc
 
       - name: Verify Worker and Preview isolation
         run: |
