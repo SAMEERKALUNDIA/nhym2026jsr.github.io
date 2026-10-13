@@ -173,13 +173,12 @@ const galleryStorageAfterSelection =
 
 const galleryStorageExceeded =
   galleryStorageAfterSelection > galleryStorageMax
-const [loginToken, setLoginToken] = useState('')
+const [, setLoading] = useState(false)
 const [authenticated, setAuthenticated] = useState(false)
 const [checkingSession, setCheckingSession] = useState(true)
   const [rows, setRows] = useState<Row[]>([])
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [loading, setLoading] = useState(false)
   const [updatingId, setUpdatingId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Row | null>(null)
@@ -286,39 +285,6 @@ async function resetAdminFinancePassword(userId: string) {
     setAdminFinanceError(e instanceof Error ? e.message : 'Password reset failed.')
   } finally {
     setAdminFinanceLoading(false)
-  }
-}
-
-async function login(event: React.FormEvent) {
-  event.preventDefault()
-
-  const enteredToken = loginToken.trim()
-
-  if (!enteredToken) {
-    setError('Enter the admin password / access key.')
-    return
-  }
-
-  setError('')
-  setSuccess('')
-
-  try {
-    const response = await fetch('/api/admin/auth-check', {
-      headers: { authorization: `Bearer ${enteredToken}` },
-      cache: 'no-store'
-    })
-    const result = await response.json() as { error?: string }
-    if (!response.ok) throw new Error(result.error || 'Invalid admin password / access key.')
-
-    sessionStorage.setItem('nhym_admin_token', enteredToken)
-    setToken(enteredToken)
-    setLoginToken('')
-    setAuthenticated(true)
-    // Load registrations separately. The isolated finance preview database intentionally
-    // has no registration tables, but Main Admin still needs access to Finance User Management.
-    void load(enteredToken)
-  } catch (e) {
-    setError(e instanceof Error ? e.message : 'Admin sign-in failed.')
   }
 }
 
