@@ -2494,82 +2494,17 @@ if (checkingSession) {
 if (!authenticated) {
   return (
     <main className="grid min-h-dvh place-items-center bg-background px-gutter py-10">
-      <div className="w-full max-w-md">
-        <div className="text-center">
-          <p className="text-xs font-semibold tracking-[0.16em] text-brand uppercase">
-            National Ho Youth Meet 2026
-          </p>
-
-          <h1 className="mt-2 text-3xl font-semibold">
-            Admin Login
-          </h1>
-
-          <p className="mt-3 text-muted-foreground">
-            Registration administration for authorized
-            organizers only.
-          </p>
-        </div>
-
-        <form
-          onSubmit={login}
-          className="mt-8 rounded-xl border bg-card p-6 shadow-sm"
-        >
-          <label
-            htmlFor="admin-password"
-            className="text-sm font-medium"
-          >
-            Admin Password / Access Key
-          </label>
-
-          <Input
-            id="admin-password"
-            type="password"
-            value={loginToken}
-            onChange={e =>
-              setLoginToken(e.target.value)
-            }
-            placeholder="Enter admin access key"
-            autoComplete="current-password"
-            autoFocus
-            className="mt-2 h-12"
-          />
-
-          {error && (
-            <div className="mt-4 rounded-lg border border-destructive p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-
-          <Button
-            type="submit"
-            disabled={loading || !loginToken.trim()}
-            className="mt-5 h-12 w-full"
-          >
-            {loading
-              ? 'Signing in…'
-              : 'Sign In'}
-          </Button>
-
-          <p className="mt-5 text-center text-xs text-muted-foreground">
-            Authorized NHYM 2026 administration only.
-          </p>
-        </form>
-
-        <div className="mt-5 text-center">
-          <a href="/login" className="text-sm font-medium underline underline-offset-4">
-            Use shared Admin / Finance login
-          </a>
-          <div className="mt-3">
-            <a href="/" className="text-sm underline underline-offset-4">
-              ← Back to NHYM website
-            </a>
-          </div>
-        </div>
+      <div className="w-full max-w-md rounded-xl border bg-card p-6 text-center shadow-sm">
+        <p className="text-xs font-semibold tracking-[0.16em] text-brand uppercase">National Ho Youth Meet 2026</p>
+        <h1 className="mt-2 text-3xl font-semibold">Admin Login</h1>
+        <p className="mt-3 text-sm text-muted-foreground">Main Admin aur Finance ke liye shared secure login page ka upyog karein.</p>
+        {error && <div role="alert" className="mt-4 rounded-lg border border-destructive p-3 text-sm text-destructive">{error}</div>}
+        <button type="button" onClick={() => { window.location.href = '/login?role=admin' }} className="mt-6 w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">Continue to Shared Login</button>
+        <a href="/" className="mt-4 inline-block text-sm underline underline-offset-4">← Back to NHYM website</a>
       </div>
     </main>
   )
 }
-
   return (
     <main className="min-h-dvh bg-background px-gutter py-10">
       <div className="mx-auto max-w-content">
