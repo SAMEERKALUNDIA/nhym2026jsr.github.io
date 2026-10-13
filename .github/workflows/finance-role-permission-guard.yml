@@ -1,0 +1,56 @@
+name: Finance Role Permission Guard
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - feature/admin-finance-password-recovery
+      - feature/nhym-finance-panel
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  role-permissions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify Worker role allow-list and security guards
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import assert from 'node:assert/strict'
+          const worker = readFileSync('worker.ts', 'utf8')
+          const ui = readFileSync('src/pages/Finance.tsx', 'utf8')
+          const mustContain = [
+            ["Finance Head unrestricted role", "role === 'FINANCE_HEAD'"],
+            ["Operator dashboard access", "(isDashboard || isExpenseCreate || isIncomeCreate || isBudgetCreate || isPaymentCreate || isDocumentUpload || isDocumentDownload)"],
+            ["Approver restricted to decisions and read-only views", "(isDashboard || isExpenseDecision || isBudgetDecision || isDocumentDownload)"],
+            ["Auditor restricted to audit and read-only views", "(isDashboard || isAuditLogs || isDocumentDownload)"],
+            ["Finance user management is Finance Head only", "if (isUserAdmin && role !== 'FINANCE_HEAD')"],
+            ["Temporary password blocks finance actions", "if (Number(actor.must_change_password) === 1) return financeJson"],
+            ["Expense maker-checker guard", "if (expense.created_by === actorId)"],
+            ["Budget maker-checker guard", "if (body.decision === 'APPROVED' && current.created_by === actorId)"],
+            ["Password reset requires Main Admin token", "if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)"],
+            ["Reset forces a password change", "must_change_password = 1"],
+            ["Password change clears forced-change flag", "must_change_password = 0"],
+            ["Finance responses are not cacheable", "'cache-control': 'private, no-store'"]
+          ]
+          for (const [label, fragment] of mustContain) {
+            assert.ok(worker.includes(fragment), 'Missing Worker security guard: ' + label)
+            console.log('PASS', label)
+          }
+          const uiMustContain = [
+            ["Operator creation controls are role-gated", "currentUser.role === 'FINANCE_HEAD' || currentUser.role === 'OPERATOR'"],
+            ["Approver decision controls are role-gated", "currentUser.role === 'FINANCE_HEAD' || currentUser.role === 'APPROVER'"],
+            ["Audit history controls are role-gated", "currentUser.role === 'FINANCE_HEAD' || currentUser.role === 'AUDITOR'"],
+            ["Finance user management is role-gated", "currentUser.role === 'FINANCE_HEAD'"]
+          ]
+          for (const [label, fragment] of uiMustContain) {
+            assert.ok(ui.includes(fragment), 'Missing Finance UI role gate: ' + label)
+            console.log('PASS', label)
+          }
+          console.log('Static finance role-permission checks passed. These checks complement, but do not replace, authenticated runtime API tests.')
+          NODE
