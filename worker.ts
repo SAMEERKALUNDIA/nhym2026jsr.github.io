@@ -5,6 +5,7 @@ export interface Env {
   ADMIN_TOKEN: string
   EMAIL_SERVICE_URL: string
   NHYM_EMAIL_SECRET: string
+  FINANCE_PREVIEW_MODE?: string
 }
 
 type RegistrationPayload = {
@@ -634,6 +635,50 @@ if (
     id,
   })
 }
+
+    // Main Admin login verification for the isolated preview dashboard.
+    // This validates the ADMIN_TOKEN without querying registration tables, which are
+    // intentionally not present in the finance-only preview database.
+    if (url.pathname === '/api/admin/auth-check' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      return financeJson({ ok: true })
+    }
+
+    // MAIN ADMIN ONLY — finance account listing and password recovery.
+    // Finance sessions cannot use these endpoints; they require the website ADMIN_TOKEN.
+    if (url.pathname === '/api/admin/finance-users' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const users = await env.DB.prepare(
+        'SELECT id, display_name, login_id, role, is_active, created_at, last_login_at FROM finance_users ORDER BY created_at'
+      ).all()
+      return financeJson({ users: users.results ?? [] })
+    }
+
+    const adminFinancePasswordReset = url.pathname.match(/^\/api\/admin\/finance-users\/([a-f0-9-]+)\/reset-password$/i)
+    if (adminFinancePasswordReset && request.method === 'POST') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let body: { password?: string }
+      try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+      const password = String(body.password ?? '')
+      if (password.length < 12 || password.length > 200) {
+        return financeJson({ error: 'Set a temporary password of at least 12 characters.' }, 400)
+      }
+      const target = await env.DB.prepare('SELECT id, login_id FROM finance_users WHERE id = ?')
+        .bind(adminFinancePasswordReset[1]).first<{ id: string; login_id: string }>()
+      if (!target) return financeJson({ error: 'Finance user not found.' }, 404)
+      const salt = financeRandomHex(16)
+      const passwordHash = await financePasswordHash(password, salt)
+      await env.DB.batch([
+        env.DB.prepare('UPDATE finance_users SET password_salt = ?, password_hash = ?, must_change_password = 1 WHERE id = ?')
+          .bind(salt, passwordHash, target.id),
+        env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ?').bind(target.id),
+        env.DB.prepare(`INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id)
+          VALUES (?, NULL, 'FINANCE_USER', ?, 'ADMIN_PASSWORD_RESET', NULL, ?, 'Authorized by Main Admin using ADMIN_TOKEN; password value is never logged.', ?)`)
+          .bind(crypto.randomUUID(), target.id, JSON.stringify({ mustChangePassword: true, sessionsRevoked: true }), request.headers.get('cf-ray')),
+      ])
+      return financeJson({ ok: true, message: 'Password reset. The user must set a new password at next login; all existing sessions have been revoked.' })
+    }
+
     // NHYM FINANCE PANEL — individually authenticated finance users.
     if (url.pathname.startsWith('/api/finance/')) {
       if (url.pathname === '/api/finance/setup-status' && request.method === 'GET') {
@@ -674,7 +719,7 @@ if (
         const attemptKey = await financeDigest(`${loginId}:${clientIp}`)
         const limit = await env.DB.prepare("SELECT locked_until FROM finance_login_limits WHERE attempt_key = ? AND datetime(locked_until) > datetime('now')").bind(attemptKey).first<{ locked_until: string }>()
         if (limit) return financeJson({ error: 'Too many failed login attempts. Try again after 15 minutes.' }, 429)
-        const user = await env.DB.prepare('SELECT id, display_name, login_id, role, password_salt, password_hash FROM finance_users WHERE login_id = ? AND is_active = 1').bind(loginId).first<{ id: string; display_name: string; login_id: string; role: string; password_salt: string; password_hash: string }>()
+        const user = await env.DB.prepare('SELECT id, display_name, login_id, role, password_salt, password_hash, must_change_password FROM finance_users WHERE login_id = ? AND is_active = 1').bind(loginId).first<{ id: string; display_name: string; login_id: string; role: string; password_salt: string; password_hash: string; must_change_password: number }>()
         // Perform the same PBKDF2 work for unknown users to reduce login-ID timing leaks.
         const candidate = await financePasswordHash(password, user?.password_salt ?? 'NHYM-FINANCE-UNKNOWN-USER-SALT')
         if (!user || candidate !== user.password_hash) {
@@ -696,18 +741,40 @@ if (
         const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
         await env.DB.prepare('INSERT INTO finance_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(crypto.randomUUID(), user.id, tokenHash, expiresAt).run()
         await env.DB.prepare('UPDATE finance_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').bind(user.id).run()
-        return financeJson({ ok: true, token, expiresAt, user: { id: user.id, displayName: user.display_name, loginId: user.login_id, role: user.role } })
+        return financeJson({ ok: true, token, expiresAt, mustChangePassword: Boolean(user.must_change_password), user: { id: user.id, displayName: user.display_name, loginId: user.login_id, role: user.role } })
       }
 
       const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
       if (!bearer) return financeJson({ error: 'Sign in to access Finance Management.' }, 401)
       const tokenHash = await financeDigest(bearer)
-      const actor = await env.DB.prepare("SELECT u.id, u.display_name, u.login_id, u.role FROM finance_sessions s JOIN finance_users u ON u.id = s.user_id WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now') AND u.is_active = 1").bind(tokenHash).first<{ id: string; display_name: string; login_id: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR' }>()
+      const actor = await env.DB.prepare("SELECT u.id, u.display_name, u.login_id, u.role, u.must_change_password, u.password_salt, u.password_hash FROM finance_sessions s JOIN finance_users u ON u.id = s.user_id WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now') AND u.is_active = 1").bind(tokenHash).first<{ id: string; display_name: string; login_id: string; role: 'FINANCE_HEAD' | 'OPERATOR' | 'APPROVER' | 'AUDITOR'; must_change_password: number; password_salt: string; password_hash: string }>()
       if (!actor) return financeJson({ error: 'Finance session expired. Please sign in again.' }, 401)
       if (url.pathname === '/api/finance/logout' && request.method === 'POST') {
         await env.DB.prepare('DELETE FROM finance_sessions WHERE token_hash = ?').bind(tokenHash).run()
         return financeJson({ ok: true })
       }
+      if (url.pathname === '/api/finance/change-password' && request.method === 'POST') {
+        if (Number(actor.must_change_password) !== 1) return financeJson({ error: 'A temporary password change is not pending for this account.' }, 409)
+        let body: { currentPassword?: string; newPassword?: string }
+        try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+        const currentPassword = String(body.currentPassword ?? '')
+        const newPassword = String(body.newPassword ?? '')
+        if (newPassword.length < 12 || newPassword.length > 200) return financeJson({ error: 'New password must be at least 12 characters.' }, 400)
+        const currentHash = await financePasswordHash(currentPassword, actor.password_salt)
+        if (!currentPassword || currentHash !== actor.password_hash) return financeJson({ error: 'Current password is incorrect.' }, 401)
+        if (currentPassword === newPassword) return financeJson({ error: 'Choose a new password different from the temporary password.' }, 400)
+        const newSalt = financeRandomHex(16)
+        const newHash = await financePasswordHash(newPassword, newSalt)
+        const updated = await env.DB.batch([
+          env.DB.prepare('UPDATE finance_users SET password_salt = ?, password_hash = ?, must_change_password = 0 WHERE id = ? AND must_change_password = 1').bind(newSalt, newHash, actor.id),
+          env.DB.prepare(`INSERT INTO finance_audit_logs (id, actor_user_id, entity_type, entity_id, action, old_values_json, new_values_json, reason, request_id)
+            SELECT ?, ?, 'FINANCE_USER', ?, 'PASSWORD_CHANGED_AFTER_RESET', ?, ?, 'User replaced temporary password.', ? WHERE changes() = 1`).bind(crypto.randomUUID(), actor.id, actor.id, JSON.stringify({ mustChangePassword: true }), JSON.stringify({ mustChangePassword: false }), request.headers.get('cf-ray')),
+          env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ? AND token_hash <> ?').bind(actor.id, tokenHash),
+        ])
+        if (Number(updated[0]?.meta?.changes ?? 0) !== 1) return financeJson({ error: 'Password-change state has changed. Sign in again.' }, 409)
+        return financeJson({ ok: true, message: 'Password changed successfully. You can now access Finance Management.' })
+      }
+      if (Number(actor.must_change_password) === 1) return financeJson({ error: 'You must change your temporary password before using Finance Management.', mustChangePassword: true }, 403)
       const actorId = actor.id
       const role = actor.role
       const method = request.method
@@ -1188,9 +1255,15 @@ if (
     }
 
     if (url.pathname === '/api/admin/registrations' && request.method === 'GET') {
-  if (!authorised(request, env)) {
-    return financeJson({ error: 'Unauthorized' }, 401)
-  }
+      if (!authorised(request, env)) {
+        return financeJson({ error: 'Unauthorized' }, 401)
+      }
+
+      // Finance preview uses an isolated database without NHYM registration tables.
+      // Return an empty, correctly-shaped result rather than throwing a D1 error.
+      if (env.FINANCE_PREVIEW_MODE === 'true') {
+        return financeJson({ registrations: [] })
+      }
 
   const rows = await env.DB.prepare(`
     SELECT

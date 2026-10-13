@@ -13,6 +13,9 @@
       "bucket_name": "nhym-gallery"
     }
   ],
+  "secrets": {
+    "required": ["ADMIN_TOKEN", "NHYM_EMAIL_SECRET"]
+  },
   "previews": {
     "d1_databases": [
       {

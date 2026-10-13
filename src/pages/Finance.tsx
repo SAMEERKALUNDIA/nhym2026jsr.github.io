@@ -37,6 +37,9 @@ export default function Finance() {
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null)
   const [loginId, setLoginId] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
+  const [mustChangePassword, setMustChangePassword] = useState(() => sessionStorage.getItem('nhym_finance_must_change_password') === '1')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
   const [bootstrapKey, setBootstrapKey] = useState('')
   const [bootstrapName, setBootstrapName] = useState('')
   const [bootstrapLoginId, setBootstrapLoginId] = useState('')
@@ -88,7 +91,8 @@ export default function Finance() {
     finally { setBusy(false) }
   }, [token])
 
-  useEffect(() => { if (token) void load(token) }, [token, load])
+  // A reset account must stay on the forced password-change screen without requesting dashboard data.
+  useEffect(() => { if (token && !mustChangePassword) void load(token) }, [token, mustChangePassword, load])
 
   const totals = useMemo(() => {
     const paid = data?.totalPaidPaise || 0
@@ -109,13 +113,32 @@ export default function Finance() {
     setError('')
     try {
       const response = await fetch('/api/finance/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ loginId, password: loginPassword }) })
-      const result = await response.json() as { error?: string; token?: string; user?: FinanceUser }
+      const result = await response.json() as { error?: string; token?: string; user?: FinanceUser; mustChangePassword?: boolean }
       if (!response.ok || !result.token || !result.user) throw new Error(result.error || 'Login nahi ho saka.')
       sessionStorage.setItem('nhym_finance_session', result.token)
       sessionStorage.setItem('nhym_finance_user', JSON.stringify(result.user))
+      sessionStorage.setItem('nhym_finance_must_change_password', result.mustChangePassword ? '1' : '0')
+      setMustChangePassword(Boolean(result.mustChangePassword))
       setToken(result.token); setCurrentUser(result.user); setLoginPassword('')
-      await load(result.token)
+      if (!result.mustChangePassword) await load(result.token)
     } catch (e) { setError(e instanceof Error ? e.message : 'Login nahi ho saka.') }
+  }
+
+  async function changeTemporaryPassword(e: React.FormEvent) {
+    e.preventDefault(); setError(''); setNotice('')
+    if (newPassword.length < 12) { setError('New password must be at least 12 characters.'); return }
+    try {
+      const response = await fetch('/api/finance/change-password', {
+        method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      const result = await response.json() as { error?: string; message?: string }
+      if (!response.ok) throw new Error(result.error || 'Password change failed.')
+      sessionStorage.setItem('nhym_finance_must_change_password', '0')
+      setMustChangePassword(false); setCurrentPassword(''); setNewPassword('')
+      setNotice(result.message || 'Password changed successfully.')
+      // The state change above triggers the guarded effect to load the dashboard once.
+    } catch (e) { setError(e instanceof Error ? e.message : 'Password change failed.') }
   }
 
   async function bootstrap(e: React.FormEvent) {
@@ -429,11 +452,13 @@ export default function Finance() {
     <p className="text-xs font-semibold uppercase tracking-[.2em] text-primary">NHYM 2026 · Finance</p><h1 className="mt-2 text-3xl font-semibold">Finance Panel</h1>
     {setupComplete === false ? <><p className="mt-2 text-sm text-muted-foreground">First setup: existing website admin key se ek individual Finance Head account banaiye. Ye setup sirf tab chalega jab koi finance user pehle se nahi hai.</p>
       {!showBootstrap ? <button onClick={()=>setShowBootstrap(true)} className="mt-5 w-full rounded-lg border px-4 py-3 font-medium">Set Up Finance Head</button> :
-      <form onSubmit={bootstrap} className="mt-5 space-y-3"><input value={bootstrapName} onChange={e=>setBootstrapName(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Finance Head full name" required minLength={2}/><input value={bootstrapLoginId} onChange={e=>setBootstrapLoginId(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Login ID (letters/numbers/._-)" required minLength={3}/><input type="password" autoComplete="new-password" value={bootstrapPassword} onChange={e=>setBootstrapPassword(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Strong password (12+ characters)" required minLength={12}/><input type="password" autoComplete="current-password" value={bootstrapKey} onChange={e=>setBootstrapKey(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Existing website admin key" required/><button className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">Create Finance Head</button><button type="button" onClick={()=>setShowBootstrap(false)} className="w-full rounded-lg border px-4 py-3">Cancel</button></form>}
+      <form onSubmit={bootstrap} className="mt-5 space-y-3"><input value={bootstrapName} onChange={e=>setBootstrapName(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Finance Head full name" required minLength={2}/><input value={bootstrapLoginId} onChange={e=>setBootstrapLoginId(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Login ID (letters/numbers/._-)" required minLength={3}/><input type="password" autoComplete="new-password" value={bootstrapPassword} onChange={e=>setBootstrapPassword(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Strong password (12+ characters)" required minLength={12}/><input type="password" autoComplete="current-password" value={bootstrapKey} onChange={e=>setBootstrapKey(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Preview Admin key (PREVIEW_ADMIN_TOKEN)" required/><button className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">Create Finance Head</button><button type="button" onClick={()=>setShowBootstrap(false)} className="w-full rounded-lg border px-4 py-3">Cancel</button></form>}
     </> : <><p className="mt-2 text-sm text-muted-foreground">Individual finance account se login karein. Sessions 12 hours mein expire ho jaate hain.</p><form onSubmit={login} className="mt-6 space-y-3"><input autoComplete="username" value={loginId} onChange={e=>setLoginId(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Finance login ID" required/><input autoComplete="current-password" type="password" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Password" required/><button className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">Secure Login</button></form></>}
     {notice && <p role="status" className="mt-4 rounded-lg bg-emerald-500/10 p-3 text-sm">{notice}</p>}
     {error && <p role="alert" className="mt-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
   </div></main>
+
+  if (token && mustChangePassword) return <main className="min-h-screen bg-background px-4 py-12 text-foreground"><div className="mx-auto max-w-md rounded-2xl border bg-card p-6 shadow-sm"><p className="text-xs font-semibold uppercase tracking-[.2em] text-primary">NHYM 2026 · Account Security</p><h1 className="mt-2 text-2xl font-semibold">Set a new password</h1><p className="mt-2 text-sm text-muted-foreground">For security, the temporary password must be replaced before you can use Finance Management. Choose a unique password with at least 12 characters.</p><form onSubmit={changeTemporaryPassword} className="mt-6 space-y-3"><input type="password" autoComplete="current-password" value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Temporary/current password" required/><input type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={e=>setNewPassword(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="New password (12+ characters)" required/><button disabled={busy} className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">{busy ? "Updating..." : "Change password and continue"}</button></form>{notice && <p role="status" className="mt-4 rounded-lg bg-emerald-500/10 p-3 text-sm">{notice}</p>}{error && <p role="alert" className="mt-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}<button onClick={()=>{sessionStorage.removeItem("nhym_finance_session");sessionStorage.removeItem("nhym_finance_user");sessionStorage.removeItem("nhym_finance_must_change_password");setToken("");setCurrentUser(null);setMustChangePassword(false)}} className="mt-4 w-full rounded-lg border px-4 py-3">Sign out</button></div></main>
 
   return <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"><div className="mx-auto max-w-7xl">
     <div className="flex flex-wrap items-center justify-between gap-4"><div><Link to="/admin" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><ArrowLeft size={16}/> Admin dashboard</Link><p className="mt-4 text-xs font-semibold uppercase tracking-[.2em] text-primary">NHYM 2026 · Finance & Accounts</p><h1 className="mt-1 text-3xl font-semibold">Finance Management</h1><p className="mt-2 text-sm text-muted-foreground">Income, expenses, approvals and cash/bank records.</p></div>

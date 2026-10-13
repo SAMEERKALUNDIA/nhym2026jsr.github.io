@@ -1,0 +1,81 @@
+name: Finance Admin-Area Isolation Tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  finance-cannot-access-admin-areas:
+    runs-on: ubuntu-latest
+    environment: finance-preview
+    env:
+      PREVIEW_BASE_URL: https://nhymindia-finance-preview.2026jsr.workers.dev
+      FINANCE_HEAD_LOGIN_ID: ${{ secrets.FINANCE_TEST_HEAD_LOGIN_ID }}
+      FINANCE_HEAD_PASSWORD: ${{ secrets.FINANCE_TEST_HEAD_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify Finance sessions cannot access participant or gallery APIs
+        run: |
+          node --input-type=module <<'NODE'
+          const base = process.env.PREVIEW_BASE_URL;
+          const loginId = process.env.FINANCE_HEAD_LOGIN_ID;
+          const password = process.env.FINANCE_HEAD_PASSWORD;
+          if (!loginId || !password) {
+            console.error('Missing dedicated Preview Finance Head test credentials.');
+            process.exit(1);
+          }
+
+          async function request(path, token, method = 'GET', body) {
+            const response = await fetch(base + path, {
+              method,
+              headers: {
+                ...(token ? { authorization: `Bearer ${token}` } : {}),
+                ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+                'cache-control': 'no-store',
+              },
+              body: body !== undefined ? JSON.stringify(body) : undefined,
+              cache: 'no-store',
+            });
+            const text = await response.text();
+            let json = null;
+            try { json = JSON.parse(text); } catch {}
+            return { status: response.status, json, text: text.slice(0, 160) };
+          }
+
+          const login = await request('/api/finance/login', null, 'POST', { loginId, password });
+          if (login.status !== 200 || !login.json?.token || login.json?.user?.role !== 'FINANCE_HEAD' || login.json?.mustChangePassword) {
+            console.error(`FAIL Finance Head Preview login/role check; HTTP ${login.status}`);
+            process.exit(1);
+          }
+          const token = login.json.token;
+          console.log('PASS Finance Head authenticated with dedicated Finance credentials.');
+
+          const checks = [
+            ['participant registration list', '/api/admin/registrations', 'GET'],
+            ['gallery list', '/api/admin/gallery', 'GET'],
+            ['gallery upload', '/api/admin/gallery', 'POST'],
+          ];
+          let failed = 0;
+          for (const [label, path, method] of checks) {
+            const result = await request(path, token, method, method === 'POST' ? {} : undefined);
+            const ok = result.status === 401 || result.status === 403;
+            console.log(`${ok ? 'PASS' : 'FAIL'} Finance access to ${label} denied: HTTP ${result.status}`);
+            if (!ok) failed++;
+          }
+
+          const financeDashboard = await request('/api/finance/dashboard', token);
+          const dashboardOk = financeDashboard.status === 200;
+          console.log(`${dashboardOk ? 'PASS' : 'FAIL'} Finance dashboard remains available to Finance Head: HTTP ${financeDashboard.status}`);
+          if (!dashboardOk) failed++;
+
+          await request('/api/finance/logout', token, 'POST', {});
+          if (failed) process.exit(1);
+          console.log('Finance/Admin isolation checks passed.');
+          NODE

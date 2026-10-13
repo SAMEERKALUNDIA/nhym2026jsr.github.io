@@ -1,0 +1,65 @@
+name: Finance Preview Deployment and Smoke Tests
+
+on:
+  push:
+    branches:
+      - feature/admin-finance-password-recovery
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Cloudflare branch preview to become available
+        run: |
+          node --input-type=module <<'NODE'
+          const base = 'https://feature-admin-finance-password-recovery-nhymindia.2026jsr.workers.dev';
+          const deadline = Date.now() + 180000;
+          let lastError = '';
+          while (Date.now() < deadline) {
+            try {
+              const response = await fetch(base + '/', { redirect: 'follow' });
+              if (response.status === 200) {
+                console.log('Cloudflare branch preview homepage is responding (200).');
+                process.exit(0);
+              }
+              lastError = 'homepage returned ' + response.status;
+            } catch (error) {
+              lastError = String(error);
+            }
+            await new Promise(resolve => setTimeout(resolve, 10000));
+          }
+          console.error('Cloudflare branch preview did not become ready: ' + lastError);
+          process.exit(1);
+          NODE
+      - name: Smoke-test preview routes
+        run: |
+          node --input-type=module <<'NODE'
+          const base = 'https://feature-admin-finance-password-recovery-nhymindia.2026jsr.workers.dev';
+          const checks = [
+            { path: '/', expected: 200, name: 'preview homepage' },
+            { path: '/login', expected: 200, name: 'shared login page' },
+            { path: '/api/admin/finance-users', expected: 401, name: 'admin-only Finance account list rejects anonymous requests' },
+            { path: '/api/admin/finance-users/00000000-0000-4000-8000-000000000001/reset-password', method: 'POST', body: { password: 'not-a-real-password' }, expected: 401, name: 'password reset rejects anonymous requests' },
+            { path: '/api/finance/change-password', method: 'POST', body: { currentPassword: 'not-a-real-password', newPassword: 'another-not-real-password' }, expected: 401, name: 'password change rejects requests without a Finance session' },
+            { path: '/api/finance/login', method: 'POST', body: { loginId: 'missing-preview-user', password: 'not-a-real-password' }, expected: 401, name: 'Finance login rejects unknown account' }
+          ];
+          for (const check of checks) {
+            const response = await fetch(base + check.path, {
+              method: check.method || 'GET',
+              headers: check.body ? { 'content-type': 'application/json' } : {},
+              body: check.body ? JSON.stringify(check.body) : undefined
+            });
+            const body = await response.text();
+            if (response.status !== check.expected) {
+              console.error(`FAIL ${check.name}: expected ${check.expected}, got ${response.status}; body=${body.slice(0,200)}`);
+              process.exitCode = 1;
+            } else {
+              console.log(`PASS ${check.name} (${response.status})`);
+            }
+          }
+          if (process.exitCode) process.exit(1);
+          NODE

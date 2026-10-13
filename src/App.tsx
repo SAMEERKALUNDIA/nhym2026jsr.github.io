@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router'
 import Home from '@/pages/Home'
 import { Meta } from '@/components/Meta'
 import Gallery from './pages/Gallery'
+import Login from './pages/Login'
 
 // Routes are code-split so the first paint carries only the landing page.
 const NotFound = lazy(() => import('@/pages/NotFound'))
@@ -38,6 +39,8 @@ export default function App() {
         />
 
         <Route path="register" element={<Register />} />
+
+        <Route path="login" element={<Login />} />
 
         <Route path="participant" element={<Participant />} />
 

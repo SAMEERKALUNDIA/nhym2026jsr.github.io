@@ -1,0 +1,141 @@
+name: Deploy Isolated Finance Preview Worker
+
+# Preview-only deployment. D1 migrations are applied manually to the preview database
+# because the narrowly scoped deploy token intentionally has no D1 permissions.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/admin-finance-password-recovery
+    paths:
+      - "worker.ts"
+      - "src/**"
+      - "public/**"
+      - "migrations/**"
+      - "wrangler.preview.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/finance-preview-worker-deploy.yml"
+      - ".github/workflows/finance-authenticated-api-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    environment: finance-preview
+    steps:
+      - name: Checkout preview branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build website assets
+        run: pnpm build
+
+      # Do not run D1 migrations with this token. It has no D1 access by design.
+      # The finance-preview database schema is managed separately, never production.
+
+      - name: Deploy isolated Preview Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+          NHYM_EMAIL_SECRET: ${{ secrets.PREVIEW_NHYM_EMAIL_SECRET }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          test -n "$ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
+          test -n "$NHYM_EMAIL_SECRET" || (echo "Missing finance-preview environment secret PREVIEW_NHYM_EMAIL_SECRET" && exit 1)
+          printf '%s' "$ADMIN_TOKEN" | pnpm dlx wrangler@4 secret put ADMIN_TOKEN --config wrangler.preview.jsonc
+          printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.preview.jsonc
+          pnpm dlx wrangler@4 deploy --config wrangler.preview.jsonc
+
+      - name: Verify Worker and Preview isolation
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const base = 'https://nhymindia-finance-preview.2026jsr.workers.dev';
+          const checks = [
+            { path: '/api/finance/setup-status', expected: 200 },
+            { path: '/api/admin/registrations', expected: 401 },
+            { path: '/api/admin/auth-check', expected: 401 },
+            { path: '/api/admin/finance-users', expected: 401 },
+            { path: '/api/admin/finance-users/00000000-0000-4000-8000-000000000000/reset-password', method: 'POST', body: { password: 'not-a-real-password' }, expected: 401 },
+            { path: '/api/finance/bootstrap', method: 'POST', body: { displayName: 'Smoke Test', loginId: 'smoke.test', password: 'not-a-real-password' }, expected: 401 },
+            { path: '/api/finance/change-password', method: 'POST', body: { currentPassword: 'not-real', newPassword: 'also-not-real' }, expected: 401 }
+          ];
+          // Cloudflare may briefly serve the previous Worker version immediately after deploy.
+          // Retry the exact expected status for up to 30 seconds; never relax the security checks.
+          for (const check of checks) {
+            let lastStatus = 0;
+            let lastBody = '';
+            let passed = false;
+            for (let attempt = 1; attempt <= 10; attempt++) {
+              const response = await fetch(base + check.path, {
+                method: check.method || 'GET',
+                headers: check.body ? { 'content-type': 'application/json' } : {},
+                body: check.body ? JSON.stringify(check.body) : undefined,
+                cache: 'no-store'
+              });
+              lastStatus = response.status;
+              lastBody = (await response.text()).slice(0, 180);
+              if (lastStatus === check.expected) {
+                console.log('PASS', check.path, lastStatus, 'attempt', attempt);
+                passed = true;
+                break;
+              }
+              console.log('WAIT', check.path, 'expected', check.expected, 'got', lastStatus, 'attempt', attempt, 'body:', lastBody);
+              if (attempt < 10) await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+            if (!passed) {
+              console.error('FAIL', check.path, 'expected', check.expected, 'last status', lastStatus, 'body:', lastBody);
+              process.exitCode = 1;
+            }
+          }
+          if (process.exitCode) process.exit(1);
+
+          // Verify the configured preview admin secret matches the deployed Worker.
+          // Invalid payload intentionally cannot create a Finance Head; authenticated
+          // requests should pass authorization and fail only payload validation (HTTP 400).
+          if (!process.env.PREVIEW_ADMIN_TOKEN) throw new Error('PREVIEW_ADMIN_TOKEN is not available to the verification step.');
+          const authCheck = await fetch(base + '/api/admin/auth-check', {
+            headers: { authorization: `Bearer ${process.env.PREVIEW_ADMIN_TOKEN}` },
+            cache: 'no-store'
+          });
+          const authBody = (await authCheck.text()).slice(0, 180);
+          if (authCheck.status !== 200) {
+            console.error('FAIL authenticated preview admin auth-check: expected 200, got', authCheck.status, 'body:', authBody);
+            process.exit(1);
+          }
+          console.log('PASS authenticated preview admin auth-check (200)');
+
+          // Verify the Admin dashboard's registration API returns JSON in the
+          // isolated preview instead of an HTML SPA fallback or missing-table error.
+          const registrations = await fetch(base + '/api/admin/registrations', {
+            headers: { authorization: `Bearer ${process.env.PREVIEW_ADMIN_TOKEN}` },
+            cache: 'no-store'
+          });
+          const registrationsType = registrations.headers.get('content-type') || '';
+          const registrationsBody = await registrations.text();
+          let registrationsJson;
+          try { registrationsJson = JSON.parse(registrationsBody); } catch {}
+          if (registrations.status !== 200 || !registrationsType.includes('application/json') || !Array.isArray(registrationsJson?.registrations)) {
+            console.error('FAIL authenticated preview registrations API: expected 200 JSON with registrations array, got', registrations.status, 'content-type:', registrationsType, 'body:', registrationsBody.slice(0, 180));
+            process.exit(1);
+          }
+          console.log('PASS authenticated preview registrations API (200 JSON, array length', registrationsJson.registrations.length, ')');
+          NODE

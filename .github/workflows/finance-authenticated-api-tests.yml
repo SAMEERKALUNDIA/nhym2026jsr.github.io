@@ -1,0 +1,204 @@
+name: Finance Authenticated API Permission Tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authenticated-role-matrix:
+    runs-on: ubuntu-latest
+    environment: finance-preview
+    env:
+      PREVIEW_BASE_URL: https://nhymindia-finance-preview.2026jsr.workers.dev
+      PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+      FINANCE_HEAD_LOGIN_ID: ${{ secrets.FINANCE_TEST_HEAD_LOGIN_ID }}
+      FINANCE_HEAD_PASSWORD: ${{ secrets.FINANCE_TEST_HEAD_PASSWORD }}
+      OPERATOR_LOGIN_ID: ${{ secrets.FINANCE_TEST_OPERATOR_LOGIN_ID }}
+      OPERATOR_PASSWORD: ${{ secrets.FINANCE_TEST_OPERATOR_PASSWORD }}
+      APPROVER_LOGIN_ID: ${{ secrets.FINANCE_TEST_APPROVER_LOGIN_ID }}
+      APPROVER_PASSWORD: ${{ secrets.FINANCE_TEST_APPROVER_PASSWORD }}
+      AUDITOR_LOGIN_ID: ${{ secrets.FINANCE_TEST_AUDITOR_LOGIN_ID }}
+      AUDITOR_PASSWORD: ${{ secrets.FINANCE_TEST_AUDITOR_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate dedicated Preview test credentials are configured
+        run: |
+          for name in FINANCE_HEAD_LOGIN_ID FINANCE_HEAD_PASSWORD OPERATOR_LOGIN_ID OPERATOR_PASSWORD APPROVER_LOGIN_ID APPROVER_PASSWORD AUDITOR_LOGIN_ID AUDITOR_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub environment secret for ${name}. Configure dedicated Preview-only test accounts; do not use production credentials."
+              exit 1
+            fi
+          done
+      - name: Authenticate test roles and verify read permissions / denied mutations
+        run: |
+          node --input-type=module <<'NODE'
+          const base = process.env.PREVIEW_BASE_URL;
+          const adminToken = process.env.PREVIEW_ADMIN_TOKEN;
+          const roles = {
+            FINANCE_HEAD: [process.env.FINANCE_HEAD_LOGIN_ID, process.env.FINANCE_HEAD_PASSWORD],
+            OPERATOR: [process.env.OPERATOR_LOGIN_ID, process.env.OPERATOR_PASSWORD],
+            APPROVER: [process.env.APPROVER_LOGIN_ID, process.env.APPROVER_PASSWORD],
+            AUDITOR: [process.env.AUDITOR_LOGIN_ID, process.env.AUDITOR_PASSWORD],
+          };
+          const results = [];
+          async function request(path, token, method = 'GET', body) {
+            const response = await fetch(base + path, {
+              method,
+              headers: {
+                ...(token ? { authorization: `Bearer ${token}` } : {}),
+                ...(body ? { 'content-type': 'application/json' } : {}),
+                'cache-control': 'no-store',
+              },
+              body: body ? JSON.stringify(body) : undefined,
+              cache: 'no-store',
+            });
+            const text = await response.text();
+            let json = null;
+            try { json = JSON.parse(text); } catch {}
+            return { status: response.status, json, text: text.slice(0, 160) };
+          }
+          function check(role, name, actual, expected) {
+            const ok = actual.status === expected;
+            console.log(`${ok ? 'PASS' : 'FAIL'} [${role}] ${name}: expected HTTP ${expected}, got ${actual.status}`);
+            results.push({ role, name, ok });
+          }
+          const sessions = {};
+          for (const [role, [loginId, password]] of Object.entries(roles)) {
+            const login = await request('/api/finance/login', null, 'POST', { loginId, password });
+            if (login.status !== 200 || !login.json?.token || login.json?.user?.role !== role || login.json?.mustChangePassword) {
+              console.error(`FAIL [${role}] login/role verification; HTTP ${login.status}; response=${login.text}`);
+              process.exit(1);
+            }
+            sessions[role] = login.json.token;
+            console.log(`PASS [${role}] authenticated as expected role`);
+            const dashboard = await request('/api/finance/dashboard', sessions[role]);
+            check(role, 'dashboard read', dashboard, 200);
+          }
+          const token = role => sessions[role];
+          const postEmpty = (path, role) => request(path, token(role), 'POST', {});
+          for (const role of ['OPERATOR', 'APPROVER', 'AUDITOR']) {
+            check(role, 'finance user list denied', await request('/api/finance/users', token(role)), 403);
+            check(role, 'finance user creation denied', await postEmpty('/api/finance/users', role), 403);
+          }
+          check('FINANCE_HEAD', 'finance user list allowed', await request('/api/finance/users', token('FINANCE_HEAD')), 200);
+          check('NO TOKEN', 'dashboard requires authentication', await request('/api/finance/dashboard', null), 401);
+          check('NO TOKEN', 'Main Admin finance account list requires ADMIN_TOKEN', await request('/api/admin/finance-users', null), 401);
+          check('NO TOKEN', 'Main Admin password reset requires ADMIN_TOKEN', await request('/api/admin/finance-users/00000000-0000-4000-8000-000000000000/reset-password', null, 'POST', { password: 'NotARealPassword123!' }), 401);
+          if (!adminToken) {
+            console.error('Missing PREVIEW_ADMIN_TOKEN environment secret; cannot validate Main Admin reset guard.');
+            process.exit(1);
+          }
+          check('ADMIN_TOKEN', 'password reset rejects too-short temporary password before mutation', await request('/api/admin/finance-users/00000000-0000-4000-8000-000000000000/reset-password', adminToken, 'POST', { password: 'short' }), 400);
+          const registrationsResponse = await request('/api/admin/registrations', adminToken);
+          if (registrationsResponse.status !== 200 || !Array.isArray(registrationsResponse.json?.registrations)) {
+            console.error(`FAIL [PREVIEW INTEGRATION] authenticated registrations API must return JSON with registrations array; HTTP ${registrationsResponse.status}; response=${registrationsResponse.text}`);
+            process.exit(1);
+          }
+          console.log(`PASS [PREVIEW INTEGRATION] authenticated registrations API returns JSON (array length ${registrationsResponse.json.registrations.length})`);
+          // Empty payloads must fail validation before any database write; a 400 proves the role gate permits the route without creating records.
+          for (const role of ['FINANCE_HEAD', 'OPERATOR']) {
+            check(role, 'expense route reaches validation without creating a record', await postEmpty('/api/finance/expenses', role), 400);
+            check(role, 'income route reaches validation without creating a record', await postEmpty('/api/finance/income', role), 400);
+            check(role, 'budget route reaches validation without creating a record', await postEmpty('/api/finance/budgets', role), 400);
+          }
+          check('FINANCE_HEAD', 'audit history allowed', await request('/api/finance/audit', token('FINANCE_HEAD')), 200);
+          check('OPERATOR', 'audit history denied', await request('/api/finance/audit', token('OPERATOR')), 403);
+          check('APPROVER', 'audit history denied', await request('/api/finance/audit', token('APPROVER')), 403);
+          check('AUDITOR', 'audit history allowed', await request('/api/finance/audit', token('AUDITOR')), 200);
+          const deniedWrites = {
+            OPERATOR: ['/api/finance/expenses/00000000-0000-4000-8000-000000000000/decision'],
+            APPROVER: ['/api/finance/expenses', '/api/finance/income', '/api/finance/budgets', '/api/finance/users'],
+            AUDITOR: ['/api/finance/expenses', '/api/finance/income', '/api/finance/budgets', '/api/finance/expenses/00000000-0000-4000-8000-000000000000/decision', '/api/finance/users'],
+          };
+          for (const [role, paths] of Object.entries(deniedWrites)) {
+            for (const path of paths) check(role, `forbidden write ${path}`, await postEmpty(path, role), 403);
+          }
+          // End-to-end password recovery on the dedicated Preview Finance Head test account.
+          // The original password is held in the protected GitHub environment secret and restored
+          // through the normal change-password flow. This does not touch production or create finance records.
+          const headLoginId = process.env.FINANCE_HEAD_LOGIN_ID;
+          const originalHeadPassword = process.env.FINANCE_HEAD_PASSWORD;
+          let recoveryTempPassword = '';
+          let recoveryCompleted = false;
+          try {
+            const listed = await request('/api/admin/finance-users', adminToken);
+            if (listed.status !== 200 || !Array.isArray(listed.json?.users)) {
+              throw new Error(`Could not list Preview Finance accounts for recovery test (HTTP ${listed.status}).`);
+            }
+            const headUser = listed.json.users.find(user => user.login_id === headLoginId && user.role === 'FINANCE_HEAD');
+            if (!headUser?.id) throw new Error('Dedicated Preview Finance Head test account was not found.');
+            recoveryTempPassword = `Tmp-${crypto.randomUUID()}-Aa9!`;
+            const reset = await request(`/api/admin/finance-users/${headUser.id}/reset-password`, adminToken, 'POST', { password: recoveryTempPassword });
+            if (reset.status !== 200 || reset.json?.ok !== true) throw new Error(`Main Admin password reset failed (HTTP ${reset.status}).`);
+            console.log('PASS [PASSWORD RECOVERY] Main Admin reset accepted on isolated Preview test account');
+
+            const oldSession = await request('/api/finance/dashboard', token('FINANCE_HEAD'));
+            check('PASSWORD RECOVERY', 'pre-reset session revoked', oldSession, 401);
+
+            const temporaryLogin = await request('/api/finance/login', null, 'POST', { loginId: headLoginId, password: recoveryTempPassword });
+            if (temporaryLogin.status !== 200 || !temporaryLogin.json?.token || temporaryLogin.json?.mustChangePassword !== true) {
+              throw new Error(`Temporary-password login did not require password change (HTTP ${temporaryLogin.status}).`);
+            }
+            console.log('PASS [PASSWORD RECOVERY] temporary password login requires password change');
+
+            const blockedBeforeChange = await request('/api/finance/dashboard', temporaryLogin.json.token);
+            check('PASSWORD RECOVERY', 'forced-change session cannot access dashboard', blockedBeforeChange, 403);
+
+            const changed = await request('/api/finance/change-password', temporaryLogin.json.token, 'POST', {
+              currentPassword: recoveryTempPassword,
+              newPassword: originalHeadPassword,
+            });
+            if (changed.status !== 200 || changed.json?.ok !== true) {
+              throw new Error(`Forced password change failed (HTTP ${changed.status}).`);
+            }
+            console.log('PASS [PASSWORD RECOVERY] forced password change accepted');
+
+            const oldTemporarySession = await request('/api/finance/dashboard', temporaryLogin.json.token);
+            check('PASSWORD RECOVERY', 'current session remains valid after password change', oldTemporarySession, 200);
+
+            const restoredLogin = await request('/api/finance/login', null, 'POST', { loginId: headLoginId, password: originalHeadPassword });
+            if (restoredLogin.status !== 200 || !restoredLogin.json?.token || restoredLogin.json?.mustChangePassword) {
+              throw new Error(`Original test password could not be restored and verified (HTTP ${restoredLogin.status}).`);
+            }
+            console.log('PASS [PASSWORD RECOVERY] original test password restored and login verified');
+            await request('/api/finance/logout', restoredLogin.json.token, 'POST', {});
+            recoveryCompleted = true;
+          } catch (error) {
+            // Best-effort recovery: if the reset succeeded but the test failed midway, use the
+            // temporary password to finish the forced-change flow back to the original secret.
+            try {
+              if (recoveryTempPassword) {
+                const recoveryLogin = await request('/api/finance/login', null, 'POST', { loginId: headLoginId, password: recoveryTempPassword });
+                if (recoveryLogin.status === 200 && recoveryLogin.json?.token && recoveryLogin.json?.mustChangePassword) {
+                  await request('/api/finance/change-password', recoveryLogin.json.token, 'POST', {
+                    currentPassword: recoveryTempPassword,
+                    newPassword: originalHeadPassword,
+                  });
+                  await request('/api/finance/logout', recoveryLogin.json.token, 'POST', {});
+                }
+              }
+            } catch (recoveryError) {
+              console.error('URGENT: automatic Preview test-account recovery attempt encountered an error:', recoveryError instanceof Error ? recoveryError.message : String(recoveryError));
+            }
+            console.error('FAIL [PASSWORD RECOVERY] end-to-end test:', error instanceof Error ? error.message : String(error));
+            results.push({ role: 'PASSWORD RECOVERY', name: 'end-to-end recovery and restore', ok: false });
+          }
+          if (recoveryCompleted) {
+            results.push({ role: 'PASSWORD RECOVERY', name: 'end-to-end recovery and restore', ok: true });
+          }
+
+          // Sign out the original sessions (reset may already have revoked the Finance Head session).
+          for (const role of Object.keys(sessions)) {
+            await request('/api/finance/logout', token(role), 'POST', {});
+          }
+          const failures = results.filter(x => !x.ok);
+          console.log(`Authenticated API permission checks: ${results.length - failures.length}/${results.length} passed.`);
+          if (failures.length) process.exit(1);
+          NODE
