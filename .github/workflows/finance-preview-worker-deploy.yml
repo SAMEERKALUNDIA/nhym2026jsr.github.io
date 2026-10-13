@@ -70,6 +70,7 @@ jobs:
           const base = 'https://nhymindia-finance-preview.2026jsr.workers.dev';
           const checks = [
             { path: '/api/finance/setup-status', expected: 200 },
+            { path: '/api/admin/registrations', expected: 401 },
             { path: '/api/admin/auth-check', expected: 401 },
             { path: '/api/admin/finance-users', expected: 401 },
             { path: '/api/admin/finance-users/00000000-0000-4000-8000-000000000000/reset-password', method: 'POST', body: { password: 'not-a-real-password' }, expected: 401 },
