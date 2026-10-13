@@ -1,0 +1,93 @@
+name: Build and Deploy NHYM Production Worker
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "worker.ts"
+      - "wrangler.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/production-worker-deploy.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "worker.ts"
+      - "wrangler.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/production-worker-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: TypeScript and production build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build website assets
+        run: pnpm run build
+
+  deploy:
+    name: Deploy and smoke-test production Worker
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build website assets
+        run: pnpm run build
+      - name: Deploy production Worker
+        env:
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 1d5d70a7ee45b7c0c9b1f04aeb025924
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing production environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          pnpm dlx wrangler@4 deploy --config wrangler.jsonc
+      - name: Verify live website and protected API
+        run: |
+          node --input-type=module <<'NODE'
+          const base = 'https://nhymindia.2026jsr.workers.dev';
+          const home = await fetch(base + '/', { cache: 'no-store' });
+          if (!home.ok) throw new Error('Production home page returned HTTP ' + home.status);
+          const api = await fetch(base + '/api/admin/registrations', { cache: 'no-store' });
+          const contentType = api.headers.get('content-type') || '';
+          const body = await api.text();
+          if (api.status !== 401 || !contentType.includes('application/json')) {
+            throw new Error('Unauthenticated admin registrations endpoint should return HTTP 401 JSON; got ' + api.status + ' (' + contentType + '): ' + body.slice(0, 160));
+          }
+          console.log('PASS production home page:', home.status);
+          console.log('PASS admin registrations remains protected:', api.status, contentType);
+          NODE
