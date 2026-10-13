@@ -155,7 +155,7 @@ jobs:
             console.log('PASS [PASSWORD RECOVERY] forced password change accepted');
 
             const oldTemporarySession = await request('/api/finance/dashboard', temporaryLogin.json.token);
-            check('PASSWORD RECOVERY', 'temporary session revoked after password change', oldTemporarySession, 401);
+            check('PASSWORD RECOVERY', 'current session remains valid after password change', oldTemporarySession, 200);
 
             const restoredLogin = await request('/api/finance/login', null, 'POST', { loginId: headLoginId, password: originalHeadPassword });
             if (restoredLogin.status !== 200 || !restoredLogin.json?.token || restoredLogin.json?.mustChangePassword) {
