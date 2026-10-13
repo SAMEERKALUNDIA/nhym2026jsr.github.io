@@ -69,6 +69,8 @@ jobs:
           const checks = [
             { path: '/api/finance/setup-status', expected: 200 },
             { path: '/api/admin/finance-users', expected: 401 },
+            { path: '/api/admin/finance-users/00000000-0000-4000-8000-000000000000/reset-password', method: 'POST', body: { password: 'not-a-real-password' }, expected: 401 },
+            { path: '/api/finance/bootstrap', method: 'POST', body: { displayName: 'Smoke Test', loginId: 'smoke.test', password: 'not-a-real-password' }, expected: 401 },
             { path: '/api/finance/change-password', method: 'POST', body: { currentPassword: 'not-real', newPassword: 'also-not-real' }, expected: 401 }
           ];
           // Cloudflare may briefly serve the previous Worker version immediately after deploy.
