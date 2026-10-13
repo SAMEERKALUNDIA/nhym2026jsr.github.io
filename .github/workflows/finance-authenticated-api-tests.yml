@@ -96,6 +96,12 @@ jobs:
             process.exit(1);
           }
           check('ADMIN_TOKEN', 'password reset rejects too-short temporary password before mutation', await request('/api/admin/finance-users/00000000-0000-4000-8000-000000000000/reset-password', adminToken, 'POST', { password: 'short' }), 400);
+          const registrationsResponse = await request('/api/admin/registrations', adminToken);
+          if (registrationsResponse.status !== 200 || !Array.isArray(registrationsResponse.json?.registrations)) {
+            console.error(`FAIL [PREVIEW INTEGRATION] authenticated registrations API must return JSON with registrations array; HTTP ${registrationsResponse.status}; response=${registrationsResponse.text}`);
+            process.exit(1);
+          }
+          console.log(`PASS [PREVIEW INTEGRATION] authenticated registrations API returns JSON (array length ${registrationsResponse.json.registrations.length})`);
           // Empty payloads must fail validation before any database write; a 400 proves the role gate permits the route without creating records.
           for (const role of ['FINANCE_HEAD', 'OPERATOR']) {
             check(role, 'expense route reaches validation without creating a record', await postEmpty('/api/finance/expenses', role), 400);
