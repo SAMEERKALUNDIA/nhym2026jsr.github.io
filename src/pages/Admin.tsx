@@ -1310,7 +1310,7 @@ function exportParticipantsCsv() {
 async function downloadAdminRegistrationPdf(row: Row) {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   await registerWarangCitiFont(pdf)
-  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳')
+  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳')
   const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
   const logoData = await loadPdfImage('/nhym-logo2.jpg')
   const pageWidth = pdf.internal.pageSize.getWidth()
@@ -1383,11 +1383,11 @@ async function downloadAdminRegistrationPdf(row: Row) {
     y += 10
   }
 
-  function drawCell(label: string, value: string, x: number, width: number, height: number, fill: [number, number, number]) {
+  function drawCell(label: string, value: string, x: number, width: number, height: number, fill: [number, number, number], fixedLabelWidth?: number) {
     pdf.setFillColor(...fill)
     pdf.setDrawColor(...border)
     pdf.rect(x, y, width, height, 'FD')
-    const labelWidth = Math.min(31, Math.max(21, width * 0.35))
+    const labelWidth = fixedLabelWidth ?? Math.min(31, Math.max(21, width * 0.35))
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(6.2)
     pdf.setTextColor(...forest)
@@ -1420,7 +1420,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
     const labelLines = pdf.splitTextToSize(label.toUpperCase(), labelWidth - 4)
     const height = Math.max(9, Math.max(lines.length, labelLines.length) * 3.6 + 4)
     ensureSpace(height + 1)
-    drawCell(label, value, margin, contentWidth, height, pale)
+    drawCell(label, value, margin, contentWidth, height, pale, 34)
     y += height
   }
 
