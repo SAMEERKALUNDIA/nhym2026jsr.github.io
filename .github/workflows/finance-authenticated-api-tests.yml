@@ -114,7 +114,81 @@ jobs:
           for (const [role, paths] of Object.entries(deniedWrites)) {
             for (const path of paths) check(role, `forbidden write ${path}`, await postEmpty(path, role), 403);
           }
-          // Verify Finance Head can read the audit and user-management routes without creating any records.
+          // End-to-end password recovery on the dedicated Preview Finance Head test account.
+          // The original password is held in the protected GitHub environment secret and restored
+          // through the normal change-password flow. This does not touch production or create finance records.
+          const headLoginId = process.env.FINANCE_HEAD_LOGIN_ID;
+          const originalHeadPassword = process.env.FINANCE_HEAD_PASSWORD;
+          let recoveryTempPassword = '';
+          let recoveryCompleted = false;
+          try {
+            const listed = await request('/api/admin/finance-users', adminToken);
+            if (listed.status !== 200 || !Array.isArray(listed.json?.users)) {
+              throw new Error(`Could not list Preview Finance accounts for recovery test (HTTP ${listed.status}).`);
+            }
+            const headUser = listed.json.users.find(user => user.login_id === headLoginId && user.role === 'FINANCE_HEAD');
+            if (!headUser?.id) throw new Error('Dedicated Preview Finance Head test account was not found.');
+            recoveryTempPassword = `Tmp-${crypto.randomUUID()}-Aa9!`;
+            const reset = await request(`/api/admin/finance-users/${headUser.id}/reset-password`, adminToken, 'POST', { password: recoveryTempPassword });
+            if (reset.status !== 200 || reset.json?.ok !== true) throw new Error(`Main Admin password reset failed (HTTP ${reset.status}).`);
+            console.log('PASS [PASSWORD RECOVERY] Main Admin reset accepted on isolated Preview test account');
+
+            const oldSession = await request('/api/finance/dashboard', token('FINANCE_HEAD'));
+            check('PASSWORD RECOVERY', 'pre-reset session revoked', oldSession, 401);
+
+            const temporaryLogin = await request('/api/finance/login', null, 'POST', { loginId: headLoginId, password: recoveryTempPassword });
+            if (temporaryLogin.status !== 200 || !temporaryLogin.json?.token || temporaryLogin.json?.mustChangePassword !== true) {
+              throw new Error(`Temporary-password login did not require password change (HTTP ${temporaryLogin.status}).`);
+            }
+            console.log('PASS [PASSWORD RECOVERY] temporary password login requires password change');
+
+            const blockedBeforeChange = await request('/api/finance/dashboard', temporaryLogin.json.token);
+            check('PASSWORD RECOVERY', 'forced-change session cannot access dashboard', blockedBeforeChange, 403);
+
+            const changed = await request('/api/finance/change-password', temporaryLogin.json.token, 'POST', {
+              currentPassword: recoveryTempPassword,
+              newPassword: originalHeadPassword,
+            });
+            if (changed.status !== 200 || changed.json?.ok !== true) {
+              throw new Error(`Forced password change failed (HTTP ${changed.status}).`);
+            }
+            console.log('PASS [PASSWORD RECOVERY] forced password change accepted');
+
+            const oldTemporarySession = await request('/api/finance/dashboard', temporaryLogin.json.token);
+            check('PASSWORD RECOVERY', 'temporary session revoked after password change', oldTemporarySession, 401);
+
+            const restoredLogin = await request('/api/finance/login', null, 'POST', { loginId: headLoginId, password: originalHeadPassword });
+            if (restoredLogin.status !== 200 || !restoredLogin.json?.token || restoredLogin.json?.mustChangePassword) {
+              throw new Error(`Original test password could not be restored and verified (HTTP ${restoredLogin.status}).`);
+            }
+            console.log('PASS [PASSWORD RECOVERY] original test password restored and login verified');
+            await request('/api/finance/logout', restoredLogin.json.token, 'POST', {});
+            recoveryCompleted = true;
+          } catch (error) {
+            // Best-effort recovery: if the reset succeeded but the test failed midway, use the
+            // temporary password to finish the forced-change flow back to the original secret.
+            try {
+              if (recoveryTempPassword) {
+                const recoveryLogin = await request('/api/finance/login', null, 'POST', { loginId: headLoginId, password: recoveryTempPassword });
+                if (recoveryLogin.status === 200 && recoveryLogin.json?.token && recoveryLogin.json?.mustChangePassword) {
+                  await request('/api/finance/change-password', recoveryLogin.json.token, 'POST', {
+                    currentPassword: recoveryTempPassword,
+                    newPassword: originalHeadPassword,
+                  });
+                  await request('/api/finance/logout', recoveryLogin.json.token, 'POST', {});
+                }
+              }
+            } catch (recoveryError) {
+              console.error('URGENT: automatic Preview test-account recovery attempt encountered an error:', recoveryError instanceof Error ? recoveryError.message : String(recoveryError));
+            }
+            console.error('FAIL [PASSWORD RECOVERY] end-to-end test:', error instanceof Error ? error.message : String(error));
+            results.push({ role: 'PASSWORD RECOVERY', name: 'end-to-end recovery and restore', ok: false });
+          }
+          if (recoveryCompleted) {
+            results.push({ role: 'PASSWORD RECOVERY', name: 'end-to-end recovery and restore', ok: true });
+          }
+
+          // Sign out the original sessions (reset may already have revoked the Finance Head session).
           for (const role of Object.keys(sessions)) {
             await request('/api/finance/logout', token(role), 'POST', {});
           }
