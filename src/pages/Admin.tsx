@@ -1363,12 +1363,14 @@ async function downloadAdminRegistrationPdf(row: Row) {
     for (let page = 1; page <= pages; page++) {
       pdf.setPage(page)
       pdf.setDrawColor(...border)
-      pdf.line(margin, pageHeight - 18, pageWidth - margin, pageHeight - 18)
+      pdf.line(margin, pageHeight - 13, pageWidth - margin, pageHeight - 13)
       pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(6.5)
+      pdf.setFontSize(6.2)
       pdf.setTextColor(82, 103, 90)
-      pdf.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 11, { align: 'center', maxWidth: pageWidth - margin * 2 })
-      pdf.text('Page ' + page + ' of ' + pages, pageWidth - margin, pageHeight - 5, { align: 'right' })
+      pdf.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 9.5, { align: 'center', maxWidth: pageWidth - margin * 2 })
+      const generatedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' })
+      pdf.text('Generated: ' + generatedAt + ' IST', margin, pageHeight - 4, { align: 'left' })
+      pdf.text('Page ' + page + ' of ' + pages, pageWidth - margin, pageHeight - 4, { align: 'right' })
     }
   }
 
