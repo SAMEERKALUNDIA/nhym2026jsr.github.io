@@ -906,61 +906,66 @@ async function exportRegistrationsPdf() {
 
   let y = 59
 
-  function addPageHeader(
-    continuation = false
-  ) {
-    addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
-    addContainedPdfImage(pdf, logoData, pageWidth - margin - 25, 6, 25, 25)
+  function addPageHeader(continuation = false) {
+    // Compact centered header, matching the individual Admin Registration PDF.
+    addContainedPdfImage(pdf, hoSamajLogoData, margin, 2, 20, 20)
+    addContainedPdfImage(pdf, logoData, pageWidth - margin - 20, 2, 20, 20)
 
     if (continuation) {
       pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(13)
-      pdf.setTextColor(30, 65, 42)
-      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 13, { align: 'center' })
+      pdf.setFontSize(11)
+      pdf.setTextColor(23, 75, 53)
+      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 10, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
-      pdf.text('Registration Summary Report - Continued', pageWidth / 2, 20, { align: 'center' })
-    } else {
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(13)
-      pdf.setTextColor(30, 65, 42)
-      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
-      pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 14, { align: 'center' })
-      pdf.setFontSize(10)
-      pdf.text('2026', pageWidth / 2, 21, { align: 'center' })
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(8)
-      pdf.setTextColor(72, 30, 20)
-      pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 29, { align: 'center' })
-      pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 34, { align: 'center' })
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(10)
-      pdf.setTextColor(40)
-      pdf.text('Registration Summary Report', pageWidth / 2, 42, { align: 'center' })
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(7)
-      pdf.setTextColor(100)
-      pdf.text(`Generated: ${generatedAt}`, margin, 49)
-      pdf.text(`Registrations: ${filteredRows.length}`, pageWidth - margin, 49, { align: 'right' })
+      pdf.text('Registration Summary Report - Continued', pageWidth / 2, 17, { align: 'center' })
+      pdf.setDrawColor(183, 208, 191)
+      pdf.line(margin, 25, pageWidth - margin, 25)
+      y = 30
+      return
     }
 
-    pdf.setDrawColor(185)
+    // Ho script, English title and year are centered and use the same size.
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(11)
+    pdf.setTextColor(23, 75, 53)
+    if (warangCitiHeaderImage) {
+      pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 36, 1.8, 72, 5.2)
+    }
+    pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 11, { align: 'center' })
+    pdf.text('2026', pageWidth / 2, 16.5, { align: 'center' })
 
-    pdf.line(
-      margin,
-      continuation ? 28 : 34,
-      pageWidth - margin,
-      continuation ? 28 : 34
-    )
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(72, 30, 20)
+    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 22, { align: 'center' })
+    pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 26, { align: 'center' })
 
-    y = continuation ? 34 : 40
+    // Pale-green rounded report title box, with a dark-green border and title.
+    pdf.setFillColor(245, 250, 246)
+    pdf.setDrawColor(183, 208, 191)
+    pdf.setLineWidth(0.35)
+    pdf.roundedRect(margin, 30, contentWidth, 7, 1.2, 1.2, 'FD')
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(10)
+    pdf.setTextColor(23, 75, 53)
+    pdf.text('Registration Summary Report', pageWidth / 2, 34.5, { align: 'center' })
+
+    // Generated date/time and total count share one metadata row.
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7)
+    pdf.setTextColor(75, 90, 80)
+    pdf.text(`Generated: ${generatedAt}`, margin + 1, 42)
+    pdf.text(`Registrations: ${filteredRows.length}`, pageWidth - margin - 1, 42, { align: 'right' })
+
+    y = 47
   }
 
   function drawTableHeader() {
     const rowHeight = 9
     let x = margin
 
-    pdf.setFillColor(245, 241, 234)
+    pdf.setFillColor(221, 239, 227)
 
     pdf.rect(
       margin,
@@ -1007,7 +1012,7 @@ async function exportRegistrationsPdf() {
 
   addPageHeader()
   // Keep the table below the report title and generated-at metadata.
-  y = 59
+  y = 62
   drawTableHeader()
 
   filteredRows.forEach(
@@ -1607,61 +1612,66 @@ async function exportParticipantsPdf() {
     }
   }
 
-  function addPageHeader(
-    continuation = false
-  ) {
-    addContainedPdfImage(pdf, hoSamajLogoData, margin, 6, 25, 25)
-    addContainedPdfImage(pdf, logoData, pageWidth - margin - 25, 6, 25, 25)
+  function addPageHeader(continuation = false) {
+    // Compact centered header, matching the individual Admin Registration PDF.
+    addContainedPdfImage(pdf, hoSamajLogoData, margin, 2, 20, 20)
+    addContainedPdfImage(pdf, logoData, pageWidth - margin - 20, 2, 20, 20)
 
     if (continuation) {
       pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(13)
-      pdf.setTextColor(30, 65, 42)
-      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 13, { align: 'center' })
+      pdf.setFontSize(11)
+      pdf.setTextColor(23, 75, 53)
+      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 10, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(8)
-      pdf.text('Participant Summary Report - Continued', pageWidth / 2, 20, { align: 'center' })
-    } else {
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(13)
-      pdf.setTextColor(30, 65, 42)
-      if (warangCitiHeaderImage) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 31, 3, 62, 4.5)
-      pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 14, { align: 'center' })
-      pdf.setFontSize(10)
-      pdf.text('2026', pageWidth / 2, 21, { align: 'center' })
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(8)
-      pdf.setTextColor(72, 30, 20)
-      pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 29, { align: 'center' })
-      pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 34, { align: 'center' })
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(10)
-      pdf.setTextColor(40)
-      pdf.text('Participant Summary Report', pageWidth / 2, 42, { align: 'center' })
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(7)
-      pdf.setTextColor(100)
-      pdf.text(`Generated: ${generatedAt}`, margin, 49)
-      pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin, 49, { align: 'right' })
+      pdf.text('Participant Summary Report - Continued', pageWidth / 2, 17, { align: 'center' })
+      pdf.setDrawColor(183, 208, 191)
+      pdf.line(margin, 25, pageWidth - margin, 25)
+      y = 30
+      return
     }
 
-    pdf.setDrawColor(185)
+    // Ho script, English title and year are centered and use the same size.
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(11)
+    pdf.setTextColor(23, 75, 53)
+    if (warangCitiHeaderImage) {
+      pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 36, 1.8, 72, 5.2)
+    }
+    pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 11, { align: 'center' })
+    pdf.text('2026', pageWidth / 2, 16.5, { align: 'center' })
 
-    pdf.line(
-      margin,
-      continuation ? 27 : 33,
-      pageWidth - margin,
-      continuation ? 27 : 33
-    )
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(72, 30, 20)
+    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 22, { align: 'center' })
+    pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 26, { align: 'center' })
 
-    y = continuation ? 33 : 39
+    // Pale-green rounded report title box, with a dark-green border and title.
+    pdf.setFillColor(245, 250, 246)
+    pdf.setDrawColor(183, 208, 191)
+    pdf.setLineWidth(0.35)
+    pdf.roundedRect(margin, 30, contentWidth, 7, 1.2, 1.2, 'FD')
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(10)
+    pdf.setTextColor(23, 75, 53)
+    pdf.text('Participant Summary Report', pageWidth / 2, 34.5, { align: 'center' })
+
+    // Generated date/time and total count share one metadata row.
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7)
+    pdf.setTextColor(75, 90, 80)
+    pdf.text(`Generated: ${generatedAt}`, margin + 1, 42)
+    pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin - 1, 42, { align: 'right' })
+
+    y = 47
   }
 
   function drawTableHeader() {
     const rowHeight = 9
     let x = margin
 
-    pdf.setFillColor(245, 241, 234)
+    pdf.setFillColor(221, 239, 227)
 
     pdf.rect(
       margin,
