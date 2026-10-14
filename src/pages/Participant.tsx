@@ -338,7 +338,8 @@ async function downloadRegistrationPdf() {
   function ensureSpace(height: number) {
     if (y + height > pageHeight - 24) {
       pdf.addPage()
-      addHeader(true)
+      // The full event header belongs on page one only.
+      y = 16
     }
   }
 
