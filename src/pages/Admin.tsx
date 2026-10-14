@@ -938,25 +938,24 @@ async function exportRegistrationsPdf() {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7.5)
     pdf.setTextColor(72, 30, 20)
-    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 22, { align: 'center' })
-    pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 26, { align: 'center' })
+    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 24, { align: 'center', maxWidth: pageWidth - margin * 2 })
 
     // Pale-green rounded report title box, with a dark-green border and title.
     pdf.setFillColor(245, 250, 246)
     pdf.setDrawColor(183, 208, 191)
     pdf.setLineWidth(0.35)
-    pdf.roundedRect(margin, 30, contentWidth, 7, 1.2, 1.2, 'FD')
+    pdf.roundedRect(margin, 29.5, contentWidth, 8.5, 1.2, 1.2, 'FD')
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(10)
     pdf.setTextColor(23, 75, 53)
-    pdf.text('Registration Summary Report', pageWidth / 2, 34.5, { align: 'center' })
+    pdf.text('Registration Summary Report', pageWidth / 2, 35, { align: 'center' })
 
     // Generated date/time and total count share one metadata row.
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7)
     pdf.setTextColor(75, 90, 80)
-    pdf.text(`Generated: ${generatedAt}`, margin + 1, 42)
-    pdf.text(`Registrations: ${filteredRows.length}`, pageWidth - margin - 1, 42, { align: 'right' })
+    pdf.text(`Generated: ${generatedAt}`, margin + 1, 43)
+    pdf.text(`Registrations: ${filteredRows.length}`, pageWidth - margin - 1, 43, { align: 'right' })
 
     y = 47
   }
@@ -1012,7 +1011,7 @@ async function exportRegistrationsPdf() {
 
   addPageHeader()
   // Keep the table below the report title and generated-at metadata.
-  y = 62
+  y = 48
   drawTableHeader()
 
   filteredRows.forEach(
@@ -1149,7 +1148,7 @@ async function exportRegistrationsPdf() {
 
   y += 6
 
-  pdf.setFillColor(245, 241, 234)
+  pdf.setFillColor(221, 239, 227)
 
   pdf.roundedRect(
     margin,
@@ -1163,7 +1162,7 @@ async function exportRegistrationsPdf() {
 
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(8.5)
-  pdf.setTextColor(50)
+  pdf.setTextColor(23, 75, 53)
 
   pdf.text(
     `Total Registrations: ${filteredRows.length}`,
@@ -1644,25 +1643,24 @@ async function exportParticipantsPdf() {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7.5)
     pdf.setTextColor(72, 30, 20)
-    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha', pageWidth / 2, 22, { align: 'center' })
-    pdf.text('Jamshedpur • 28–29 November 2026', pageWidth / 2, 26, { align: 'center' })
+    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 24, { align: 'center', maxWidth: pageWidth - margin * 2 })
 
     // Pale-green rounded report title box, with a dark-green border and title.
     pdf.setFillColor(245, 250, 246)
     pdf.setDrawColor(183, 208, 191)
     pdf.setLineWidth(0.35)
-    pdf.roundedRect(margin, 30, contentWidth, 7, 1.2, 1.2, 'FD')
+    pdf.roundedRect(margin, 29.5, contentWidth, 8.5, 1.2, 1.2, 'FD')
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(10)
     pdf.setTextColor(23, 75, 53)
-    pdf.text('Participant Summary Report', pageWidth / 2, 34.5, { align: 'center' })
+    pdf.text('Participant Summary Report', pageWidth / 2, 35, { align: 'center' })
 
     // Generated date/time and total count share one metadata row.
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7)
     pdf.setTextColor(75, 90, 80)
-    pdf.text(`Generated: ${generatedAt}`, margin + 1, 42)
-    pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin - 1, 42, { align: 'right' })
+    pdf.text(`Generated: ${generatedAt}`, margin + 1, 43)
+    pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin - 1, 43, { align: 'right' })
 
     y = 47
   }
@@ -1716,7 +1714,7 @@ async function exportParticipantsPdf() {
 
   addPageHeader()
   // Keep the table below the report title and generated-at metadata.
-  y = 59
+  y = 48
   drawTableHeader()
 
   participantRows.forEach(
@@ -1851,7 +1849,7 @@ async function exportParticipantsPdf() {
 
   y += 6
 
-  pdf.setFillColor(245, 241, 234)
+  pdf.setFillColor(221, 239, 227)
 
   pdf.roundedRect(
     margin,
@@ -1865,7 +1863,7 @@ async function exportParticipantsPdf() {
 
   pdf.setFont('helvetica', 'bold')
   pdf.setFontSize(8.5)
-  pdf.setTextColor(50)
+  pdf.setTextColor(23, 75, 53)
 
   pdf.text(
     `Total Participants: ${participantRows.length}`,
