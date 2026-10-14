@@ -399,72 +399,217 @@ export default function Finance() {
 
   function exportPdf() {
     if (!data) return
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
-    const left = 14
-    let y = 39
-    const addLine = (text: string, size = 9, bold = false) => {
-      doc.setFont('helvetica', bold ? 'bold' : 'normal')
-      doc.setFontSize(size)
-      const lines = doc.splitTextToSize(text, pageWidth - left * 2)
-      for (const line of lines) {
-        if (y > pageHeight - 25) { doc.addPage(); y = 16 }
-        doc.text(line, left, y)
-        y += size * 0.48 + 2
+    const left = 12
+    const right = pageWidth - 12
+    const contentWidth = right - left
+    const generatedAt = new Date().toLocaleString('en-IN')
+    const green: [number, number, number] = [24, 91, 59]
+    const paleGreen: [number, number, number] = [229, 240, 232]
+    const muted: [number, number, number] = [91, 105, 97]
+    const formatDate = (value: unknown) => {
+      const raw = String(value ?? '')
+      if (!raw) return '—'
+      const date = new Date(raw)
+      return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString('en-IN')
+    }
+    const textCell = (value: unknown, max = 30) => {
+      const raw = String(value ?? '—').replace(/\s+/g, ' ').trim() || '—'
+      return raw.length > max ? raw.slice(0, Math.max(1, max - 1)) + '…' : raw
+    }
+    const moneyValue = (paise: unknown) => money(Number(paise ?? 0))
+    let pageNumber = 0
+    let y = 0
+
+    const drawHeader = (continued: boolean) => {
+      pageNumber += 1
+      doc.setFillColor(255, 255, 255)
+      doc.rect(0, 0, pageWidth, pageHeight, 'F')
+      doc.setTextColor(...green)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(15)
+      doc.text('NATIONAL HO YOUTH MEET', left, 12)
+      doc.setFontSize(9)
+      doc.text('SIRJON 2026  |  FINANCE & ACCOUNTS', left, 18)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(7.5)
+      doc.setTextColor(...muted)
+      doc.text('Adivasi Ho Samaj Yuva Mahasabha  •  Jamshedpur  •  28–29 November 2026', left, 23)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(12)
+      doc.setTextColor(35, 49, 41)
+      doc.text(continued ? 'FINANCE REPORT — CONTINUED' : 'FINANCIAL STATEMENT', right, 12, { align: 'right' })
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(7.5)
+      doc.setTextColor(...muted)
+      doc.text(`Generated: ${generatedAt}`, right, 18, { align: 'right' })
+      doc.setDrawColor(...green)
+      doc.setLineWidth(0.6)
+      doc.line(left, 27, right, 27)
+      y = 33
+    }
+    const drawFooter = () => {
+      doc.setDrawColor(183, 208, 191)
+      doc.setLineWidth(0.35)
+      doc.line(left, pageHeight - 13, right, pageHeight - 13)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(6.5)
+      doc.setTextColor(...muted)
+      doc.text('Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003  |  nhym2026jsr@gmail.com  |  9931333025, 7870979751', left, pageHeight - 8)
+      doc.text(`Page ${pageNumber}`, right, pageHeight - 8, { align: 'right' })
+    }
+    const newPage = () => {
+      drawFooter()
+      doc.addPage()
+      drawHeader(true)
+    }
+    const ensureSpace = (height: number) => {
+      if (y + height > pageHeight - 18) newPage()
+    }
+    const drawSection = (title: string) => {
+      ensureSpace(11)
+      y += 2
+      doc.setFillColor(...paleGreen)
+      doc.setDrawColor(...green)
+      doc.setLineWidth(0.35)
+      doc.roundedRect(left, y - 5, contentWidth, 7, 1.2, 1.2, 'FD')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8.5)
+      doc.setTextColor(...green)
+      doc.text(title.toUpperCase(), left + 3, y - 0.2)
+      y += 6
+    }
+    const drawTable = (headers: string[], rows: string[][], widths: number[], aligns: Array<'left' | 'right' | 'center'> = []) => {
+      const rowHeight = 7
+      const drawTableHeader = () => {
+        ensureSpace(10)
+        doc.setFillColor(...green)
+        doc.rect(left, y, contentWidth, rowHeight, 'F')
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(7)
+        doc.setTextColor(255, 255, 255)
+        let x = left
+        headers.forEach((header, i) => {
+          const align = aligns[i] || 'left'
+          const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
+          doc.text(header, tx, y + 4.6, { align })
+          x += widths[i]
+        })
+        y += rowHeight
       }
+      drawTableHeader()
+      rows.forEach((row, rowIndex) => {
+        if (y + rowHeight > pageHeight - 18) {
+          newPage()
+          drawTableHeader()
+        }
+        if (rowIndex % 2 === 0) {
+          doc.setFillColor(247, 249, 247)
+          doc.rect(left, y, contentWidth, rowHeight, 'F')
+        }
+        doc.setDrawColor(220, 227, 221)
+        doc.setLineWidth(0.15)
+        doc.line(left, y + rowHeight, right, y + rowHeight)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(6.8)
+        doc.setTextColor(42, 49, 44)
+        let x = left
+        row.forEach((value, i) => {
+          const align = aligns[i] || 'left'
+          const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
+          doc.text(textCell(value, Math.max(8, Math.floor(widths[i] * 2.0))), tx, y + 4.6, { align })
+          x += widths[i]
+        })
+        y += rowHeight
+      })
+      y += 3
     }
-    const section = (title: string) => { y += 3; addLine(title, 12, true); y += 1 }
-    // Event header appears only on the first page.
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(12)
-    doc.setTextColor(23, 75, 53)
-    doc.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 9, { align: 'center' })
-    doc.setFontSize(10)
-    doc.text('2026', pageWidth / 2, 15, { align: 'center' })
+
+    drawHeader(false)
     doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...muted)
+    doc.text('Reporting basis: records currently loaded in the Finance dashboard.', left, y)
+    y += 7
+
+    const summaryItems = [
+      { label: 'TOTAL RECORDED INCOME', value: money(totals.income) },
+      { label: 'TOTAL PAID EXPENSES', value: money(totals.paid) },
+      { label: 'NET CASH MOVEMENT*', value: money(totals.net) },
+      { label: 'PENDING APPROVALS', value: String(data.pendingApprovalCount ?? 0) },
+    ]
+    const gap = 4
+    const cardWidth = (contentWidth - gap * 3) / 4
+    summaryItems.forEach((item, index) => {
+      const x = left + index * (cardWidth + gap)
+      doc.setFillColor(...paleGreen)
+      doc.setDrawColor(...green)
+      doc.setLineWidth(0.4)
+      doc.roundedRect(x, y, cardWidth, 17, 1.5, 1.5, 'FD')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(6.7)
+      doc.setTextColor(...muted)
+      doc.text(item.label, x + 3, y + 5)
+      doc.setFontSize(11)
+      doc.setTextColor(...green)
+      doc.text(item.value, x + 3, y + 12.5)
+    })
+    y += 21
+    doc.setFont('helvetica', 'italic')
     doc.setFontSize(7)
-    doc.setTextColor(72, 30, 20)
-    doc.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 21, { align: 'center' })
-    doc.setDrawColor(183, 208, 191)
-    doc.line(left, 26, pageWidth - left, 26)
-    addLine('NHYM 2026 — FINANCE REPORT', 13, true)
-    addLine(`Generated: ${new Date().toLocaleString('en-IN')}`, 8)
-    y += 2
-    section('SUMMARY')
-    addLine(`Total recorded income: ${money(totals.income)}`)
-    addLine(`Total recorded payments: ${money(totals.paid)}`)
-    addLine(`Net cash movement: ${money(totals.net)}`)
-    addLine('Note: Net cash movement is not a verified bank or cash balance.', 8)
-    section('EXPENSE REGISTER')
-    for (const x of data.expenses) {
-      addLine(`${x.expense_no} | ${x.expense_date} | ${x.category_name}`, 8, true)
-      addLine(`${x.vendor_name} — ${x.description}`, 8)
-      addLine(`Requested ${money(x.requested_amount_paise)} | Approved ${money(x.approved_amount_paise)} | Paid ${money(x.paid_amount_paise)} | ${x.approval_status}/${x.payment_status}`, 8)
-      y += 1
-    }
-    section('INCOME REGISTER')
-    for (const x of data.incomes) {
-      addLine(`${String(x.income_no ?? '')} | ${String(x.received_at ?? '')} | ${String(x.income_type ?? '')} | ${money(Number(x.amount_paise ?? 0))}`, 8)
-      addLine(`Received from: ${String(x.received_from ?? '')} | Mode: ${String(x.payment_mode ?? '')} | Receipt: ${String(x.receipt_no ?? '—')}`, 8)
-    }
-    section('BUDGET REGISTER')
-    for (const x of data.budgets) {
-      addLine(`${String(x.budget_period ?? '')} | ${String(x.category_name ?? '')} | Planned: ${money(Number(x.approved_amount_paise ?? 0))} | ${String(x.status ?? '')} | Revision ${String(x.revision_no ?? '')}`, 8)
-    }
+    doc.setTextColor(...muted)
+    doc.text('* Net cash movement is recorded income minus paid expenses; it is not a verified bank/cash balance.', left, y)
+    y += 5
+
+    drawSection(`Expense Register — ${data.expenses.length} records`)
+    drawTable(
+      ['Expense ID', 'Date', 'Category', 'Vendor / Payee', 'Purpose', 'Requested', 'Approved', 'Paid', 'Approval', 'Payment'],
+      data.expenses.map(x => [
+        x.expense_no, formatDate(x.expense_date), x.category_name, x.vendor_name, x.description,
+        moneyValue(x.requested_amount_paise), x.approved_amount_paise == null ? '—' : moneyValue(x.approved_amount_paise),
+        moneyValue(x.paid_amount_paise), x.approval_status, x.payment_status,
+      ]),
+      [22, 19, 24, 29, 55, 22, 22, 22, 22, 21],
+      ['left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'center', 'center'],
+    )
+
+    drawSection(`Income Register — ${data.incomes.length} records`)
+    drawTable(
+      ['Income ID', 'Received Date', 'Income Type', 'Received From', 'Amount', 'Mode', 'Reference / Receipt'],
+      data.incomes.map(x => [
+        String(x.income_no ?? ''), formatDate(x.received_at), String(x.income_type ?? ''),
+        String(x.received_from ?? ''), moneyValue(x.amount_paise), String(x.payment_mode ?? ''),
+        [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
+      ]),
+      [25, 25, 34, 47, 27, 27, 73],
+      ['left', 'left', 'left', 'left', 'right', 'center', 'left'],
+    )
+
+    drawSection(`Budget Register — ${data.budgets.length} records`)
+    drawTable(
+      ['Budget Period', 'Category', 'Planned / Approved Amount', 'Status', 'Revision'],
+      data.budgets.map(x => [
+        String(x.budget_period ?? ''), String(x.category_name ?? ''),
+        moneyValue(x.approved_amount_paise), String(x.status ?? ''), String(x.revision_no ?? ''),
+      ]),
+      [48, 60, 55, 45, 50],
+      ['left', 'left', 'right', 'center', 'center'],
+    )
+
     const pageCount = doc.getNumberOfPages()
     for (let page = 1; page <= pageCount; page++) {
       doc.setPage(page)
-      doc.setDrawColor(183, 208, 191)
-      doc.line(left, pageHeight - 18, pageWidth - left, pageHeight - 18)
+      // Replace the current-page placeholder with a final "Page X of Y" footer.
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(6.5)
-      doc.setTextColor(82, 103, 90)
-      doc.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 11, { align: 'center', maxWidth: pageWidth - left * 2 })
-      doc.setFontSize(8)
-      doc.text(`Page ${page} of ${pageCount}`, pageWidth - left, pageHeight - 5, { align: 'right' })
+      doc.setTextColor(...muted)
+      doc.setFillColor(255, 255, 255)
+      doc.rect(right - 22, pageHeight - 11, 22, 4, 'F')
+      doc.text(`Page ${page} of ${pageCount}`, right, pageHeight - 8, { align: 'right' })
     }
-    doc.save('NHYM-2026-Finance-Report.pdf')
+    doc.save('NHYM-2026-Finance-Accounting-Report.pdf')
   }
 
   if (!token) return <main className="min-h-screen bg-background px-4 py-12 text-foreground"><div className="mx-auto max-w-md rounded-2xl border bg-card p-6 shadow-sm">
