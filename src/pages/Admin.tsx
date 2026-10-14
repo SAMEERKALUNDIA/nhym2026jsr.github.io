@@ -1006,6 +1006,8 @@ async function exportRegistrationsPdf() {
   }
 
   addPageHeader()
+  // Keep the table below the report title and generated-at metadata.
+  y = 59
   drawTableHeader()
 
   filteredRows.forEach(
@@ -1061,7 +1063,7 @@ async function exportRegistrationsPdf() {
 
       if (
         y + rowHeight >
-        pageHeight - 19
+        pageHeight - 30
       ) {
         addNewPage()
       }
@@ -1136,7 +1138,7 @@ async function exportRegistrationsPdf() {
       0
     )
 
-  if (y + 22 > pageHeight - 19) {
+  if (y + 22 > pageHeight - 30) {
     addNewPage()
   }
 
@@ -1697,11 +1699,14 @@ async function exportParticipantsPdf() {
 
   function addNewPage() {
     pdf.addPage()
-    addPageHeader(true)
+    // Continuation pages show table headings only, not the event header.
+    y = 16
     drawTableHeader()
   }
 
   addPageHeader()
+  // Keep the table below the report title and generated-at metadata.
+  y = 59
   drawTableHeader()
 
   participantRows.forEach(
