@@ -403,19 +403,32 @@ export default function Finance() {
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
     const left = 14
-    let y = 16
+    let y = 39
     const addLine = (text: string, size = 9, bold = false) => {
       doc.setFont('helvetica', bold ? 'bold' : 'normal')
       doc.setFontSize(size)
       const lines = doc.splitTextToSize(text, pageWidth - left * 2)
       for (const line of lines) {
-        if (y > pageHeight - 15) { doc.addPage(); y = 16 }
+        if (y > pageHeight - 25) { doc.addPage(); y = 16 }
         doc.text(line, left, y)
         y += size * 0.48 + 2
       }
     }
     const section = (title: string) => { y += 3; addLine(title, 12, true); y += 1 }
-    addLine('NHYM 2026 — FINANCE REPORT', 16, true)
+    // Event header appears only on the first page.
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.setTextColor(23, 75, 53)
+    doc.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 9, { align: 'center' })
+    doc.setFontSize(10)
+    doc.text('2026', pageWidth / 2, 15)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(72, 30, 20)
+    doc.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 21, { align: 'center' })
+    doc.setDrawColor(183, 208, 191)
+    doc.line(left, 26, pageWidth - left, 26)
+    addLine('NHYM 2026 — FINANCE REPORT', 13, true)
     addLine(`Generated: ${new Date().toLocaleString('en-IN')}`, 8)
     y += 2
     section('SUMMARY')
@@ -441,8 +454,15 @@ export default function Finance() {
     }
     const pageCount = doc.getNumberOfPages()
     for (let page = 1; page <= pageCount; page++) {
-      doc.setPage(page); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
-      doc.text(`NHYM 2026 Finance Report • Page ${page} of ${pageCount}`, pageWidth / 2, pageHeight - 7, { align: 'center' })
+      doc.setPage(page)
+      doc.setDrawColor(183, 208, 191)
+      doc.line(left, pageHeight - 18, pageWidth - left, pageHeight - 18)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(6.5)
+      doc.setTextColor(82, 103, 90)
+      doc.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 11, { align: 'center', maxWidth: pageWidth - left * 2 })
+      doc.setFontSize(8)
+      doc.text(`Page ${page} of ${pageCount}`, pageWidth - left, pageHeight - 5, { align: 'right' })
     }
     doc.save('NHYM-2026-Finance-Report.pdf')
   }
