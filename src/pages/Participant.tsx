@@ -298,7 +298,7 @@ async function downloadRegistrationPdf() {
       const scale = Math.min(20 / props.width, 20 / props.height)
       pdf.addImage(logoData, 'JPEG', pageWidth - margin - 20 + (20 - props.width * scale) / 2, 3 + (20 - props.height * scale) / 2, props.width * scale, props.height * scale)
     }
-    if (warangCitiHeaderImage && !continuation) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 39, 2.5, 78, 3.2)
+    if (warangCitiHeaderImage && !continuation) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 48, 1.5, 96, 5.8)
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(9.5)
     pdf.setTextColor(...forest)
@@ -306,7 +306,7 @@ async function downloadRegistrationPdf() {
     pdf.setFontSize(9.5)
     pdf.text('2026', pageWidth / 2, 13.5, { align: 'center' })
     pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(6.4)
+    pdf.setFontSize(6.8)
     pdf.setTextColor(72, 30, 20)
     pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 18, { align: 'center', maxWidth: contentWidth - 44 })
     pdf.setFillColor(...green)
