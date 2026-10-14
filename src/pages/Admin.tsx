@@ -930,7 +930,7 @@ async function exportRegistrationsPdf() {
     pdf.setFontSize(11)
     pdf.setTextColor(23, 75, 53)
     if (warangCitiHeaderImage) {
-      pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 36, 1.8, 72, 5.2)
+      pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 42, 1.4, 84, 6.1)
     }
     pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 11, { align: 'center' })
     pdf.text('2026', pageWidth / 2, 16.5, { align: 'center' })
@@ -938,26 +938,20 @@ async function exportRegistrationsPdf() {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7.5)
     pdf.setTextColor(72, 30, 20)
-    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 24, { align: 'center', maxWidth: pageWidth - margin * 2 })
+    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 22, { align: 'center', maxWidth: pageWidth - margin * 2 })
 
     // Pale-green rounded report title box, with a dark-green border and title.
-    pdf.setFillColor(245, 250, 246)
-    pdf.setDrawColor(183, 208, 191)
+    pdf.setFillColor(221, 239, 227)
+    pdf.setDrawColor(23, 100, 63)
     pdf.setLineWidth(0.35)
-    pdf.roundedRect(margin, 29.5, contentWidth, 8.5, 1.2, 1.2, 'FD')
+    pdf.roundedRect(margin, 27.5, contentWidth, 8.5, 1.2, 1.2, 'FD')
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(10)
     pdf.setTextColor(23, 75, 53)
-    pdf.text('Registration Summary Report', pageWidth / 2, 35, { align: 'center' })
+    pdf.text('Registration Summary Report', pageWidth / 2, 33, { align: 'center' })
 
-    // Generated date/time and total count share one metadata row.
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(7)
-    pdf.setTextColor(75, 90, 80)
-    pdf.text(`Generated: ${generatedAt}`, margin + 1, 43)
-    pdf.text(`Registrations: ${filteredRows.length}`, pageWidth - margin - 1, 43, { align: 'right' })
-
-    y = 47
+    // Generated date/time is shown in the footer; omit duplicate metadata here.
+    y = 42
   }
 
   function drawTableHeader() {
@@ -1146,9 +1140,11 @@ async function exportRegistrationsPdf() {
     addNewPage()
   }
 
-  y += 6
+  y += 3
 
   pdf.setFillColor(221, 239, 227)
+  pdf.setDrawColor(23, 100, 63)
+  pdf.setLineWidth(0.45)
 
   pdf.roundedRect(
     margin,
@@ -1157,7 +1153,7 @@ async function exportRegistrationsPdf() {
     14,
     1.5,
     1.5,
-    'F'
+    'FD'
   )
 
   pdf.setFont('helvetica', 'bold')
@@ -1184,42 +1180,24 @@ async function exportRegistrationsPdf() {
     y + 8.5
   )
 
-  // Footer on every page
-  const pageCount =
-    pdf.getNumberOfPages()
-
-  for (
-    let pageNumber = 1;
-    pageNumber <= pageCount;
-    pageNumber++
-  ) {
+  // Compact footer: generated timestamp left, page number right.
+  const pageCount = pdf.getNumberOfPages()
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
     pdf.setPage(pageNumber)
-
-    pdf.setDrawColor(30, 65, 42)
-
-    pdf.line(margin, pageHeight - 24, pageWidth - margin, pageHeight - 24)
-
-    pdf.setFont(
-      'helvetica',
-      'normal'
-    )
-
+    pdf.setDrawColor(23, 100, 63)
+    pdf.setLineWidth(0.35)
+    pdf.line(margin, pageHeight - 14, pageWidth - margin, pageHeight - 14)
+    pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(6.5)
-    pdf.setTextColor(110)
-
+    pdf.setTextColor(75, 90, 80)
     pdf.text(
       'Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751',
       pageWidth / 2,
-      pageHeight - 12,
+      pageHeight - 9,
       { align: 'center', maxWidth: pageWidth - margin * 2 }
     )
-
-    pdf.text(
-      `Page ${pageNumber} of ${pageCount}`,
-      pageWidth - margin,
-      pageHeight - 6,
-      { align: 'right' }
-    )
+    pdf.text(`Generated: ${generatedAt}`, margin, pageHeight - 3.5)
+    pdf.text(`Page ${pageNumber} of ${pageCount}`, pageWidth - margin, pageHeight - 3.5, { align: 'right' })
   }
 
   const date =
@@ -1635,7 +1613,7 @@ async function exportParticipantsPdf() {
     pdf.setFontSize(11)
     pdf.setTextColor(23, 75, 53)
     if (warangCitiHeaderImage) {
-      pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 36, 1.8, 72, 5.2)
+      pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 42, 1.4, 84, 6.1)
     }
     pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 11, { align: 'center' })
     pdf.text('2026', pageWidth / 2, 16.5, { align: 'center' })
@@ -1643,26 +1621,20 @@ async function exportParticipantsPdf() {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7.5)
     pdf.setTextColor(72, 30, 20)
-    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 24, { align: 'center', maxWidth: pageWidth - margin * 2 })
+    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 22, { align: 'center', maxWidth: pageWidth - margin * 2 })
 
     // Pale-green rounded report title box, with a dark-green border and title.
-    pdf.setFillColor(245, 250, 246)
-    pdf.setDrawColor(183, 208, 191)
+    pdf.setFillColor(221, 239, 227)
+    pdf.setDrawColor(23, 100, 63)
     pdf.setLineWidth(0.35)
-    pdf.roundedRect(margin, 29.5, contentWidth, 8.5, 1.2, 1.2, 'FD')
+    pdf.roundedRect(margin, 27.5, contentWidth, 8.5, 1.2, 1.2, 'FD')
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(10)
     pdf.setTextColor(23, 75, 53)
-    pdf.text('Participant Summary Report', pageWidth / 2, 35, { align: 'center' })
+    pdf.text('Participant Summary Report', pageWidth / 2, 33, { align: 'center' })
 
-    // Generated date/time and total count share one metadata row.
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(7)
-    pdf.setTextColor(75, 90, 80)
-    pdf.text(`Generated: ${generatedAt}`, margin + 1, 43)
-    pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin - 1, 43, { align: 'right' })
-
-    y = 47
+    // Generated date/time is shown in the footer; omit duplicate metadata here.
+    y = 42
   }
 
   function drawTableHeader() {
@@ -1847,9 +1819,11 @@ async function exportParticipantsPdf() {
     addNewPage()
   }
 
-  y += 6
+  y += 3
 
   pdf.setFillColor(221, 239, 227)
+  pdf.setDrawColor(23, 100, 63)
+  pdf.setLineWidth(0.45)
 
   pdf.roundedRect(
     margin,
@@ -1858,7 +1832,7 @@ async function exportParticipantsPdf() {
     14,
     1.5,
     1.5,
-    'F'
+    'FD'
   )
 
   pdf.setFont('helvetica', 'bold')
@@ -1885,42 +1859,24 @@ async function exportParticipantsPdf() {
     y + 8.5
   )
 
-  // Footer on every page
-  const pageCount =
-    pdf.getNumberOfPages()
-
-  for (
-    let pageNumber = 1;
-    pageNumber <= pageCount;
-    pageNumber++
-  ) {
+  // Compact footer: generated timestamp left, page number right.
+  const pageCount = pdf.getNumberOfPages()
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
     pdf.setPage(pageNumber)
-
-    pdf.setDrawColor(30, 65, 42)
-
-    pdf.line(margin, pageHeight - 24, pageWidth - margin, pageHeight - 24)
-
-    pdf.setFont(
-      'helvetica',
-      'normal'
-    )
-
+    pdf.setDrawColor(23, 100, 63)
+    pdf.setLineWidth(0.35)
+    pdf.line(margin, pageHeight - 14, pageWidth - margin, pageHeight - 14)
+    pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(6.5)
-    pdf.setTextColor(110)
-
+    pdf.setTextColor(75, 90, 80)
     pdf.text(
       'Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751',
       pageWidth / 2,
-      pageHeight - 12,
+      pageHeight - 9,
       { align: 'center', maxWidth: pageWidth - margin * 2 }
     )
-
-    pdf.text(
-      `Page ${pageNumber} of ${pageCount}`,
-      pageWidth - margin,
-      pageHeight - 8,
-      { align: 'right' }
-    )
+    pdf.text(`Generated: ${generatedAt}`, margin, pageHeight - 3.5)
+    pdf.text(`Page ${pageNumber} of ${pageCount}`, pageWidth - margin, pageHeight - 3.5, { align: 'right' })
   }
 
   const date =
