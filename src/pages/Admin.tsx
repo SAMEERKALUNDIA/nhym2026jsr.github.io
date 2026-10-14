@@ -936,21 +936,21 @@ async function exportRegistrationsPdf() {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(10)
       pdf.setTextColor(40)
-      pdf.text('Registration Summary Report', pageWidth / 2, 42, { align: 'center' })
+      pdf.text('Registration Summary Report', pageWidth / 2, 45, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(7)
       pdf.setTextColor(100)
-      pdf.text(`Generated: ${generatedAt}`, margin, 49)
-      pdf.text(`Registrations: ${filteredRows.length}`, pageWidth - margin, 49, { align: 'right' })
+      pdf.text(`Generated: ${generatedAt}`, margin, 52)
+      pdf.text(`Registrations: ${filteredRows.length}`, pageWidth - margin, 52, { align: 'right' })
     }
 
     pdf.setDrawColor(185)
 
     pdf.line(
       margin,
-      continuation ? 28 : 34,
+      continuation ? 28 : 38,
       pageWidth - margin,
-      continuation ? 28 : 34
+      continuation ? 28 : 38
     )
 
     y = continuation ? 34 : 40
@@ -1007,7 +1007,7 @@ async function exportRegistrationsPdf() {
 
   addPageHeader()
   // Keep the table below the report title and generated-at metadata.
-  y = 59
+  y = 62
   drawTableHeader()
 
   filteredRows.forEach(
@@ -1637,21 +1637,21 @@ async function exportParticipantsPdf() {
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(10)
       pdf.setTextColor(40)
-      pdf.text('Participant Summary Report', pageWidth / 2, 42, { align: 'center' })
+      pdf.text('Participant Summary Report', pageWidth / 2, 45, { align: 'center' })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(7)
       pdf.setTextColor(100)
       pdf.text(`Generated: ${generatedAt}`, margin, 49)
-      pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin, 49, { align: 'right' })
+      pdf.text(`Participants: ${participantRows.length}`, pageWidth - margin, 52, { align: 'right' })
     }
 
     pdf.setDrawColor(185)
 
     pdf.line(
       margin,
-      continuation ? 27 : 33,
+      continuation ? 27 : 38,
       pageWidth - margin,
-      continuation ? 27 : 33
+      continuation ? 27 : 38
     )
 
     y = continuation ? 33 : 39
