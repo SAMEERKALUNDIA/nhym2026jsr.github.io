@@ -421,7 +421,7 @@ export default function Finance() {
     doc.setTextColor(23, 75, 53)
     doc.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 9, { align: 'center' })
     doc.setFontSize(10)
-    doc.text('2026', pageWidth / 2, 15)
+    doc.text('2026', pageWidth / 2, 15, { align: 'center' })
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
     doc.setTextColor(72, 30, 20)
