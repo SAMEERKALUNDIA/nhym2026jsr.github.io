@@ -399,7 +399,7 @@ export default function Finance() {
 
   function exportPdf() {
     if (!data) return
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
     const left = 12
@@ -423,7 +423,7 @@ export default function Finance() {
     let pageNumber = 0
     let y = 0
 
-    const drawHeader = (continued: boolean) => {
+    const drawHeader = () => {
       pageNumber += 1
       doc.setFillColor(255, 255, 255)
       doc.rect(0, 0, pageWidth, pageHeight, 'F')
@@ -440,7 +440,7 @@ export default function Finance() {
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(12)
       doc.setTextColor(35, 49, 41)
-      doc.text(continued ? 'FINANCE REPORT — CONTINUED' : 'FINANCIAL STATEMENT', right, 12, { align: 'right' })
+      doc.text('FINANCIAL STATEMENT', right, 12, { align: 'right' })
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(7.5)
       doc.setTextColor(...muted)
@@ -463,7 +463,8 @@ export default function Finance() {
     const newPage = () => {
       drawFooter()
       doc.addPage()
-      drawHeader(true)
+      pageNumber += 1
+      y = 12
     }
     const ensureSpace = (height: number) => {
       if (y + height > pageHeight - 18) newPage()
@@ -513,13 +514,13 @@ export default function Finance() {
         doc.setLineWidth(0.15)
         doc.line(left, y + rowHeight, right, y + rowHeight)
         doc.setFont('helvetica', 'normal')
-        doc.setFontSize(6.8)
+        doc.setFontSize(5.8)
         doc.setTextColor(42, 49, 44)
         let x = left
         row.forEach((value, i) => {
           const align = aligns[i] || 'left'
           const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
-          doc.text(textCell(value, Math.max(8, Math.floor(widths[i] * 2.0))), tx, y + 4.6, { align })
+          doc.text(textCell(value, Math.max(8, Math.floor(widths[i] * 1.7))), tx, y + 4.6, { align })
           x += widths[i]
         })
         y += rowHeight
@@ -527,7 +528,8 @@ export default function Finance() {
       y += 3
     }
 
-    drawHeader(false)
+    pageNumber = 1
+    drawHeader()
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
     doc.setTextColor(...muted)
@@ -571,7 +573,7 @@ export default function Finance() {
         moneyValue(x.requested_amount_paise), x.approved_amount_paise == null ? '—' : moneyValue(x.approved_amount_paise),
         moneyValue(x.paid_amount_paise), x.approval_status, x.payment_status,
       ]),
-      [22, 19, 24, 29, 55, 22, 22, 22, 22, 21],
+      [15, 13, 19, 22, 35, 16, 16, 16, 17, 17],
       ['left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'center', 'center'],
     )
 
@@ -583,7 +585,7 @@ export default function Finance() {
         String(x.received_from ?? ''), moneyValue(x.amount_paise), String(x.payment_mode ?? ''),
         [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
       ]),
-      [25, 25, 34, 47, 27, 27, 73],
+      [20, 18, 25, 30, 18, 20, 55],
       ['left', 'left', 'left', 'left', 'right', 'center', 'left'],
     )
 
@@ -594,7 +596,7 @@ export default function Finance() {
         String(x.budget_period ?? ''), String(x.category_name ?? ''),
         moneyValue(x.approved_amount_paise), String(x.status ?? ''), String(x.revision_no ?? ''),
       ]),
-      [48, 60, 55, 45, 50],
+      [38, 42, 48, 35, 23],
       ['left', 'left', 'right', 'center', 'center'],
     )
 
