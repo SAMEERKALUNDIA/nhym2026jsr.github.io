@@ -907,23 +907,15 @@ async function exportRegistrationsPdf() {
   let y = 59
 
   function addPageHeader(continuation = false) {
+    // Continuation pages have no header or logos; keep room for the table and footer.
+    if (continuation) {
+      y = 16
+      return
+    }
+
     // Compact centered header, matching the individual Admin Registration PDF.
     addContainedPdfImage(pdf, hoSamajLogoData, margin, 2, 20, 20)
     addContainedPdfImage(pdf, logoData, pageWidth - margin - 20, 2, 20, 20)
-
-    if (continuation) {
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(11)
-      pdf.setTextColor(23, 75, 53)
-      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 10, { align: 'center' })
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(8)
-      pdf.text('Registration Summary Report - Continued', pageWidth / 2, 17, { align: 'center' })
-      pdf.setDrawColor(183, 208, 191)
-      pdf.line(margin, 25, pageWidth - margin, 25)
-      y = 30
-      return
-    }
 
     // Ho script, English title and year are centered and use the same size.
     pdf.setFont('helvetica', 'bold')
@@ -1592,23 +1584,15 @@ async function exportParticipantsPdf() {
   }
 
   function addPageHeader(continuation = false) {
+    // Continuation pages have no header or logos; keep room for the table and footer.
+    if (continuation) {
+      y = 16
+      return
+    }
+
     // Compact centered header, matching the individual Admin Registration PDF.
     addContainedPdfImage(pdf, hoSamajLogoData, margin, 2, 20, 20)
     addContainedPdfImage(pdf, logoData, pageWidth - margin - 20, 2, 20, 20)
-
-    if (continuation) {
-      pdf.setFont('helvetica', 'bold')
-      pdf.setFontSize(11)
-      pdf.setTextColor(23, 75, 53)
-      pdf.text('NATIONAL HO YOUTH MEET 2026', pageWidth / 2, 10, { align: 'center' })
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(8)
-      pdf.text('Participant Summary Report - Continued', pageWidth / 2, 17, { align: 'center' })
-      pdf.setDrawColor(183, 208, 191)
-      pdf.line(margin, 25, pageWidth - margin, 25)
-      y = 30
-      return
-    }
 
     // Ho script, English title and year are centered and use the same size.
     pdf.setFont('helvetica', 'bold')
