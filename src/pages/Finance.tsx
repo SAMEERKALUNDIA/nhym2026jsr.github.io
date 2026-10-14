@@ -397,7 +397,7 @@ export default function Finance() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  function exportPdf() {
+  async function exportPdf() {
     if (!data) return
     const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
     const pageWidth = doc.internal.pageSize.getWidth()
@@ -406,9 +406,46 @@ export default function Finance() {
     const right = pageWidth - 12
     const contentWidth = right - left
     const generatedAt = new Date().toLocaleString('en-IN')
-    const green: [number, number, number] = [24, 91, 59]
-    const paleGreen: [number, number, number] = [229, 240, 232]
-    const muted: [number, number, number] = [91, 105, 97]
+    const green: [number, number, number] = [23, 75, 53]
+    const paleGreen: [number, number, number] = [221, 239, 227]
+    const muted: [number, number, number] = [82, 103, 90]
+    const border: [number, number, number] = [183, 208, 191]
+    const warangCitiHeaderImage = await (async () => {
+      try {
+        const response = await fetch('/NotoSansWarangCiti-Regular.ttf')
+        if (!response.ok) return null
+        const bytes = await response.arrayBuffer()
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'font/ttf' }))
+        const face = new FontFace('NHYMWarangCitiFinance', `url(${url})`)
+        await face.load()
+        document.fonts.add(face)
+        const canvas = document.createElement('canvas')
+        canvas.width = 1800; canvas.height = 110
+        const context = canvas.getContext('2d')
+        if (!context) return null
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        context.fillStyle = '#1e412a'; context.textAlign = 'center'; context.textBaseline = 'middle'
+        context.font = '64px NHYMWarangCitiFinance'
+        context.fillText('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳', canvas.width / 2, canvas.height / 2)
+        URL.revokeObjectURL(url)
+        return canvas.toDataURL('image/png')
+      } catch { return null }
+    })()
+    async function imageData(path: string): Promise<string | null> {
+      try {
+        const response = await fetch(path)
+        if (!response.ok) return null
+        const blob = await response.blob()
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(blob)
+        })
+      } catch { return null }
+    }
+    const hoSamajLogoData = await imageData('/ho-samaj-logo.jpg')
+    const logoData = await imageData('/nhym-logo2.jpg')
     const formatDate = (value: unknown) => {
       const raw = String(value ?? '')
       if (!raw) return '—'
@@ -424,41 +461,48 @@ export default function Finance() {
     let y = 0
 
     const drawHeader = () => {
-      pageNumber += 1
       doc.setFillColor(255, 255, 255)
       doc.rect(0, 0, pageWidth, pageHeight, 'F')
+      if (hoSamajLogoData) {
+        const props = doc.getImageProperties(hoSamajLogoData)
+        const scale = Math.min(20 / props.width, 20 / props.height)
+        doc.addImage(hoSamajLogoData, 'JPEG', left + (20 - props.width * scale) / 2, 3 + (20 - props.height * scale) / 2, props.width * scale, props.height * scale)
+      }
+      if (logoData) {
+        const props = doc.getImageProperties(logoData)
+        const scale = Math.min(20 / props.width, 20 / props.height)
+        doc.addImage(logoData, 'JPEG', right - 20 + (20 - props.width * scale) / 2, 3 + (20 - props.height * scale) / 2, props.width * scale, props.height * scale)
+      }
+      if (warangCitiHeaderImage) doc.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 48, 1.5, 96, 5.8)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9.5)
       doc.setTextColor(...green)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(15)
-      doc.text('NATIONAL HO YOUTH MEET', left, 12)
-      doc.setFontSize(9)
-      doc.text('SIRJON 2026  |  FINANCE & ACCOUNTS', left, 18)
+      doc.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 9.5, { align: 'center' })
+      doc.setFontSize(9.5)
+      doc.text('2026', pageWidth / 2, 13.5, { align: 'center' })
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(7.5)
-      doc.setTextColor(...muted)
-      doc.text('Adivasi Ho Samaj Yuva Mahasabha  •  Jamshedpur  •  28–29 November 2026', left, 23)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(12)
-      doc.setTextColor(35, 49, 41)
-      doc.text('FINANCIAL STATEMENT', right, 12, { align: 'right' })
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(7.5)
-      doc.setTextColor(...muted)
-      doc.text(`Generated: ${generatedAt}`, right, 18, { align: 'right' })
+      doc.setFontSize(6.8)
+      doc.setTextColor(72, 30, 20)
+      doc.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 18, { align: 'center', maxWidth: contentWidth - 44 })
+      doc.setFillColor(...paleGreen)
       doc.setDrawColor(...green)
-      doc.setLineWidth(0.6)
-      doc.line(left, 27, right, 27)
-      y = 33
+      doc.roundedRect(left, 25, contentWidth, 7, 1.2, 1.2, 'FD')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9.5)
+      doc.setTextColor(...green)
+      doc.text('FINANCIAL STATEMENT', pageWidth / 2, 29.5, { align: 'center' })
+      doc.setDrawColor(...border)
+      doc.line(left, 34, right, 34)
+      y = 39
     }
     const drawFooter = () => {
-      doc.setDrawColor(183, 208, 191)
+      doc.setDrawColor(...border)
       doc.setLineWidth(0.35)
       doc.line(left, pageHeight - 13, right, pageHeight - 13)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(6.5)
       doc.setTextColor(...muted)
       doc.text('Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003  |  nhym2026jsr@gmail.com  |  9931333025, 7870979751', left, pageHeight - 8)
-      doc.text(`Page ${pageNumber}`, right, pageHeight - 8, { align: 'right' })
     }
     const newPage = () => {
       drawFooter()
@@ -609,8 +653,6 @@ export default function Finance() {
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(6.5)
       doc.setTextColor(...muted)
-      doc.setFillColor(255, 255, 255)
-      doc.rect(right - 22, pageHeight - 11, 22, 4, 'F')
       doc.text(`Page ${page} of ${pageCount}`, right, pageHeight - 8, { align: 'right' })
     }
     doc.save('NHYM-2026-Finance-Accounting-Report.pdf')
