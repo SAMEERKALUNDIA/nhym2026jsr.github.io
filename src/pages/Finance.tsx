@@ -405,7 +405,6 @@ export default function Finance() {
     const left = 12
     const right = pageWidth - 12
     const contentWidth = right - left
-    const generatedAt = new Date().toLocaleString('en-IN')
     const green: [number, number, number] = [23, 75, 53]
     const paleGreen: [number, number, number] = [221, 239, 227]
     const muted: [number, number, number] = [82, 103, 90]
