@@ -1000,7 +1000,8 @@ async function exportRegistrationsPdf() {
 
   function addNewPage() {
     pdf.addPage()
-    addPageHeader(true)
+    // Continuation pages omit the event header; retain the table's column labels.
+    y = 16
     drawTableHeader()
   }
 
@@ -1390,7 +1391,8 @@ async function downloadAdminRegistrationPdf(row: Row) {
   function ensureSpace(height: number) {
     if (y + height > pageHeight - 24) {
       pdf.addPage()
-      addHeader(true)
+      // The full event header belongs on page one only.
+      y = 16
     }
   }
 
