@@ -326,12 +326,12 @@ async function downloadRegistrationPdf() {
     for (let page = 1; page <= pages; page++) {
       pdf.setPage(page)
       pdf.setDrawColor(...border)
-      pdf.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20)
+      pdf.line(margin, pageHeight - 18, pageWidth - margin, pageHeight - 18)
       pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(6.8)
+      pdf.setFontSize(6.5)
       pdf.setTextColor(82, 103, 90)
-      pdf.text('Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur–831003 • nhym2026jsr@gmail.com • 9931333025, 7870979751', pageWidth / 2, pageHeight - 14, { align: 'center' })
-      pdf.text('Page ' + page + ' of ' + pages, pageWidth - margin, pageHeight - 7, { align: 'right' })
+      pdf.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 11, { align: 'center', maxWidth: pageWidth - margin * 2 })
+      pdf.text('Page ' + page + ' of ' + pages, pageWidth - margin, pageHeight - 5, { align: 'right' })
     }
   }
 
