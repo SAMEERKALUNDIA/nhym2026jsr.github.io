@@ -494,14 +494,16 @@ export default function Finance() {
       doc.line(left, 34, right, 34)
       y = 39
     }
+    const generatedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' })
     const drawFooter = () => {
       doc.setDrawColor(...border)
       doc.setLineWidth(0.35)
-      doc.line(left, pageHeight - 18, right, pageHeight - 18)
+      doc.line(left, pageHeight - 22, right, pageHeight - 22)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(6.5)
       doc.setTextColor(...muted)
-      doc.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 11, { align: 'center', maxWidth: pageWidth - left * 2 })
+      doc.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 15, { align: 'center', maxWidth: pageWidth - left * 2 })
+      doc.text(`Generated: ${generatedAt} IST`, left, pageHeight - 5, { align: 'left' })
     }
     const newPage = () => {
       drawFooter()
