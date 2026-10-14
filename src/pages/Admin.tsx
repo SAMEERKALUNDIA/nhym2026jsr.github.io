@@ -1344,29 +1344,29 @@ async function downloadAdminRegistrationPdf(row: Row) {
   }
 
   function addHeader(continuation = false) {
-    addContainedPdfImage(pdf, hoSamajLogoData, margin, 5, 20, 20)
-    addContainedPdfImage(pdf, logoData, pageWidth - margin - 20, 5, 20, 20)
+    addContainedPdfImage(pdf, hoSamajLogoData, margin, 3, 20, 20)
+    addContainedPdfImage(pdf, logoData, pageWidth - margin - 20, 3, 20, 20)
     pdf.setFont('helvetica', 'bold')
     pdf.setTextColor(...forest)
-    if (warangCitiHeaderImage && !continuation) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 53, 1.5, 106, 6.5)
-    pdf.setFontSize(10.5)
-    pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 13, { align: 'center' })
-    pdf.setFontSize(10.5)
-    pdf.text('2026', pageWidth / 2, 18.5, { align: 'center' })
+    if (warangCitiHeaderImage && !continuation) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 39, 2.5, 78, 3.2)
+    pdf.setFontSize(9.5)
+    pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 9.5, { align: 'center' })
+    pdf.setFontSize(9.5)
+    pdf.text('2026', pageWidth / 2, 13.5, { align: 'center' })
     pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(7.5)
+    pdf.setFontSize(6.4)
     pdf.setTextColor(72, 30, 20)
-    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 25, { align: 'center' })
+    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 18, { align: 'center', maxWidth: contentWidth - 44 })
     pdf.setFillColor(...green)
     pdf.setDrawColor(...forest)
-    pdf.roundedRect(margin, 30, contentWidth, 7, 1.2, 1.2, 'FD')
+    pdf.roundedRect(margin, 25, contentWidth, 7, 1.2, 1.2, 'FD')
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(9.5)
     pdf.setTextColor(...forest)
-    pdf.text(continuation ? 'ADMIN REGISTRATION RECORD • ' + row.registration_id : 'ADMIN REGISTRATION RECORD', pageWidth / 2, 34.5, { align: 'center' })
+    pdf.text(continuation ? 'ADMIN REGISTRATION RECORD • ' + row.registration_id : 'ADMIN REGISTRATION RECORD', pageWidth / 2, 29.5, { align: 'center' })
     pdf.setDrawColor(...border)
-    pdf.line(margin, 39, pageWidth - margin, 39)
-    y = 44
+    pdf.line(margin, 34, pageWidth - margin, 34)
+    y = 39
   }
 
   function addFooter() {
