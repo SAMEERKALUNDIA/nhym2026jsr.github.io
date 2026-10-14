@@ -603,7 +603,9 @@ export default function Finance() {
     const pageCount = doc.getNumberOfPages()
     for (let page = 1; page <= pageCount; page++) {
       doc.setPage(page)
-      // Replace the current-page placeholder with a final "Page X of Y" footer.
+      // Draw the footer on every page, then replace its page label with "Page X of Y".
+      pageNumber = page
+      drawFooter()
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(6.5)
       doc.setTextColor(...muted)
