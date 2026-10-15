@@ -553,7 +553,7 @@ export default function Finance() {
       rows.forEach((row, rowIndex) => {
         doc.setFont('helvetica', 'normal')
         doc.setFontSize(7)
-        const wrapped = row.map((value, i) => i === 0 ? [String(value ?? '—')] : doc.splitTextToSize(String(value ?? '—'), Math.max(8, widths[i] - 4)) as string[])
+        const wrapped = row.map((value, i) => i === 0 ? [String(value ?? '—')] : doc.splitTextToSize(String(value ?? '—').replace(/\s+/g, ' ').trim(), Math.max(8, widths[i] - 4)) as string[])
         const maxLines = Math.max(1, ...wrapped.map(lines => lines.length))
         const rowHeight = Math.max(baseRowHeight, maxLines * 3.6 + 3)
         if (y + rowHeight > pageHeight - 18) {
@@ -572,7 +572,20 @@ export default function Finance() {
         wrapped.forEach((lines, i) => {
           const align = aligns[i] || 'left'
           const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
-          doc.text(lines, tx, y + 4.5, { align, lineHeightFactor: 1.05, maxWidth: widths[i] - 3 })
+          if (i === 0) {
+            // Keep the record ID on one line; shrink only its font to fit its own column.
+            const originalSize = 7
+            let size = originalSize
+            doc.setFontSize(size)
+            while (size > 5 && doc.getTextWidth(lines[0]) > widths[i] - 4) {
+              size -= 0.25
+              doc.setFontSize(size)
+            }
+            doc.text(lines[0], tx, y + 5, { align: 'left', maxWidth: widths[i] - 4 })
+            doc.setFontSize(originalSize)
+          } else {
+            doc.text(lines, tx, y + 4.5, { align, lineHeightFactor: 1.05, maxWidth: widths[i] - 3 })
+          }
           x += widths[i]
         })
         y += rowHeight
@@ -589,9 +602,9 @@ export default function Finance() {
     y += 7
 
     const summaryItems = [
-      { label: 'TOTAL RECORDED INCOME', value: money(totals.income) },
-      { label: 'TOTAL PAID EXPENSES', value: money(totals.paid) },
-      { label: 'NET CASH MOVEMENT*', value: money(totals.net) },
+      { label: 'TOTAL RECORDED INCOME', value: moneyValue(totals.income) },
+      { label: 'TOTAL PAID EXPENSES', value: moneyValue(totals.paid) },
+      { label: 'NET CASH MOVEMENT*', value: moneyValue(totals.net) },
       { label: 'PENDING APPROVALS', value: String(data.pendingApprovalCount ?? 0) },
     ]
     const gap = 4
@@ -625,7 +638,7 @@ export default function Finance() {
         moneyValue(x.requested_amount_paise), x.approved_amount_paise == null ? '—' : moneyValue(x.approved_amount_paise),
         moneyValue(x.paid_amount_paise), x.approval_status, x.payment_status,
       ]),
-      [28, 18, 29, 32, 48, 22, 22, 20, 22, 22],
+      [42, 19, 30, 37, 47, 22, 22, 20, 21, 21],
       ['left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'center', 'center'],
     )
 
@@ -637,7 +650,7 @@ export default function Finance() {
         String(x.received_from ?? ''), moneyValue(x.amount_paise), String(x.payment_mode ?? ''),
         [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
       ]),
-      [36, 27, 32, 42, 24, 22, 18],
+      [42, 24, 29, 42, 25, 18, 16],
       ['left', 'left', 'left', 'left', 'right', 'center', 'left'],
     )
 
