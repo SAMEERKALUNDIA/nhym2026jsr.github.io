@@ -13,6 +13,31 @@ type Update = {
 type Member = { id: string; displayName: string; loginId: string; isActive: boolean; createdAt: string; lastLoginAt: string | null }
 type MemberIdentity = { id: string; displayName: string; loginId: string }
 
+function PrivatePhoto({ photo, token, alt }: { photo: Photo; token: string; alt: string }) {
+  const [src, setSrc] = useState('')
+  useEffect(() => {
+    let objectUrl = ''
+    const controller = new AbortController()
+    void fetch(photo.imageUrl, { headers: { authorization: `Bearer ${token}` }, signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error('Photo preview unavailable')
+        return response.blob()
+      })
+      .then(blob => {
+        objectUrl = URL.createObjectURL(blob)
+        setSrc(objectUrl)
+      })
+      .catch(() => setSrc(''))
+    return () => {
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [photo.imageUrl, token])
+  return src
+    ? <img src={src} alt={alt} className="h-28 w-full rounded-lg border object-cover" />
+    : <div className="grid h-28 place-items-center rounded-lg border bg-muted text-xs text-muted-foreground">Photo preview</div>
+}
+
 const CATEGORIES = ['General', 'Meetings & Planning', 'Venue & Stage', 'Accommodation', 'Food & Transport', 'Registration', 'Cultural Programme', 'Public Announcement']
 
 export default function DailyUpdatesAdmin() {
@@ -40,7 +65,9 @@ export default function DailyUpdatesAdmin() {
   const [busy, setBusy] = useState(false)
 
   async function requestAdmin(path: string, init: RequestInit = {}) {
-    return fetch(path, { ...init, headers: { authorization: `Bearer ${adminToken}`, ...(init.headers || {}) } })
+    const headers = new Headers(init.headers)
+    headers.set('authorization', `Bearer ${adminToken}`)
+    return fetch(path, { ...init, headers })
   }
 
   async function loadAdminData() {
@@ -121,6 +148,19 @@ export default function DailyUpdatesAdmin() {
     sessionStorage.removeItem('nhym_daily_updates_token')
     setMemberToken(''); setIdentity(null)
     window.location.href = '/'
+  }
+
+  function selectPhotos(fileList: FileList | null) {
+    const selected = Array.from(fileList ?? [])
+    if (selected.length > 5) { setError('एक अपडेट में अधिकतम 5 फोटो चुनें।'); return }
+    if (selected.some(file => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size <= 0 || file.size > 20 * 1024 * 1024)) {
+      setError('केवल JPG, PNG या WebP फोटो चुनें; हर फोटो 20 MB तक होनी चाहिए।'); return
+    }
+    if (selected.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024) {
+      setError('सभी चुनी गई फोटो का कुल आकार 50 MB से कम रखें।'); return
+    }
+    setError('')
+    setPhotos(selected)
   }
 
   async function submitUpdate(event: React.FormEvent) {
@@ -249,7 +289,7 @@ export default function DailyUpdatesAdmin() {
               <label className="block text-sm font-medium">तैयारी/गतिविधि की तारीख<input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} required className="mt-1 w-full rounded-md border bg-background px-3 py-2.5" /></label>
             </div>
             <label className="block text-sm font-medium">विवरण<textarea value={body} onChange={e => setBody(e.target.value)} rows={5} maxLength={10000} required className="mt-1 w-full rounded-md border bg-background px-3 py-2.5" placeholder="आज की तैयारी, कार्य की प्रगति या महत्वपूर्ण सूचना लिखें…" /></label>
-            <label className="block text-sm font-medium">फोटो (अधिकतम 5, प्रत्येक 20 MB तक)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e => setPhotos(Array.from(e.target.files || []).slice(0, 5))} className="mt-1 block w-full rounded-md border bg-background px-3 py-2.5 text-sm" /></label>
+            <label className="block text-sm font-medium">फोटो (अधिकतम 5, प्रत्येक 20 MB तक)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e => selectPhotos(e.target.files)} className="mt-1 block w-full rounded-md border bg-background px-3 py-2.5 text-sm" /></label>
             {photos.length > 0 && <p className="text-sm text-muted-foreground">{photos.length} फोटो चुनी गईं: {photos.map(f => f.name).join(', ')}</p>}
             {isAdmin && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={publishNow} onChange={e => setPublishNow(e.target.checked)} /> मंजूरी के बाद तुरंत सार्वजनिक वेबसाइट पर प्रकाशित करें</label>}
             <button disabled={busy} className="inline-flex w-fit items-center gap-2 rounded-md bg-primary px-5 py-3 font-medium text-primary-foreground disabled:opacity-50"><ImagePlus size={17} /> {busy ? 'Submitting…' : isAdmin && publishNow ? 'Publish update' : 'Send for Admin approval'}</button>
@@ -274,7 +314,7 @@ export default function DailyUpdatesAdmin() {
                 <h3 className="mt-3 text-lg font-semibold">{update.title}</h3>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{update.body}</p>
                 <p className="mt-2 text-xs text-muted-foreground">Submitted by {update.createdByName} · {update.photos?.length || 0} photo(s)</p>
-                {update.photos?.length > 0 && <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{update.photos.map(photo => <img key={photo.id} src={photo.imageUrl} alt={photo.caption || update.title} className="h-28 w-full rounded-lg border object-cover" />)}</div>}
+                {update.photos?.length > 0 && <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{update.photos.map(photo => <PrivatePhoto key={photo.id} photo={photo} token={adminToken} alt={photo.caption || update.title} />)}</div>}
                 {update.rejectionNote && <p className="mt-3 text-sm text-destructive">Note: {update.rejectionNote}</p>}
                 {update.status !== 'PUBLISHED' && <div className="mt-4 flex flex-wrap gap-2">
                   <button disabled={busy} onClick={() => void moderate(update.id, 'approve')} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"><Check size={15} /> Approve & publish</button>
