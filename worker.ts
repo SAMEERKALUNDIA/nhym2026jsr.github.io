@@ -99,14 +99,55 @@ async function storeDailyUpdatePhotos(env: Env, updateId: string, files: File[])
   try {
     for (let index = 0; index < files.length; index++) {
       const file = files[index]
+      const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+      const detectedType =
+        bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? 'image/jpeg'
+        : bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 ? 'image/png'
+        : bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50 ? 'image/webp'
+        : ''
+      if (detectedType !== file.type) throw new Error('फोटो की वास्तविक फ़ाइल सामग्री और प्रकार मेल नहीं खाते।')
+
       const id = crypto.randomUUID()
       const key = `daily-updates/${updateId}/${id}.${DAILY_UPDATE_IMAGE_TYPES[file.type]}`
-      await env.GALLERY.put(key, file.stream(), { httpMetadata: { contentType: file.type } })
-      storedKeys.push(key)
-      await env.DB.prepare(`
-        INSERT INTO daily_update_photos (id, update_id, r2_key, original_name, content_type, file_size, caption, display_order, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)
-      `).bind(id, updateId, key, file.name.slice(0, 255), file.type, file.size, index, new Date().toISOString()).run()
+      const reservationId = crypto.randomUUID()
+      const maxSharedStorageBytes = 10 * 1024 * 1024 * 1024
+      const reservationBatch = await env.DB.batch([
+        env.DB.prepare("DELETE FROM finance_storage_reservations WHERE expires_at <= CURRENT_TIMESTAMP"),
+        env.DB.prepare(`
+          INSERT INTO finance_storage_reservations (id, size_bytes, expires_at)
+          SELECT ?, ?, datetime('now', '+1 hour')
+          WHERE
+            (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+            (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
+            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
+            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) +
+            ? <= ?
+        `).bind(reservationId, file.size, file.size, maxSharedStorageBytes),
+      ])
+      if (Number(reservationBatch[1]?.meta?.changes ?? 0) !== 1) {
+        const usage = await env.DB.prepare(`
+          SELECT
+            (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+            (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
+            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
+            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) AS total_bytes
+        `).first<{ total_bytes: number }>()
+        const usedBytes = Number(usage?.total_bytes ?? 0)
+        throw new Error(`साझा 10 GB स्टोरेज सीमा के कारण फोटो अपलोड नहीं हो सकी। उपलब्ध स्थान: ${Math.max(0, maxSharedStorageBytes - usedBytes)} bytes.`)
+      }
+      try {
+        await env.GALLERY.put(key, file.stream(), { httpMetadata: { contentType: file.type } })
+        storedKeys.push(key)
+        await env.DB.prepare(`
+          INSERT INTO daily_update_photos (id, update_id, r2_key, original_name, content_type, file_size, caption, display_order, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)
+        `).bind(id, updateId, key, file.name.slice(0, 255), file.type, file.size, index, new Date().toISOString()).run()
+      } catch (error) {
+        await env.GALLERY.delete(key).catch(() => undefined)
+        throw error
+      } finally {
+        await env.DB.prepare('DELETE FROM finance_storage_reservations WHERE id = ?').bind(reservationId).run().catch(() => undefined)
+      }
     }
   } catch (error) {
     await Promise.all(storedKeys.map(key => env.GALLERY.delete(key).catch(() => undefined)))
@@ -707,6 +748,7 @@ const reservationBatch = await env.DB.batch([
     SELECT ?, ?, datetime('now', '+1 hour')
     WHERE
       (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+      (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
       (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
       (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) +
       ? <= ?
@@ -716,6 +758,7 @@ if (Number(reservationBatch[1]?.meta?.changes ?? 0) !== 1) {
   const storageResult = await env.DB.prepare(`
     SELECT
       (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+      (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
       (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
       (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) AS total_bytes
   `).first<{ total_bytes: number }>()
@@ -1280,6 +1323,7 @@ if (
             SELECT ?, ?, datetime('now', '+1 hour')
             WHERE
               (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
               (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
               (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) +
               ? <= ?
@@ -1289,6 +1333,7 @@ if (
           const storageUsage = await env.DB.prepare(`
             SELECT
               (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
               (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
               (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) AS total_bytes
           `).first<{ total_bytes: number }>()
