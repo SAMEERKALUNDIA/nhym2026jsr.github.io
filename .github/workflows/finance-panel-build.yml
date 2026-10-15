@@ -7,6 +7,7 @@ on:
     branches:
       - feature/nhym-finance-panel
       - feature/admin-finance-password-recovery
+      - feature/daily-updates-management
   workflow_dispatch:
 
 permissions:
@@ -60,9 +61,17 @@ jobs:
           db.execute('PRAGMA foreign_keys = ON')
           db.executescript(Path('migrations/0001_finance_management.sql').read_text())
           db.executescript(Path('migrations/0002_finance_force_password_change.sql').read_text())
+          db.executescript(Path('migrations/0003_daily_updates.sql').read_text())
           tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
           required = {'finance_users','finance_sessions','finance_login_limits','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_storage_reservations','finance_audit_logs'}
           assert required <= tables, f'Missing tables: {required - tables}'
+          daily_required = {'daily_update_users','daily_update_sessions','daily_updates','daily_update_photos','daily_update_audit_log','daily_update_login_limits'}
+          assert daily_required <= tables, f'Missing Daily Updates tables: {daily_required - tables}'
+          db.execute("INSERT INTO daily_update_users (id, display_name, login_id, password_salt, password_hash) VALUES ('u1','Committee Member','member.one','salt','hash')")
+          db.execute("INSERT INTO daily_updates (id, title, body, category, event_date, status, created_by_user_id, created_by_name, created_at, updated_at) VALUES ('d1','Draft','Not public','General','2026-10-15','PENDING','u1','Committee Member','2026-10-15T00:00:00Z','2026-10-15T00:00:00Z')")
+          assert db.execute("SELECT COUNT(*) FROM daily_updates WHERE status='PUBLISHED'").fetchone()[0] == 0
+          db.execute("UPDATE daily_updates SET status='PUBLISHED' WHERE id='d1'")
+          assert db.execute("SELECT COUNT(*) FROM daily_updates WHERE status='PUBLISHED'").fetchone()[0] == 1
           # Exercise atomic shared-storage reservations across gallery and finance uploads.
           db.execute('CREATE TABLE gallery_photos (file_size INTEGER NOT NULL)')
           max_storage = 10 * 1024 * 1024 * 1024
