@@ -455,7 +455,7 @@ export default function Finance() {
       const raw = String(value ?? '—').replace(/\s+/g, ' ').trim() || '—'
       return raw.length > max ? raw.slice(0, Math.max(1, max - 1)) + '…' : raw
     }
-    const moneyValue = (paise: unknown) => money(Number(paise ?? 0))
+    const moneyValue = (paise: unknown) => 'INR ' + (Number(paise ?? 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     let pageNumber = 0
     let y = 0
 
@@ -569,7 +569,7 @@ export default function Finance() {
         row.forEach((value, i) => {
           const align = aligns[i] || 'left'
           const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
-          doc.text(textCell(value, Math.max(8, Math.floor(widths[i] * 2.0))), tx, y + 4.6, { align })
+          doc.text(i === 0 ? String(value ?? '—') : doc.splitTextToSize(String(value ?? '—'), Math.max(8, widths[i] - 4)), tx, y + 4.5, { align, lineHeightFactor: 1.05, maxWidth: widths[i] - 3 })
           x += widths[i]
         })
         y += rowHeight
@@ -622,7 +622,7 @@ export default function Finance() {
         moneyValue(x.requested_amount_paise), x.approved_amount_paise == null ? '—' : moneyValue(x.approved_amount_paise),
         moneyValue(x.paid_amount_paise), x.approval_status, x.payment_status,
       ]),
-      [15, 13, 19, 22, 35, 16, 16, 16, 17, 17],
+      [28, 18, 29, 32, 48, 22, 22, 20, 22, 22],
       ['left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'center', 'center'],
     )
 
@@ -634,7 +634,7 @@ export default function Finance() {
         String(x.received_from ?? ''), moneyValue(x.amount_paise), String(x.payment_mode ?? ''),
         [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
       ]),
-      [20, 18, 25, 30, 18, 20, 55],
+      [36, 27, 32, 42, 24, 22, 18],
       ['left', 'left', 'left', 'left', 'right', 'center', 'left'],
     )
 
