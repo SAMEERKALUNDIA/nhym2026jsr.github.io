@@ -399,7 +399,7 @@ export default function Finance() {
 
   async function exportPdf() {
     if (!data) return
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
     const left = 12
@@ -528,13 +528,17 @@ export default function Finance() {
       y += 6
     }
     const drawTable = (headers: string[], rows: string[][], widths: number[], aligns: Array<'left' | 'right' | 'center'> = []) => {
-      const rowHeight = 7
+      // Scale every table to the available landscape page width to prevent
+      // long descriptions, payee names and IDs from colliding across columns.
+      const baseWidth = widths.reduce((sum, width) => sum + width, 0)
+      widths = widths.map(width => width * contentWidth / baseWidth)
+      const rowHeight = 9
       const drawTableHeader = () => {
         ensureSpace(10)
         doc.setFillColor(...green)
         doc.rect(left, y, contentWidth, rowHeight, 'F')
         doc.setFont('helvetica', 'bold')
-        doc.setFontSize(7)
+        doc.setFontSize(8)
         doc.setTextColor(255, 255, 255)
         let x = left
         headers.forEach((header, i) => {
@@ -559,13 +563,13 @@ export default function Finance() {
         doc.setLineWidth(0.15)
         doc.line(left, y + rowHeight, right, y + rowHeight)
         doc.setFont('helvetica', 'normal')
-        doc.setFontSize(5.8)
+        doc.setFontSize(7)
         doc.setTextColor(42, 49, 44)
         let x = left
         row.forEach((value, i) => {
           const align = aligns[i] || 'left'
           const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
-          doc.text(textCell(value, Math.max(8, Math.floor(widths[i] * 1.7))), tx, y + 4.6, { align })
+          doc.text(textCell(value, Math.max(8, Math.floor(widths[i] * 2.0))), tx, y + 4.6, { align })
           x += widths[i]
         })
         y += rowHeight
