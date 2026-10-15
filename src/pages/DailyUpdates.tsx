@@ -51,9 +51,12 @@ export default function DailyUpdates() {
       <header className="border-b border-border/70 bg-background/95 px-gutter">
         <div className="mx-auto flex min-h-20 max-w-content items-center justify-between gap-4">
           <a href="/" className="shrink-0 rounded-md"><Brand /></a>
-          <a href="/" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
-            <ArrowLeft size={16} /> Home
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a href="/admin/updates" className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Committee / Admin Login</a>
+            <a href="/" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
+              <ArrowLeft size={16} /> Home
+            </a>
+          </div>
         </div>
       </header>
 
