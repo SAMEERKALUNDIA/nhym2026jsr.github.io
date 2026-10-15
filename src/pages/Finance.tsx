@@ -532,11 +532,11 @@ export default function Finance() {
       // long descriptions, payee names and IDs from colliding across columns.
       const baseWidth = widths.reduce((sum, width) => sum + width, 0)
       widths = widths.map(width => width * contentWidth / baseWidth)
-      const rowHeight = 9
+      const baseRowHeight = 9
       const drawTableHeader = () => {
         ensureSpace(10)
         doc.setFillColor(...green)
-        doc.rect(left, y, contentWidth, rowHeight, 'F')
+        doc.rect(left, y, contentWidth, baseRowHeight, 'F')
         doc.setFont('helvetica', 'bold')
         doc.setFontSize(8)
         doc.setTextColor(255, 255, 255)
@@ -544,13 +544,18 @@ export default function Finance() {
         headers.forEach((header, i) => {
           const align = aligns[i] || 'left'
           const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
-          doc.text(header, tx, y + 4.6, { align })
+          doc.text(header, tx, y + 5.6, { align, maxWidth: widths[i] - 3 })
           x += widths[i]
         })
-        y += rowHeight
+        y += baseRowHeight
       }
       drawTableHeader()
       rows.forEach((row, rowIndex) => {
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        const wrapped = row.map((value, i) => i === 0 ? [String(value ?? '—')] : doc.splitTextToSize(String(value ?? '—'), Math.max(8, widths[i] - 4)) as string[])
+        const maxLines = Math.max(1, ...wrapped.map(lines => lines.length))
+        const rowHeight = Math.max(baseRowHeight, maxLines * 3.6 + 3)
         if (y + rowHeight > pageHeight - 18) {
           newPage()
           drawTableHeader()
@@ -562,14 +567,12 @@ export default function Finance() {
         doc.setDrawColor(220, 227, 221)
         doc.setLineWidth(0.15)
         doc.line(left, y + rowHeight, right, y + rowHeight)
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(7)
         doc.setTextColor(42, 49, 44)
         let x = left
-        row.forEach((value, i) => {
+        wrapped.forEach((lines, i) => {
           const align = aligns[i] || 'left'
           const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
-          doc.text(i === 0 ? String(value ?? '—') : doc.splitTextToSize(String(value ?? '—'), Math.max(8, widths[i] - 4)), tx, y + 4.5, { align, lineHeightFactor: 1.05, maxWidth: widths[i] - 3 })
+          doc.text(lines, tx, y + 4.5, { align, lineHeightFactor: 1.05, maxWidth: widths[i] - 3 })
           x += widths[i]
         })
         y += rowHeight
