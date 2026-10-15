@@ -451,10 +451,6 @@ export default function Finance() {
       const date = new Date(raw)
       return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString('en-IN')
     }
-    const textCell = (value: unknown, max = 30) => {
-      const raw = String(value ?? '—').replace(/\s+/g, ' ').trim() || '—'
-      return raw.length > max ? raw.slice(0, Math.max(1, max - 1)) + '…' : raw
-    }
     const moneyValue = (paise: unknown) => 'INR ' + (Number(paise ?? 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     let pageNumber = 0
     let y = 0
