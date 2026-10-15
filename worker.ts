@@ -62,7 +62,7 @@ function financeRandomHex(bytes = 16): string {
 }
 
 async function getDailyUpdateMember(request: Request, env: Env) {
-  const token = request.headers.get('authorization')?.replace(/^Bearer\\s+/i, '') ?? ''
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
   if (!token) return null
   const tokenHash = await financeDigest(token)
   return env.DB.prepare(`
@@ -158,7 +158,7 @@ export default {
     }
 
     // DAILY UPDATES — public image route only serves photos belonging to published updates.
-    const dailyPublicImage = url.pathname.match(/^\\/api\\/daily-updates\\/images\\/([a-f0-9-]+)$/i)
+    const dailyPublicImage = url.pathname.match(/^\/api\/daily-updates\/images\/([a-f0-9-]+)$/i)
     if (dailyPublicImage && request.method === 'GET') {
       const photo = await env.DB.prepare(`
         SELECT p.r2_key, p.content_type
@@ -234,7 +234,7 @@ export default {
       const body = String(form.get('body') ?? '').trim()
       const category = String(form.get('category') ?? 'General').trim().slice(0, 80) || 'General'
       const eventDate = String(form.get('eventDate') ?? '').trim()
-      if (!title || title.length > 160 || !body || body.length > 10000 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(eventDate) || !isValidFinanceDate(eventDate)) {
+      if (!title || title.length > 160 || !body || body.length > 10000 || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || !isValidFinanceDate(eventDate)) {
         return financeJson({ error: 'शीर्षक, विवरण और सही तारीख दर्ज करें।' }, 400)
       }
       const files = form.getAll('photos').filter((item): item is File => item instanceof File && item.size > 0)
@@ -275,7 +275,7 @@ export default {
     }
 
     // DAILY UPDATES — admin-only photo preview for pending submissions.
-    const dailyAdminImage = url.pathname.match(/^\\/api\\/admin\\/daily-updates\\/images\\/([a-f0-9-]+)$/i)
+    const dailyAdminImage = url.pathname.match(/^\/api\/admin\/daily-updates\/images\/([a-f0-9-]+)$/i)
     if (dailyAdminImage && request.method === 'GET') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       const photo = await env.DB.prepare('SELECT r2_key, content_type FROM daily_update_photos WHERE id = ?').bind(dailyAdminImage[1]).first<{ r2_key: string; content_type: string }>()
@@ -299,7 +299,7 @@ export default {
       const category = String(form.get('category') ?? 'General').trim().slice(0, 80) || 'General'
       const eventDate = String(form.get('eventDate') ?? '').trim()
       const publishNow = String(form.get('publishNow') ?? 'true') === 'true'
-      if (!title || title.length > 160 || !body || body.length > 10000 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(eventDate) || !isValidFinanceDate(eventDate)) {
+      if (!title || title.length > 160 || !body || body.length > 10000 || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || !isValidFinanceDate(eventDate)) {
         return financeJson({ error: 'शीर्षक, विवरण और सही तारीख दर्ज करें।' }, 400)
       }
       const files = form.getAll('photos').filter((item): item is File => item instanceof File && item.size > 0)
@@ -322,7 +322,7 @@ export default {
     }
 
     // DAILY UPDATES — Admin approval / rejection.
-    const dailyUpdateAction = url.pathname.match(/^\\/api\\/admin\\/daily-updates\\/([a-f0-9-]+)$/i)
+    const dailyUpdateAction = url.pathname.match(/^\/api\/admin\/daily-updates\/([a-f0-9-]+)$/i)
     if (dailyUpdateAction && request.method === 'PATCH') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       let body: { action?: string; note?: string }
@@ -378,7 +378,7 @@ export default {
       return financeJson({ ok: true, message: 'Authorized member account created.' }, 201)
     }
 
-    const dailyUpdateUserAction = url.pathname.match(/^\\/api\\/admin\\/daily-updates\\/users\\/([a-f0-9-]+)$/i)
+    const dailyUpdateUserAction = url.pathname.match(/^\/api\/admin\/daily-updates\/users\/([a-f0-9-]+)$/i)
     if (dailyUpdateUserAction && request.method === 'PATCH') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       let body: { active?: boolean }
@@ -392,7 +392,7 @@ export default {
       return financeJson({ ok: true, active: body.active })
     }
 
-    const dailyUpdatePasswordReset = url.pathname.match(/^\\/api\\/admin\\/daily-updates\\/users\\/([a-f0-9-]+)\\/reset-password$/i)
+    const dailyUpdatePasswordReset = url.pathname.match(/^\/api\/admin\/daily-updates\/users\/([a-f0-9-]+)\/reset-password$/i)
     if (dailyUpdatePasswordReset && request.method === 'POST') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       let body: { password?: string }
