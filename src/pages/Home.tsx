@@ -107,6 +107,13 @@ export default function Home() {
       </a>
 
       <a
+        href="/daily-updates"
+        className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        Daily Updates
+      </a>
+
+      <a
         href="#committee"
         className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
@@ -197,6 +204,14 @@ export default function Home() {
           className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
         >
           Gallery
+        </a>
+
+        <a
+          href="/daily-updates"
+          onClick={() => setMobileMenuOpen(false)}
+          className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
+        >
+          Daily Updates
         </a>
 
         <a
