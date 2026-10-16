@@ -159,6 +159,19 @@ jobs:
           const memberToken = login.data.token
           const identity = await request('/api/daily-updates/me', { headers: { authorization: 'Bearer ' + memberToken } })
           check(identity.response.status === 200 && identity.data.user?.loginId === loginId, 'committee session identity verified')
+
+          // Cross-module authorization checks: role tokens must not cross into other modules.
+          for (const [name, path, token] of [
+            ['committee token cannot access Admin Daily Updates API', '/api/admin/daily-updates', memberToken],
+            ['committee token cannot access Admin Gallery API', '/api/admin/gallery', memberToken],
+            ['committee token cannot access Finance dashboard API', '/api/finance/dashboard', memberToken],
+            ['Main Admin token cannot access Finance dashboard API', '/api/finance/dashboard', adminToken],
+            ['Main Admin token cannot access Finance audit API', '/api/finance/audit', adminToken],
+            ['committee token cannot access Finance audit API', '/api/finance/audit', memberToken]
+          ]) {
+            const result = await request(path, { headers: { authorization: 'Bearer ' + token } })
+            check(result.response.status === 401, name + ' (401)')
+          }
           const submit = async title => {
             const form = new FormData()
             form.set('title', title)
