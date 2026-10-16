@@ -80,23 +80,6 @@ jobs:
           printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.daily-updates-preview.jsonc
           pnpm dlx wrangler@4 deploy --config wrangler.daily-updates-preview.jsonc
 
-      - name: Prepare isolated Preview Gallery schema for integration tests
-        env:
-          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
-        run: |
-          test -n "$PREVIEW_ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
-          node --input-type=module <<'NODE'
-          const response = await fetch('https://nhymindia-daily-updates-preview.2026jsr.workers.dev/api/admin/daily-updates/ci-prepare', {
-            method: 'POST',
-            headers: { authorization: 'Bearer ' + process.env.PREVIEW_ADMIN_TOKEN }
-          })
-          const result = await response.json().catch(() => ({}))
-          if (!response.ok || result.ok !== true || result.gallerySchemaReady !== true) {
-            throw new Error('Preview Gallery schema preparation failed with HTTP ' + response.status + ': ' + JSON.stringify(result))
-          }
-          console.log('PASS isolated Preview Gallery schema is ready.')
-          NODE
-
       - name: Wait for preview and smoke-test access controls
         env:
           PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
@@ -149,6 +132,23 @@ jobs:
             } else console.log('PASS ' + name + ' (200)')
           }
           if (process.exitCode) process.exit(1)
+          NODE
+
+      - name: Prepare isolated Preview Gallery schema for integration tests
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+        run: |
+          test -n "$PREVIEW_ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
+          node --input-type=module <<'NODE'
+          const response = await fetch('https://nhymindia-daily-updates-preview.2026jsr.workers.dev/api/admin/daily-updates/ci-prepare', {
+            method: 'POST',
+            headers: { authorization: 'Bearer ' + process.env.PREVIEW_ADMIN_TOKEN }
+          })
+          const result = await response.json().catch(() => ({}))
+          if (!response.ok || result.ok !== true || result.gallerySchemaReady !== true) {
+            throw new Error('Preview Gallery schema preparation failed with HTTP ' + response.status + ': ' + JSON.stringify(result))
+          }
+          console.log('PASS isolated Preview Gallery schema is ready.')
           NODE
 
       - name: Browser UI smoke tests for public and separated portals
