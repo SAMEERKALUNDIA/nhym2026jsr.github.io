@@ -9,6 +9,7 @@ on:
       - "src/**"
       - "public/**"
       - "migrations/0003_daily_updates.sql"
+      - "migrations/0004_gallery_storage_compat.sql"
       - "wrangler.daily-updates-preview.jsonc"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -63,6 +64,15 @@ jobs:
           }
           console.log('Worker syntax passed.')
           NODE
+
+      - name: Apply idempotent Gallery schema compatibility migration to Preview D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          pnpm dlx wrangler@4 d1 execute nhymindia-finance-preview --remote --config wrangler.daily-updates-preview.jsonc --file migrations/0004_gallery_storage_compat.sql
 
       - name: Deploy isolated Daily Updates preview Worker
         env:
