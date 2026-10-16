@@ -1,3 +1,4 @@
+// Release trigger: Daily Updates integration has passed Preview and Finance security checks.
 export interface Env {
   DB: D1Database
   GALLERY: R2Bucket
