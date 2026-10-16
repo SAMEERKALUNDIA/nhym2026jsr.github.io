@@ -74,9 +74,8 @@ db.executescript(Path('migrations/0004_gallery_storage_compat.sql').read_text())
           db.execute("UPDATE daily_updates SET status='PUBLISHED' WHERE id='d1'")
           assert db.execute("SELECT COUNT(*) FROM daily_updates WHERE status='PUBLISHED'").fetchone()[0] == 1
           # Exercise atomic shared-storage reservations across gallery and finance uploads.
-          db.execute("INSERT INTO gallery_photos (r2_key,title,category,content_type,file_size) VALUES ('gallery-test','Gallery test','NHYM Events','image/png',?)", (max_storage - 10,))
           max_storage = 10 * 1024 * 1024 * 1024
-          db.execute('INSERT INTO gallery_photos (file_size) VALUES (?)', (max_storage - 10,))
+          db.execute("INSERT INTO gallery_photos (r2_key,title,category,content_type,file_size) VALUES ('gallery-test','Gallery test','NHYM Events','image/png',?)", (max_storage - 10,))
           first_reservation = db.execute("""
             INSERT INTO finance_storage_reservations (id,size_bytes,expires_at)
             SELECT 'reserve-1',6,datetime('now','+1 hour')
