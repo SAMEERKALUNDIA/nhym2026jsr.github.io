@@ -315,6 +315,21 @@ export default {
       return financeJson({ updates })
     }
 
+    // DAILY UPDATES — admin-only audit history, bounded to the newest 200 records.
+    if (url.pathname === '/api/admin/daily-updates/audit' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const requestedLimit = Number(url.searchParams.get('limit') ?? 100)
+      const limit = Number.isFinite(requestedLimit) ? Math.min(200, Math.max(1, Math.floor(requestedLimit))) : 100
+      const updateId = url.searchParams.get('updateId')
+      const result = updateId
+        ? await env.DB.prepare('SELECT id, actor_user_id, actor_name, action, update_id, details_json, created_at FROM daily_update_audit_log WHERE update_id = ? ORDER BY created_at DESC LIMIT ?').bind(updateId, limit).all()
+        : await env.DB.prepare('SELECT id, actor_user_id, actor_name, action, update_id, details_json, created_at FROM daily_update_audit_log ORDER BY created_at DESC LIMIT ?').bind(limit).all()
+      return financeJson({ logs: (result.results ?? []).map((row: any) => ({
+        id: row.id, actorUserId: row.actor_user_id, actorName: row.actor_name, action: row.action,
+        updateId: row.update_id, details: row.details_json, createdAt: row.created_at
+      })) })
+    }
+
     // DAILY UPDATES — admin-only photo preview for pending submissions.
     const dailyAdminImage = url.pathname.match(/^\/api\/admin\/daily-updates\/images\/([a-f0-9-]+)$/i)
     if (dailyAdminImage && request.method === 'GET') {
