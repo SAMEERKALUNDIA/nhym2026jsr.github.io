@@ -62,6 +62,7 @@ jobs:
           db.executescript(Path('migrations/0001_finance_management.sql').read_text())
           db.executescript(Path('migrations/0002_finance_force_password_change.sql').read_text())
           db.executescript(Path('migrations/0003_daily_updates.sql').read_text())
+db.executescript(Path('migrations/0004_gallery_storage_compat.sql').read_text())
           tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
           required = {'finance_users','finance_sessions','finance_login_limits','finance_categories','finance_budgets','finance_expenses','finance_approvals','finance_payments','finance_income','finance_documents','finance_storage_reservations','finance_audit_logs'}
           assert required <= tables, f'Missing tables: {required - tables}'
@@ -73,7 +74,7 @@ jobs:
           db.execute("UPDATE daily_updates SET status='PUBLISHED' WHERE id='d1'")
           assert db.execute("SELECT COUNT(*) FROM daily_updates WHERE status='PUBLISHED'").fetchone()[0] == 1
           # Exercise atomic shared-storage reservations across gallery and finance uploads.
-          db.execute('CREATE TABLE gallery_photos (file_size INTEGER NOT NULL)')
+          db.execute("INSERT INTO gallery_photos (r2_key,title,category,content_type,file_size) VALUES ('gallery-test','Gallery test','NHYM Events','image/png',?)", (max_storage - 10,))
           max_storage = 10 * 1024 * 1024 * 1024
           db.execute('INSERT INTO gallery_photos (file_size) VALUES (?)', (max_storage - 10,))
           first_reservation = db.execute("""
