@@ -20,7 +20,20 @@ export default function Login() {
     setBusy(true)
     try {
       if (role === 'admin') {
-        sessionStorage.setItem('nhym_admin_token', adminKey.trim())
+        const cleanKey = adminKey.trim()
+        const isDailyUpdatesPreview = window.location.hostname === 'nhymindia-daily-updates-preview.2026jsr.workers.dev'
+
+        if (isDailyUpdatesPreview) {
+          const response = await fetch('/api/admin/auth-check', {
+            headers: { authorization: `Bearer ${cleanKey}` },
+          })
+          if (!response.ok) throw new Error('Preview Admin access key सही नहीं है।')
+          sessionStorage.setItem('nhym_admin_token', cleanKey)
+          navigate('/admin/updates', { replace: true })
+          return
+        }
+
+        sessionStorage.setItem('nhym_admin_token', cleanKey)
         navigate('/admin', { replace: true })
         return
       }
