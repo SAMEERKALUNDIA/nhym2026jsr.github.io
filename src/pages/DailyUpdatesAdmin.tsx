@@ -11,7 +11,8 @@ type Update = {
   rejectionNote: string | null; photos: Photo[]
 }
 type Member = { id: string; displayName: string; loginId: string; isActive: boolean; createdAt: string; lastLoginAt: string | null }
-type MemberIdentity = { id: string; displayName: string; loginId: string }\ntype AuditEntry = { id: string; actorName: string; action: string; updateId: string | null; details: string | null; createdAt: string }
+type MemberIdentity = { id: string; displayName: string; loginId: string }
+type AuditEntry = { id: string; actorName: string; action: string; updateId: string | null; details: string | null; createdAt: string }
 
 function PrivatePhoto({ photo, token, alt }: { photo: Photo; token: string; alt: string }) {
   const [src, setSrc] = useState('')
@@ -50,7 +51,9 @@ export default function DailyUpdatesAdmin() {
   const [password, setPassword] = useState('')
   const [updates, setUpdates] = useState<Update[]>([])
   const [members, setMembers] = useState<Member[]>([])
-  const [tab, setTab] = useState<'updates' | 'members' | 'audit'>('updates')\n  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])\n  const [resetPasswords, setResetPasswords] = useState<Record<string, string>>({})
+  const [tab, setTab] = useState<'updates' | 'members' | 'audit'>('updates')
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
+  const [resetPasswords, setResetPasswords] = useState<Record<string, string>>({})
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [category, setCategory] = useState(CATEGORIES[0])
@@ -339,7 +342,8 @@ export default function DailyUpdatesAdmin() {
           <section className="mt-8">
             <div className="flex flex-wrap gap-2 border-b pb-3">
               <button onClick={() => setTab('updates')} className={`rounded-md px-4 py-2 text-sm font-medium ${tab === 'updates' ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}>Updates ({updates.length})</button>
-              <button onClick={() => setTab('members')} className={`rounded-md px-4 py-2 text-sm font-medium ${tab === 'members' ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}>Authorized members ({members.length})</button>\n              <button onClick={() => { setTab('audit'); void loadAudit().catch(e => setError(e instanceof Error ? e.message : 'Could not load audit history.')) }} className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium ${tab === 'audit' ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}><ClipboardList size={15} /> Audit Log</button>
+              <button onClick={() => setTab('members')} className={`rounded-md px-4 py-2 text-sm font-medium ${tab === 'members' ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}>Authorized members ({members.length})</button>
+              <button onClick={() => { setTab('audit'); void loadAudit().catch(e => setError(e instanceof Error ? e.message : 'Could not load audit history.')) }} className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium ${tab === 'audit' ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}><ClipboardList size={15} /> Audit Log</button>
               <button onClick={() => { void (tab === 'audit' ? loadAudit() : loadAdminData()).catch(e => setError(e instanceof Error ? e.message : 'Refresh failed.')) }} className="ml-auto inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted"><RefreshCw size={15} /> Refresh</button>
             </div>
 
