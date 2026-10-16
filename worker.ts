@@ -465,6 +465,27 @@ export default {
 
     // DAILY UPDATES — Admin approval / rejection.
     const dailyUpdateAction = url.pathname.match(/^\/api\/admin\/daily-updates\/([a-f0-9-]+)$/i)
+    // Admin deletion removes photo objects and metadata while preserving audit history.
+    const dailyUpdateDelete = url.pathname.match(/^\\/api\\/admin\\/daily-updates\\/([a-f0-9-]+)$/i)
+    if (dailyUpdateDelete && request.method === 'DELETE') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const id = dailyUpdateDelete[1]
+      const existing = await env.DB.prepare('SELECT id, title, status FROM daily_updates WHERE id = ?').bind(id).first<{ id: string; title: string; status: string }>()
+      if (!existing) return financeJson({ error: 'Update not found.' }, 404)
+      const photos = await env.DB.prepare('SELECT r2_key FROM daily_update_photos WHERE update_id = ?').bind(id).all<{ r2_key: string }>()
+      const keys = (photos.results ?? []).map(photo => photo.r2_key)
+      const deletionResults = await Promise.allSettled(keys.map(key => env.GALLERY.delete(key)))
+      const failedDeletes = deletionResults.filter(result => result.status === 'rejected').length
+      if (failedDeletes > 0) {
+        await logDailyUpdate(env, null, 'Admin', 'DELETE_STORAGE_CLEANUP_FAILED', id, { photoCount: keys.length, failedDeletes })
+        return financeJson({ error: 'Deletion paused because photo storage cleanup could not be confirmed. Please retry.' }, 503)
+      }
+      await env.DB.prepare('DELETE FROM daily_update_photos WHERE update_id = ?').bind(id).run()
+      await env.DB.prepare('DELETE FROM daily_updates WHERE id = ?').bind(id).run()
+      await logDailyUpdate(env, null, 'Admin', 'DELETED', id, { title: existing.title, previousStatus: existing.status, deletedPhotoCount: keys.length })
+      return financeJson({ ok: true, deleted: true, deletedPhotoCount: keys.length })
+    }
+
     if (dailyUpdateAction && request.method === 'PATCH') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       let body: { action?: string; note?: string }
@@ -481,10 +502,19 @@ export default {
       }
       if (body.action === 'reject') {
         const note = String(body.note ?? '').trim().slice(0, 1000) || 'Please review and resubmit this update.'
+        const photos = await env.DB.prepare('SELECT r2_key FROM daily_update_photos WHERE update_id = ?').bind(id).all<{ r2_key: string }>()
+        const keys = (photos.results ?? []).map(photo => photo.r2_key)
+        const deletionResults = await Promise.allSettled(keys.map(key => env.GALLERY.delete(key)))
+        const failedDeletes = deletionResults.filter(result => result.status === 'rejected').length
+        if (failedDeletes > 0) {
+          await logDailyUpdate(env, null, 'Admin', 'REJECTION_STORAGE_CLEANUP_FAILED', id, { photoCount: keys.length, failedDeletes })
+          return financeJson({ error: 'Rejection paused because photo storage cleanup could not be confirmed. Please retry.' }, 503)
+        }
+        await env.DB.prepare('DELETE FROM daily_update_photos WHERE update_id = ?').bind(id).run()
         await env.DB.prepare("UPDATE daily_updates SET status = 'REJECTED', rejection_note = ?, approved_by = 'Admin', approved_at = ?, updated_at = ? WHERE id = ?")
           .bind(note, nowIso, nowIso, id).run()
-        await logDailyUpdate(env, null, 'Admin', 'REJECTED', id, { note, previousStatus: existing.status })
-        return financeJson({ ok: true, status: 'REJECTED', message: 'Update rejected.' })
+        await logDailyUpdate(env, null, 'Admin', 'REJECTED', id, { note, previousStatus: existing.status, deletedPhotoCount: keys.length })
+        return financeJson({ ok: true, status: 'REJECTED', message: 'Update rejected; attached photos removed from storage.', deletedPhotoCount: keys.length })
       }
       return financeJson({ error: 'Action must be approve, publish, or reject.' }, 400)
     }
