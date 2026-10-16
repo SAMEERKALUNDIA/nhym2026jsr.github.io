@@ -241,85 +241,85 @@ jobs:
             const result = await request(path, { headers: { authorization: 'Bearer ' + token } })
             check(result.response.status === 401, name + ' (401)')
           }
-          // Finance role regression tests run only when the isolated Preview DB is empty.
-          // Never reset or modify credentials in an already-configured Preview finance environment.
+          // Finance role regression tests use only CI-prefixed accounts and clean them up in the always-run step.
+          // Existing Preview finance users, credentials, and records are never modified.
           const financeSetup = await request('/api/finance/setup-status')
           check(financeSetup.response.status === 200, 'Finance setup status endpoint responds')
-          if (financeSetup.data.setupComplete === false) {
-            const financeSuffix = randomBytes(6).toString('hex')
-            const financeLoginIds = ['head', 'operator', 'approver', 'auditor'].map(role => 'ci-finance-' + role + '-' + financeSuffix)
-            await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, 'test_finance_login_ids=' + financeLoginIds.join(',') + '\n'))
-            const financePassword = randomBytes(24).toString('hex')
-            const financeTempPassword = randomBytes(24).toString('hex')
-            const financeNewPassword = randomBytes(24).toString('hex')
-            const financeBootstrap = await request('/api/finance/bootstrap', {
-              method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
-              body: JSON.stringify({ displayName: 'CI Finance Head', loginId: financeLoginIds[0], password: financePassword })
-            })
-            check(financeBootstrap.response.status === 201, 'Preview-only Finance Head bootstrap succeeds on empty setup')
-            const financeLogin = async (loginId, password) => request('/api/finance/login', {
-              method: 'POST', headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ loginId, password })
-            })
-            const headLogin = await financeLogin(financeLoginIds[0], financePassword)
-            check(headLogin.response.status === 200 && Boolean(headLogin.data.token), 'Finance Head separate login succeeds')
-            const headToken = headLogin.data.token
-            const financeHeaders = token => ({ authorization: 'Bearer ' + token })
-            const headDashboard = await request('/api/finance/dashboard', { headers: financeHeaders(headToken) })
-            check(headDashboard.response.status === 200, 'Finance Head can access Finance dashboard')
-            const headUsers = await request('/api/finance/users', { headers: financeHeaders(headToken) })
-            check(headUsers.response.status === 200, 'Finance Head can manage finance accounts')
-            const headAudit = await request('/api/finance/audit?limit=5', { headers: financeHeaders(headToken) })
-            check(headAudit.response.status === 200, 'Finance Head can read finance audit log')
-            check((await request('/api/admin/daily-updates', { headers: financeHeaders(headToken) })).response.status === 401, 'Finance Head cannot access Admin Daily Updates')
-            check((await request('/api/admin/gallery', { headers: financeHeaders(headToken) })).response.status === 401, 'Finance Head cannot access Admin Gallery')
-            const roleNames = ['OPERATOR', 'APPROVER', 'AUDITOR']
-            const financeUsers = {}
-            for (let index = 0; index < roleNames.length; index++) {
-              const role = roleNames[index]
-              const loginId = financeLoginIds[index + 1]
-              const createdFinanceUser = await request('/api/finance/users', {
-                method: 'POST', headers: { ...financeHeaders(headToken), 'content-type': 'application/json' },
-                body: JSON.stringify({ displayName: 'CI Finance ' + role, loginId, password: financePassword, role })
+          const financeSuffix = randomBytes(6).toString('hex')
+          const financeLoginIds = ['head', 'operator', 'approver', 'auditor'].map(role => 'ci-finance-' + role + '-' + financeSuffix)
+          await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, 'test_finance_login_ids=' + financeLoginIds.join(',') + '\n'))
+          const financePassword = randomBytes(24).toString('hex')
+          const financeTempPassword = randomBytes(24).toString('hex')
+          const financeNewPassword = randomBytes(24).toString('hex')
+          const financeBootstrap = financeSetup.data.setupComplete === false
+            ? await request('/api/finance/bootstrap', {
+                method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+                body: JSON.stringify({ displayName: 'CI Finance Head', loginId: financeLoginIds[0], password: financePassword })
               })
-              check(createdFinanceUser.response.status === 201, 'Finance Head creates ' + role + ' account')
-              financeUsers[role] = { id: createdFinanceUser.data.user.id, loginId }
-              const loggedIn = await financeLogin(loginId, financePassword)
-              check(loggedIn.response.status === 200 && loggedIn.data.user?.role === role, role + ' separate login succeeds')
-              const token = loggedIn.data.token
-              check((await request('/api/finance/dashboard', { headers: financeHeaders(token) })).response.status === 200, role + ' can access Finance dashboard')
-              const userAdmin = await request('/api/finance/users', { headers: financeHeaders(token) })
-              check(userAdmin.response.status === 403, role + ' cannot manage finance accounts')
-              const auditAccess = await request('/api/finance/audit?limit=5', { headers: financeHeaders(token) })
-              check(auditAccess.response.status === (role === 'AUDITOR' ? 200 : 403), role + ' audit permission is enforced')
-              check((await request('/api/admin/daily-updates', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Admin Daily Updates')
-              check((await request('/api/admin/gallery', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Admin Gallery')
-            }
-            const operatorToken = (await financeLogin(financeUsers.OPERATOR.loginId, financePassword)).data.token
-            const unauthorizedReset = await request('/api/admin/finance-users/' + encodeURIComponent(financeUsers.OPERATOR.id) + '/reset-password', {
-              method: 'POST', headers: { ...financeHeaders(operatorToken), 'content-type': 'application/json' },
-              body: JSON.stringify({ password: financeTempPassword })
+            : await request('/api/admin/daily-updates/ci-finance-prepare', {
+                method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+                body: JSON.stringify({ loginId: financeLoginIds[0], password: financePassword })
+              })
+          check(financeBootstrap.response.status === 201, 'Preview-only Finance Head account prepared safely')
+          const financeLogin = async (loginId, password) => request('/api/finance/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password })
+          })
+          const headLogin = await financeLogin(financeLoginIds[0], financePassword)
+          check(headLogin.response.status === 200 && Boolean(headLogin.data.token), 'Finance Head separate login succeeds')
+          const headToken = headLogin.data.token
+          const financeHeaders = token => ({ authorization: 'Bearer ' + token })
+          const headDashboard = await request('/api/finance/dashboard', { headers: financeHeaders(headToken) })
+          check(headDashboard.response.status === 200, 'Finance Head can access Finance dashboard')
+          const headUsers = await request('/api/finance/users', { headers: financeHeaders(headToken) })
+          check(headUsers.response.status === 200, 'Finance Head can manage finance accounts')
+          const headAudit = await request('/api/finance/audit?limit=5', { headers: financeHeaders(headToken) })
+          check(headAudit.response.status === 200, 'Finance Head can read finance audit log')
+          check((await request('/api/admin/daily-updates', { headers: financeHeaders(headToken) })).response.status === 401, 'Finance Head cannot access Admin Daily Updates')
+          check((await request('/api/admin/gallery', { headers: financeHeaders(headToken) })).response.status === 401, 'Finance Head cannot access Admin Gallery')
+          const roleNames = ['OPERATOR', 'APPROVER', 'AUDITOR']
+          const financeUsers = {}
+          for (let index = 0; index < roleNames.length; index++) {
+            const role = roleNames[index]
+            const loginId = financeLoginIds[index + 1]
+            const createdFinanceUser = await request('/api/finance/users', {
+              method: 'POST', headers: { ...financeHeaders(headToken), 'content-type': 'application/json' },
+              body: JSON.stringify({ displayName: 'CI Finance ' + role, loginId, password: financePassword, role })
             })
-            check(unauthorizedReset.response.status === 401, 'Finance user cannot reset own password through Main Admin endpoint')
-            const reset = await request('/api/admin/finance-users/' + encodeURIComponent(financeUsers.OPERATOR.id) + '/reset-password', {
-              method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
-              body: JSON.stringify({ password: financeTempPassword })
-            })
-            check(reset.response.status === 200, 'Main Admin can reset Finance password')
-            check((await request('/api/finance/dashboard', { headers: financeHeaders(operatorToken) })).response.status === 401, 'Admin password reset revokes existing Finance session')
-            const temporaryLogin = await financeLogin(financeUsers.OPERATOR.loginId, financeTempPassword)
-            check(temporaryLogin.response.status === 200 && temporaryLogin.data.mustChangePassword === true, 'reset password requires password change at next login')
-            const changedPassword = await request('/api/finance/change-password', {
-              method: 'POST', headers: { ...financeHeaders(temporaryLogin.data.token), 'content-type': 'application/json' },
-              body: JSON.stringify({ currentPassword: financeTempPassword, newPassword: financeNewPassword })
-            })
-            check(changedPassword.response.status === 200, 'Finance user can replace reset temporary password')
-            const finalLogin = await financeLogin(financeUsers.OPERATOR.loginId, financeNewPassword)
-            check(finalLogin.response.status === 200 && (await request('/api/finance/dashboard', { headers: financeHeaders(finalLogin.data.token) })).response.status === 200, 'Finance login works after password change')
-          } else {
-            await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, 'test_finance_login_ids=\n'))
-            console.log('SKIP runtime Finance role setup because Preview already has Finance accounts; existing credentials and finance records were left untouched.')
+            check(createdFinanceUser.response.status === 201, 'Finance Head creates ' + role + ' account')
+            financeUsers[role] = { id: createdFinanceUser.data.user.id, loginId }
+            const loggedIn = await financeLogin(loginId, financePassword)
+            check(loggedIn.response.status === 200 && loggedIn.data.user?.role === role, role + ' separate login succeeds')
+            const token = loggedIn.data.token
+            check((await request('/api/finance/dashboard', { headers: financeHeaders(token) })).response.status === 200, role + ' can access Finance dashboard')
+            const userAdmin = await request('/api/finance/users', { headers: financeHeaders(token) })
+            check(userAdmin.response.status === 403, role + ' cannot manage finance accounts')
+            const auditAccess = await request('/api/finance/audit?limit=5', { headers: financeHeaders(token) })
+            check(auditAccess.response.status === (role === 'AUDITOR' ? 200 : 403), role + ' audit permission is enforced')
+            check((await request('/api/admin/daily-updates', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Admin Daily Updates')
+            check((await request('/api/admin/gallery', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Admin Gallery')
           }
+          const operatorToken = (await financeLogin(financeUsers.OPERATOR.loginId, financePassword)).data.token
+          const unauthorizedReset = await request('/api/admin/finance-users/' + encodeURIComponent(financeUsers.OPERATOR.id) + '/reset-password', {
+            method: 'POST', headers: { ...financeHeaders(operatorToken), 'content-type': 'application/json' },
+            body: JSON.stringify({ password: financeTempPassword })
+          })
+          check(unauthorizedReset.response.status === 401, 'Finance user cannot reset password through Main Admin endpoint')
+          const reset = await request('/api/admin/finance-users/' + encodeURIComponent(financeUsers.OPERATOR.id) + '/reset-password', {
+            method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ password: financeTempPassword })
+          })
+          check(reset.response.status === 200, 'Main Admin can reset Finance password')
+          check((await request('/api/finance/dashboard', { headers: financeHeaders(operatorToken) })).response.status === 401, 'Admin password reset revokes existing Finance session')
+          const temporaryLogin = await financeLogin(financeUsers.OPERATOR.loginId, financeTempPassword)
+          check(temporaryLogin.response.status === 200 && temporaryLogin.data.mustChangePassword === true, 'reset password requires password change at next login')
+          const changedPassword = await request('/api/finance/change-password', {
+            method: 'POST', headers: { ...financeHeaders(temporaryLogin.data.token), 'content-type': 'application/json' },
+            body: JSON.stringify({ currentPassword: financeTempPassword, newPassword: financeNewPassword })
+          })
+          check(changedPassword.response.status === 200, 'Finance user can replace reset temporary password')
+          const finalLogin = await financeLogin(financeUsers.OPERATOR.loginId, financeNewPassword)
+          check(finalLogin.response.status === 200 && (await request('/api/finance/dashboard', { headers: financeHeaders(finalLogin.data.token) })).response.status === 200, 'Finance login works after password change')
 
           const submit = async (title, includePhoto = false) => {
             const form = new FormData()
