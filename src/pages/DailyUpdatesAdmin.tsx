@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Check, ImagePlus, LogOut, RefreshCw, ShieldCheck, UserPlus, X } from 'lucide-react'
+import { ArrowLeft, Check, ImagePlus, LogOut, RefreshCw, ShieldCheck, UserPlus, X, ClipboardList, KeyRound } from 'lucide-react'
 import { Meta } from '@/components/Meta'
 import { DeveloperCredit } from '@/components/DeveloperCredit'
 
@@ -11,7 +11,7 @@ type Update = {
   rejectionNote: string | null; photos: Photo[]
 }
 type Member = { id: string; displayName: string; loginId: string; isActive: boolean; createdAt: string; lastLoginAt: string | null }
-type MemberIdentity = { id: string; displayName: string; loginId: string }
+type MemberIdentity = { id: string; displayName: string; loginId: string }\ntype AuditEntry = { id: string; actorName: string; action: string; updateId: string | null; details: string | null; createdAt: string }
 
 function PrivatePhoto({ photo, token, alt }: { photo: Photo; token: string; alt: string }) {
   const [src, setSrc] = useState('')
@@ -50,7 +50,7 @@ export default function DailyUpdatesAdmin() {
   const [password, setPassword] = useState('')
   const [updates, setUpdates] = useState<Update[]>([])
   const [members, setMembers] = useState<Member[]>([])
-  const [tab, setTab] = useState<'updates' | 'members'>('updates')
+  const [tab, setTab] = useState<'updates' | 'members' | 'audit'>('updates')\n  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])\n  const [resetPasswords, setResetPasswords] = useState<Record<string, string>>({})
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [category, setCategory] = useState(CATEGORIES[0])
@@ -68,6 +68,31 @@ export default function DailyUpdatesAdmin() {
     const headers = new Headers(init.headers)
     headers.set('authorization', `Bearer ${adminToken}`)
     return fetch(path, { ...init, headers })
+  }
+
+  async function loadAudit() {
+    const response = await requestAdmin('/api/admin/daily-updates/audit?limit=100')
+    const result = await response.json() as { logs?: AuditEntry[]; error?: string }
+    if (!response.ok) throw new Error(result.error || 'Could not load audit history.')
+    setAuditEntries(result.logs || [])
+  }
+
+  async function resetMemberPassword(member: Member) {
+    const temporaryPassword = resetPasswords[member.id] || ''
+    if (temporaryPassword.length < 12) { setError('नया अस्थायी password कम-से-कम 12 अक्षर का रखें।'); return }
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const response = await requestAdmin(`/api/admin/daily-updates/users/${encodeURIComponent(member.id)}/reset-password`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: temporaryPassword }),
+      })
+      const result = await response.json() as { error?: string; message?: string }
+      if (!response.ok) throw new Error(result.error || 'Could not reset member password.')
+      setResetPasswords(current => ({ ...current, [member.id]: '' }))
+      setNotice(` ${member.loginId} का password reset हो गया है; पुराने sessions बंद कर दिए गए हैं।`)
+      await loadAudit()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not reset member password.') }
+    finally { setBusy(false) }
   }
 
   async function loadAdminData() {
@@ -314,8 +339,8 @@ export default function DailyUpdatesAdmin() {
           <section className="mt-8">
             <div className="flex flex-wrap gap-2 border-b pb-3">
               <button onClick={() => setTab('updates')} className={`rounded-md px-4 py-2 text-sm font-medium ${tab === 'updates' ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}>Updates ({updates.length})</button>
-              <button onClick={() => setTab('members')} className={`rounded-md px-4 py-2 text-sm font-medium ${tab === 'members' ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}>Authorized members ({members.length})</button>
-              <button onClick={() => { void loadAdminData().catch(e => setError(e instanceof Error ? e.message : 'Refresh failed.')) }} className="ml-auto inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted"><RefreshCw size={15} /> Refresh</button>
+              <button onClick={() => setTab('members')} className={`rounded-md px-4 py-2 text-sm font-medium ${tab === 'members' ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}>Authorized members ({members.length})</button>\n              <button onClick={() => { setTab('audit'); void loadAudit().catch(e => setError(e instanceof Error ? e.message : 'Could not load audit history.')) }} className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium ${tab === 'audit' ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}><ClipboardList size={15} /> Audit Log</button>
+              <button onClick={() => { void (tab === 'audit' ? loadAudit() : loadAdminData()).catch(e => setError(e instanceof Error ? e.message : 'Refresh failed.')) }} className="ml-auto inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted"><RefreshCw size={15} /> Refresh</button>
             </div>
 
             {tab === 'updates' && <div className="mt-4 space-y-4">
@@ -349,10 +374,26 @@ export default function DailyUpdatesAdmin() {
               <div className="space-y-3">
                 {members.map(member => <div key={member.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
                   <div><p className="font-semibold">{member.displayName}</p><p className="text-sm text-muted-foreground">{member.loginId}</p><p className="mt-1 text-xs text-muted-foreground">{member.isActive ? 'Active' : 'Access disabled'} · Created {new Date(member.createdAt).toLocaleDateString('en-IN')}</p></div>
-                  <button disabled={busy} onClick={() => void toggleMember(member)} className="rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50">{member.isActive ? 'Disable access' : 'Enable access'}</button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button disabled={busy} onClick={() => void toggleMember(member)} className="rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50">{member.isActive ? 'Disable access' : 'Enable access'}</button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input aria-label={`Temporary password for ${member.loginId}`} type="password" minLength={12} maxLength={200} value={resetPasswords[member.id] || ''} onChange={e => setResetPasswords(current => ({ ...current, [member.id]: e.target.value }))} placeholder="New temporary password" className="w-48 rounded-md border bg-background px-3 py-2 text-sm" />
+                      <button disabled={busy || (resetPasswords[member.id] || '').length < 12} onClick={() => void resetMemberPassword(member)} className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm disabled:opacity-50"><KeyRound size={14} /> Reset password</button>
+                    </div>
+                  </div>
                 </div>)}
                 {members.length === 0 && <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">अभी कोई अधिकृत सदस्य खाता नहीं बनाया गया है।</p>}
               </div>
+            </div>}
+
+            {tab === 'audit' && <div className="mt-4 space-y-3">
+              <p className="text-sm text-muted-foreground">हाल की अधिकतम 100 गतिविधियाँ। इस सूची में अपडेट, सदस्य खाते, पासवर्ड रीसेट और समीक्षा संबंधी कार्रवाइयाँ दर्ज होती हैं।</p>
+              {auditEntries.length === 0 && <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">अभी कोई audit entry उपलब्ध नहीं है। Refresh करके दोबारा जाँचें।</p>}
+              {auditEntries.map(entry => <article key={entry.id} className="rounded-xl border bg-card p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold">{entry.action.replaceAll('_', ' ')}</span><time className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString('en-IN')}</time></div>
+                <p className="mt-1 text-sm text-muted-foreground">By {entry.actorName}{entry.updateId ? ` · Update ${entry.updateId}` : ''}</p>
+                {entry.details && <p className="mt-2 break-words text-xs text-muted-foreground">{entry.details}</p>}
+              </article>)}
             </div>}
           </section>
         )}
