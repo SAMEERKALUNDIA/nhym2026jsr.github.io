@@ -1,0 +1,529 @@
+name: Daily Updates Preview Deployment and Smoke Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "worker.ts"
+      - "src/**"
+      - "public/**"
+      - "migrations/0003_daily_updates.sql"
+      - "migrations/0004_gallery_storage_compat.sql"
+      - "migrations/0005_finance_payment_reference_index_normalization.sql"
+      - "wrangler.daily-updates-preview.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/daily-updates-preview.yml"
+  push:
+    branches:
+      - feature/daily-updates-management
+      - test/final-preproduction-checks
+      - integration/daily-updates-on-current-main
+    paths:
+      - "worker.ts"
+      - "src/**"
+      - "public/**"
+      - "migrations/0003_daily_updates.sql"
+      - "migrations/0004_gallery_storage_compat.sql"
+      - "migrations/0005_finance_payment_reference_index_normalization.sql"
+      - "wrangler.daily-updates-preview.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/daily-updates-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize deployments and secret updates for this single Preview Worker.
+concurrency:
+  group: daily-updates-preview-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    environment: finance-preview
+    steps:
+      - name: Checkout Daily Updates feature branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build website assets
+        run: pnpm build
+
+      - name: Validate production and Preview configuration isolation
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, existsSync } from 'node:fs'
+          const production = JSON.parse(readFileSync('wrangler.jsonc', 'utf8'))
+          const preview = JSON.parse(readFileSync('wrangler.daily-updates-preview.jsonc', 'utf8'))
+          const fail = message => { console.error('FAIL ' + message); process.exit(1) }
+          if (production.name === preview.name) fail('Production and Preview Worker names must differ.')
+          if (production.d1_databases?.[0]?.database_id === preview.d1_databases?.[0]?.database_id) fail('Production and Preview D1 database IDs must differ.')
+          if (production.r2_buckets?.[0]?.bucket_name === preview.r2_buckets?.[0]?.bucket_name) fail('Production and Preview R2 buckets must differ.')
+          if (preview.vars?.FINANCE_PREVIEW_MODE !== 'true') fail('Preview-only guard must be enabled in Preview config.')
+          for (const secret of ['ADMIN_TOKEN', 'NHYM_EMAIL_SECRET']) {
+            if (!production.secrets?.required?.includes(secret) || !preview.secrets?.required?.includes(secret)) fail('Required secret declaration missing: ' + secret)
+          }
+          for (const file of ['migrations/0003_daily_updates.sql', 'migrations/0004_gallery_storage_compat.sql', 'migrations/0005_finance_payment_reference_index_normalization.sql']) {
+            if (!existsSync(file)) fail('Required migration file missing: ' + file)
+          }
+          const migration = readFileSync('migrations/0003_daily_updates.sql', 'utf8')
+          if (!/CREATE TABLE IF NOT EXISTS daily_update_photos/i.test(migration) || !/REFERENCES daily_updates\(id\) ON DELETE CASCADE/i.test(migration)) fail('Daily Updates migration lacks expected photo foreign-key compatibility.')
+          console.log('PASS production and Preview use distinct Worker, D1 and R2 resources; required secret declarations and migration files verified without reading secret values or changing production.')
+          NODE
+
+      - name: Validate Worker syntax
+        run: |
+          node --input-type=module <<'NODE'
+          import ts from 'typescript'
+          import { readFileSync } from 'node:fs'
+          const result = ts.transpileModule(readFileSync('worker.ts', 'utf8'), {
+            reportDiagnostics: true,
+            compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
+          })
+          const errors = (result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error)
+          if (errors.length) {
+            for (const diagnostic of errors) console.error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
+            process.exit(1)
+          }
+          console.log('Worker syntax passed.')
+          NODE
+
+      - name: Deploy isolated Daily Updates preview Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+          NHYM_EMAIL_SECRET: ${{ secrets.PREVIEW_NHYM_EMAIL_SECRET }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          test -n "$ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
+          test -n "$NHYM_EMAIL_SECRET" || (echo "Missing finance-preview environment secret PREVIEW_NHYM_EMAIL_SECRET" && exit 1)
+          printf '%s' "$ADMIN_TOKEN" | pnpm dlx wrangler@4 secret put ADMIN_TOKEN --config wrangler.daily-updates-preview.jsonc
+          printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.daily-updates-preview.jsonc
+          pnpm dlx wrangler@4 deploy --config wrangler.daily-updates-preview.jsonc
+
+      - name: Wait for preview and smoke-test access controls
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+        run: |
+          test -n "$PREVIEW_ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
+          node --input-type=module <<'NODE'
+          const base = 'https://nhymindia-daily-updates-preview.2026jsr.workers.dev'
+          const adminToken = process.env.PREVIEW_ADMIN_TOKEN
+          const deadline = Date.now() + 180000
+          let ready = false
+          while (Date.now() < deadline) {
+            try {
+              const response = await fetch(base + '/daily-updates')
+              if (response.status === 200) { ready = true; break }
+            } catch {}
+            await new Promise(resolve => setTimeout(resolve, 10000))
+          }
+          if (!ready) { console.error('Daily Updates preview did not become ready.'); process.exit(1) }
+          const checks = [
+            ['public Daily Updates page', '/daily-updates', 200, 'GET'],
+            ['public published-update API', '/api/daily-updates', 200, 'GET'],
+            ['admin update list requires admin token', '/api/admin/daily-updates', 401, 'GET'],
+            ['member identity requires member session', '/api/daily-updates/me', 401, 'GET'],
+            ['member submission requires member session', '/api/daily-updates/submissions', 401, 'POST'],
+            ['member management requires admin token', '/api/admin/daily-updates/users', 401, 'GET'],
+            ['Daily Updates audit requires admin token', '/api/admin/daily-updates/audit', 401, 'GET'],
+            ['admin image preview requires admin token', '/api/admin/daily-updates/images/00000000-0000-4000-8000-000000000001', 401, 'GET']
+          ]
+          for (const [name, path, expected, method] of checks) {
+            const response = await fetch(base + path, { method })
+            const text = await response.text()
+            if (response.status !== expected) {
+              console.error('FAIL ' + name + ': expected ' + expected + ', got ' + response.status + '; ' + text.slice(0, 180))
+              process.exitCode = 1
+            } else console.log('PASS ' + name + ' (' + expected + ')')
+          }
+
+          const adminHeaders = { authorization: 'Bearer ' + adminToken }
+          for (const [name, path] of [
+            ['Preview admin token authentication', '/api/admin/auth-check'],
+            ['Authenticated Daily Updates admin list', '/api/admin/daily-updates'],
+            ['Authenticated Daily Updates member management', '/api/admin/daily-updates/users'],
+            ['Authenticated Daily Updates audit log', '/api/admin/daily-updates/audit?limit=5']
+          ]) {
+            const response = await fetch(base + path, { headers: adminHeaders })
+            const text = await response.text()
+            if (response.status !== 200) {
+              console.error('FAIL ' + name + ': expected 200, got ' + response.status + '; ' + text.slice(0, 180))
+              process.exitCode = 1
+            } else console.log('PASS ' + name + ' (200)')
+          }
+          if (process.exitCode) process.exit(1)
+          NODE
+
+      - name: Prepare isolated Preview Gallery schema for integration tests
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+        run: |
+          test -n "$PREVIEW_ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
+          node --input-type=module <<'NODE'
+          const response = await fetch('https://nhymindia-daily-updates-preview.2026jsr.workers.dev/api/admin/daily-updates/ci-prepare', {
+            method: 'POST',
+            headers: { authorization: 'Bearer ' + process.env.PREVIEW_ADMIN_TOKEN }
+          })
+          const result = await response.json().catch(() => ({}))
+          if (!response.ok || result.ok !== true || result.gallerySchemaReady !== true) {
+            throw new Error('Preview Gallery schema preparation failed with HTTP ' + response.status + ': ' + JSON.stringify(result))
+          }
+          console.log('PASS isolated Preview Gallery schema is ready.')
+          NODE
+
+      - name: Browser UI smoke tests for public and separated portals
+        env:
+          PREVIEW_BASE_URL: https://nhymindia-daily-updates-preview.2026jsr.workers.dev
+        run: |
+          pnpm add --save-dev playwright@1.55.0
+          pnpm exec playwright install chromium
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright'
+          const base = process.env.PREVIEW_BASE_URL
+          const browser = await chromium.launch({ headless: true })
+          const routes = [
+            ['/daily-updates', ['Daily Updates']],
+            ['/admin/updates', ['Daily Updates Login', 'Login ID']],
+            ['/admin/finance', ['Finance Panel']],
+            ['/participant', ['Participant Portal']],
+            ['/gallery', ['Photo Gallery']],
+            ['/login?role=finance', ['Secure Login']]
+          ]
+          try {
+            for (const [route, expected] of routes) {
+              for (const viewport of [{ name: 'desktop', width: 1365, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
+                const page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height }, isMobile: viewport.name === 'mobile', hasTouch: viewport.name === 'mobile' })
+                const errors = []
+                page.on('pageerror', error => errors.push(error.message))
+                const response = await page.goto(base + route, { waitUntil: 'domcontentloaded', timeout: 45000 })
+                if (!response || response.status() !== 200) throw new Error(route + ' (' + viewport.name + ') returned HTTP ' + (response?.status() ?? 'no response'))
+                // Cloudflare can briefly serve the previous asset bundle immediately after deployment.
+                // Wait for the expected UI text to appear before classifying the route as broken.
+                let body = ''
+                const deadline = Date.now() + 15000
+                while (Date.now() < deadline) {
+                  body = await page.locator('body').innerText({ timeout: 15000 }).catch(() => '')
+                  if (expected.every(text => body.toLowerCase().includes(text.toLowerCase()))) break
+                  await page.waitForTimeout(750)
+                }
+                for (const text of expected) {
+                  if (!body.toLowerCase().includes(text.toLowerCase())) throw new Error(route + ' (' + viewport.name + ') missing expected UI text after waiting for hydration/deployment propagation: ' + text + '; body=' + body.slice(0, 240))
+                }
+                if (route === '/login?role=finance' && await page.locator('input[placeholder="Finance login ID"]').count() !== 1) throw new Error('Finance login mode did not render its dedicated Login ID field.')
+                const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+                if (dimensions.scrollWidth > dimensions.width + 2) throw new Error(route + ' (' + viewport.name + ') has horizontal overflow: ' + JSON.stringify(dimensions))
+                if (errors.length) throw new Error(route + ' (' + viewport.name + ') raised browser errors: ' + errors.join('; '))
+                console.log('PASS browser UI ' + route + ' (' + viewport.name + ', HTTP 200; expected UI visible; no horizontal overflow; no uncaught page errors)')
+                await page.close()
+              }
+            }
+          } finally {
+            await browser.close()
+          }
+          NODE
+
+      - name: End-to-end committee submission, Admin review, publication and rejection
+        id: e2e
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { randomBytes } from 'node:crypto'
+          const base = 'https://nhymindia-daily-updates-preview.2026jsr.workers.dev'
+          const adminToken = process.env.PREVIEW_ADMIN_TOKEN
+          const adminHeaders = { authorization: 'Bearer ' + adminToken }
+          const check = (condition, message) => { if (!condition) throw new Error(message); console.log('PASS ' + message) }
+          const request = async (path, options = {}) => {
+            const response = await fetch(base + path, options)
+            let data = {}
+            try { data = await response.json() } catch {}
+            return { response, data }
+          }
+          const loginId = 'ci' + randomBytes(8).toString('hex')
+          const password = randomBytes(24).toString('hex')
+          const marker = 'CI Functional Test ' + randomBytes(6).toString('hex')
+          // Publish exact identifiers immediately so the always-run cleanup can target only this run's test records.
+          await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, `test_login_id=${loginId}\ntest_marker=${marker}\n`))
+          const date = new Date().toISOString().slice(0, 10)
+          const created = await request('/api/admin/daily-updates/users', {
+            method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ displayName: 'Automated Preview Test Member', loginId, password })
+          })
+          check(created.response.status === 201, 'temporary committee test account created')
+          const login = await request('/api/daily-updates/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password })
+          })
+          check(login.response.status === 200 && Boolean(login.data.token), 'committee member login succeeds')
+          let memberToken = login.data.token
+          const identity = await request('/api/daily-updates/me', { headers: { authorization: 'Bearer ' + memberToken } })
+          check(identity.response.status === 200 && identity.data.user?.loginId === loginId, 'committee session identity verified')
+
+          // Main Admin-only committee member password reset: verify authorization, session revocation,
+          // rejection of the old password, successful replacement credentials, and audit history.
+          const memberTempPassword = randomBytes(24).toString('hex')
+          const memberNewPassword = randomBytes(24).toString('hex')
+          const memberResetDenied = await request('/api/admin/daily-updates/users/' + encodeURIComponent(identity.data.user.id) + '/reset-password', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ password: memberTempPassword })
+          })
+          check(memberResetDenied.response.status === 401, 'unauthenticated request cannot reset committee member password')
+          const memberReset = await request('/api/admin/daily-updates/users/' + encodeURIComponent(identity.data.user.id) + '/reset-password', {
+            method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ password: memberTempPassword })
+          })
+          check(memberReset.response.status === 200, 'Main Admin can reset committee member password')
+          check((await request('/api/daily-updates/me', { headers: { authorization: 'Bearer ' + memberToken } })).response.status === 401, 'committee member password reset revokes existing session')
+          const oldMemberLogin = await request('/api/daily-updates/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password })
+          })
+          check(oldMemberLogin.response.status === 401, 'old committee member password is rejected after reset')
+          const memberTempLogin = await request('/api/daily-updates/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password: memberTempPassword })
+          })
+          check(memberTempLogin.response.status === 200 && Boolean(memberTempLogin.data.token), 'committee member can log in with reset password')
+          const memberPasswordChange = await request('/api/admin/daily-updates/users/' + encodeURIComponent(identity.data.user.id) + '/reset-password', {
+            method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ password: memberNewPassword })
+          })
+          check(memberPasswordChange.response.status === 200, 'Admin can issue a second committee password for final session test')
+          check((await request('/api/daily-updates/me', { headers: { authorization: 'Bearer ' + memberTempLogin.data.token } })).response.status === 401, 'second committee password reset revokes temporary session')
+          const memberFinalLogin = await request('/api/daily-updates/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password: memberNewPassword })
+          })
+          check(memberFinalLogin.response.status === 200 && Boolean(memberFinalLogin.data.token), 'committee member can log in after final password reset')
+          const memberAudit = await request('/api/admin/daily-updates/audit?limit=50', { headers: adminHeaders })
+          check(memberAudit.response.status === 200 && memberAudit.data.logs?.some(log => log.action === 'MEMBER_PASSWORD_RESET' && (() => { try { return JSON.parse(log.details ?? '{}').userId === identity.data.user.id } catch { return false } })()), 'committee member password reset is recorded in audit log')
+          memberToken = memberFinalLogin.data.token
+
+          // Cross-module authorization checks: role tokens must not cross into other modules.
+          for (const [name, path, token] of [
+            ['committee token cannot access Admin Daily Updates API', '/api/admin/daily-updates', memberToken],
+            ['committee token cannot access Admin Gallery API', '/api/admin/gallery', memberToken],
+            ['committee token cannot access Finance dashboard API', '/api/finance/dashboard', memberToken],
+            ['Main Admin token cannot access Finance dashboard API', '/api/finance/dashboard', adminToken],
+            ['Main Admin token cannot access Finance audit API', '/api/finance/audit', adminToken],
+            ['committee token cannot access Finance audit API', '/api/finance/audit', memberToken],
+            ['committee token cannot access Daily Updates audit API', '/api/admin/daily-updates/audit', memberToken]
+          ]) {
+            const result = await request(path, { headers: { authorization: 'Bearer ' + token } })
+            check(result.response.status === 401, name + ' (401)')
+          }
+          // Finance role regression tests use only CI-prefixed accounts and clean them up in the always-run step.
+          // Existing Preview finance users, credentials, and records are never modified.
+          const bootstrapWithoutAdmin = await request('/api/finance/bootstrap', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ displayName: 'Unauthorized CI Head', loginId: 'ci-unauthorized-head', password: 'not-a-real-password-123' }) })
+          check(bootstrapWithoutAdmin.response.status === 401, 'Finance bootstrap rejects requests without Main Admin authorization')
+          const financeSetup = await request('/api/finance/setup-status')
+          check(financeSetup.response.status === 200, 'Finance setup status endpoint responds')
+          const financeSuffix = randomBytes(6).toString('hex')
+          const financeLoginIds = ['head', 'operator', 'approver', 'auditor'].map(role => 'ci-finance-' + role + '-' + financeSuffix)
+          await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, 'test_finance_login_ids=' + financeLoginIds.join(',') + '\n'))
+          const financePassword = randomBytes(24).toString('hex')
+          const financeTempPassword = randomBytes(24).toString('hex')
+          const financeNewPassword = randomBytes(24).toString('hex')
+          const financeBootstrap = financeSetup.data.setupComplete === false
+            ? await request('/api/finance/bootstrap', {
+                method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+                body: JSON.stringify({ displayName: 'CI Finance Head', loginId: financeLoginIds[0], password: financePassword })
+              })
+            : await request('/api/admin/daily-updates/ci-finance-prepare', {
+                method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+                body: JSON.stringify({ loginId: financeLoginIds[0], password: financePassword })
+              })
+          check(financeBootstrap.response.status === 201, 'Preview-only Finance Head account prepared safely')
+          const financeLogin = async (loginId, password) => request('/api/finance/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password })
+          })
+          const headLogin = await financeLogin(financeLoginIds[0], financePassword)
+          check(headLogin.response.status === 200 && Boolean(headLogin.data.token), 'Finance Head separate login succeeds')
+          const headToken = headLogin.data.token
+          const financeHeaders = token => ({ authorization: 'Bearer ' + token })
+          const headDashboard = await request('/api/finance/dashboard', { headers: financeHeaders(headToken) })
+          check(headDashboard.response.status === 200, 'Finance Head can access Finance dashboard')
+          const headUsers = await request('/api/finance/users', { headers: financeHeaders(headToken) })
+          check(headUsers.response.status === 200, 'Finance Head can manage finance accounts')
+          const headAudit = await request('/api/finance/audit?limit=5', { headers: financeHeaders(headToken) })
+          check(headAudit.response.status === 200, 'Finance Head can read finance audit log')
+          check((await request('/api/admin/daily-updates', { headers: financeHeaders(headToken) })).response.status === 401, 'Finance Head cannot access Admin Daily Updates')
+          check((await request('/api/admin/gallery', { headers: financeHeaders(headToken) })).response.status === 401, 'Finance Head cannot access Admin Gallery')
+          const roleNames = ['OPERATOR', 'APPROVER', 'AUDITOR']
+          const financeUsers = {}
+          for (let index = 0; index < roleNames.length; index++) {
+            const role = roleNames[index]
+            const loginId = financeLoginIds[index + 1]
+            const createdFinanceUser = await request('/api/finance/users', {
+              method: 'POST', headers: { ...financeHeaders(headToken), 'content-type': 'application/json' },
+              body: JSON.stringify({ displayName: 'CI Finance ' + role, loginId, password: financePassword, role })
+            })
+            check(createdFinanceUser.response.status === 201, 'Finance Head creates ' + role + ' account')
+            financeUsers[role] = { id: createdFinanceUser.data.user.id, loginId }
+            const loggedIn = await financeLogin(loginId, financePassword)
+            check(loggedIn.response.status === 200 && loggedIn.data.user?.role === role, role + ' separate login succeeds')
+            const token = loggedIn.data.token
+            check((await request('/api/finance/dashboard', { headers: financeHeaders(token) })).response.status === 200, role + ' can access Finance dashboard')
+            const userAdmin = await request('/api/finance/users', { headers: financeHeaders(token) })
+            check(userAdmin.response.status === 403, role + ' cannot manage finance accounts')
+            const auditAccess = await request('/api/finance/audit?limit=5', { headers: financeHeaders(token) })
+            check(auditAccess.response.status === (role === 'AUDITOR' ? 200 : 403), role + ' audit permission is enforced')
+            check((await request('/api/admin/daily-updates', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Admin Daily Updates')
+            check((await request('/api/admin/gallery', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Admin Gallery')
+            check((await request('/api/admin/registrations', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Participant/Registration management')
+            check((await request('/api/admin/finance-users', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Main Admin finance recovery controls')
+          }
+          const operatorToken = (await financeLogin(financeUsers.OPERATOR.loginId, financePassword)).data.token
+          const unauthorizedReset = await request('/api/admin/finance-users/' + encodeURIComponent(financeUsers.OPERATOR.id) + '/reset-password', {
+            method: 'POST', headers: { ...financeHeaders(operatorToken), 'content-type': 'application/json' },
+            body: JSON.stringify({ password: financeTempPassword })
+          })
+          check(unauthorizedReset.response.status === 401, 'Finance user cannot reset password through Main Admin endpoint')
+          const reset = await request('/api/admin/finance-users/' + encodeURIComponent(financeUsers.OPERATOR.id) + '/reset-password', {
+            method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ password: financeTempPassword })
+          })
+          check(reset.response.status === 200, 'Main Admin can reset Finance password')
+          check((await request('/api/finance/dashboard', { headers: financeHeaders(operatorToken) })).response.status === 401, 'Admin password reset revokes existing Finance session')
+          const temporaryLogin = await financeLogin(financeUsers.OPERATOR.loginId, financeTempPassword)
+          check(temporaryLogin.response.status === 200 && temporaryLogin.data.mustChangePassword === true, 'reset password requires password change at next login')
+          const changedPassword = await request('/api/finance/change-password', {
+            method: 'POST', headers: { ...financeHeaders(temporaryLogin.data.token), 'content-type': 'application/json' },
+            body: JSON.stringify({ currentPassword: financeTempPassword, newPassword: financeNewPassword })
+          })
+          check(changedPassword.response.status === 200, 'Finance user can replace reset temporary password')
+          const resetAudit = await request('/api/finance/audit?entityType=FINANCE_USER&limit=50', { headers: financeHeaders(headToken) })
+          check(resetAudit.response.status === 200 && resetAudit.data.logs?.some(log => log.action === 'ADMIN_PASSWORD_RESET' && log.entity_id === financeUsers.OPERATOR.id), 'Finance password reset is recorded in audit history')
+          const finalLogin = await financeLogin(financeUsers.OPERATOR.loginId, financeNewPassword)
+          check(finalLogin.response.status === 200 && (await request('/api/finance/dashboard', { headers: financeHeaders(finalLogin.data.token) })).response.status === 200, 'Finance login works after password change')
+
+          const submit = async (title, includePhoto = false) => {
+            const form = new FormData()
+            form.set('title', title)
+            form.set('body', 'Automated end-to-end test; preview-only content.')
+            form.set('category', 'Automated Test')
+            form.set('eventDate', date)
+            if (includePhoto) {
+              const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ0cAAAAASUVORK5CYII=', 'base64')
+              form.append('photos', new Blob([png], { type: 'image/png' }), 'ci-test.png')
+            }
+            const result = await request('/api/daily-updates/submissions', {
+              method: 'POST', headers: { authorization: 'Bearer ' + memberToken }, body: form
+            })
+            check(result.response.status === 201 && result.data.status === 'PENDING', 'committee submission enters PENDING (HTTP ' + result.response.status + ': ' + JSON.stringify(result.data) + ')')
+            return result.data
+          }
+          const publishedTitle = marker + ' publish'
+          await submit(publishedTitle, true)
+          let adminList = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          const published = adminList.data.updates?.find(u => u.title === publishedTitle && u.status === 'PENDING')
+          check(adminList.response.status === 200 && Boolean(published?.id), 'Admin sees pending submission')
+          const approve = await request('/api/admin/daily-updates/' + encodeURIComponent(published.id), {
+            method: 'PATCH', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'approve' })
+          })
+          check(approve.response.status === 200 && approve.data.status === 'PUBLISHED', 'Admin approves and publishes submission')
+          const publicList = await request('/api/daily-updates')
+          check(publicList.response.status === 200 && publicList.data.updates?.some(u => u.id === published.id && u.title === publishedTitle), 'published update appears on public API')
+          const publicPublished = publicList.data.updates?.find(u => u.id === published.id)
+          check(publicPublished?.photos?.length === 1, 'uploaded photo metadata appears with published update')
+          const publicImage = await fetch(new URL(publicPublished.photos[0].imageUrl, base))
+          const publicImageBytes = Buffer.from(await publicImage.arrayBuffer())
+          check(publicImage.status === 200 && publicImage.headers.get('content-type') === 'image/png' && publicImageBytes[0] === 0x89 && publicImageBytes[1] === 0x50 && publicImageBytes[2] === 0x4e && publicImageBytes[3] === 0x47, 'uploaded photo is retrievable from public image endpoint after approval')
+          const invalidPhotoTitle = marker + ' invalid-photo'
+          const invalidPhotoForm = new FormData()
+          invalidPhotoForm.set('title', invalidPhotoTitle)
+          invalidPhotoForm.set('body', 'Automated invalid image signature test; preview-only.')
+          invalidPhotoForm.set('category', 'Automated Test')
+          invalidPhotoForm.set('eventDate', date)
+          invalidPhotoForm.append('photos', new Blob([Buffer.from('not a real PNG')], { type: 'image/png' }), 'spoofed.png')
+          const invalidPhoto = await request('/api/daily-updates/submissions', { method: 'POST', headers: { authorization: 'Bearer ' + memberToken }, body: invalidPhotoForm })
+          check(invalidPhoto.response.status === 400, 'upload rejects a file with spoofed image MIME type')
+          const afterInvalidPhoto = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          check(!afterInvalidPhoto.data.updates?.some(u => u.title === invalidPhotoTitle), 'invalid image upload leaves no pending update')
+          const adminPendingImage = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          check(adminPendingImage.response.status === 200 && adminPendingImage.data.updates?.find(u => u.id === published.id)?.photos?.length === 1, 'Admin review can see submitted photo metadata')
+          const rejectedTitle = marker + ' reject'
+          await submit(rejectedTitle, true)
+          adminList = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          const rejected = adminList.data.updates?.find(u => u.title === rejectedTitle && u.status === 'PENDING')
+          check(Boolean(rejected?.id), 'Admin sees second pending submission')
+          const reject = await request('/api/admin/daily-updates/' + encodeURIComponent(rejected.id), {
+            method: 'PATCH', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'reject', note: 'Automated preview rejection test' })
+          })
+          check(reject.response.status === 200 && reject.data.status === 'REJECTED' && reject.data.deletedPhotoCount === 1, 'Admin rejects submission and removes its uploaded photo from R2')
+          adminList = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          const rejectedAfter = adminList.data.updates?.find(u => u.id === rejected.id)
+          check(adminList.response.status === 200 && rejectedAfter?.status === 'REJECTED' && rejectedAfter?.rejectionNote === 'Automated preview rejection test' && rejectedAfter?.photos?.length === 0, 'rejection status persists and photo metadata is removed')
+          const publicAfterReject = await request('/api/daily-updates')
+          check(publicAfterReject.response.status === 200 && !publicAfterReject.data.updates?.some(u => u.id === rejected.id), 'rejected update is not public')
+
+          const deleteTitle = marker + ' delete'
+          await submit(deleteTitle, true)
+          adminList = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          const toDelete = adminList.data.updates?.find(u => u.title === deleteTitle && u.status === 'PENDING')
+          check(Boolean(toDelete?.id), 'Admin sees submission targeted for deletion')
+          const deleteResult = await request('/api/admin/daily-updates/' + encodeURIComponent(toDelete.id), { method: 'DELETE', headers: adminHeaders })
+          check(deleteResult.response.status === 200 && deleteResult.data.deleted === true && deleteResult.data.deletedPhotoCount === 1, 'Admin deletion removes update and its R2 photo')
+          adminList = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          check(!adminList.data.updates?.some(u => u.id === toDelete.id), 'deleted update is absent from Admin list')
+          const deleteAudit = await request('/api/admin/daily-updates/audit?updateId=' + encodeURIComponent(toDelete.id) + '&limit=20', { headers: adminHeaders })
+          check(deleteAudit.response.status === 200 && deleteAudit.data.logs?.some(log => log.action === 'DELETED' && log.updateId === toDelete.id), 'deletion audit record is preserved')
+          const users = await request('/api/admin/daily-updates/users', { headers: adminHeaders })
+          check(users.response.status === 200 && users.data.users?.some(u => u.loginId === loginId), 'test member appears in Admin member list')
+          const publishedAudit = await request('/api/admin/daily-updates/audit?updateId=' + encodeURIComponent(published.id) + '&limit=20', { headers: adminHeaders })
+          check(publishedAudit.response.status === 200 && publishedAudit.data.logs?.some(log => log.action === 'SUBMITTED_FOR_APPROVAL' && log.updateId === published.id) && publishedAudit.data.logs?.some(log => log.action === 'APPROVED_AND_PUBLISHED' && log.updateId === published.id), 'audit log records committee submission and Admin publication')
+          const rejectedAudit = await request('/api/admin/daily-updates/audit?updateId=' + encodeURIComponent(rejected.id) + '&limit=20', { headers: adminHeaders })
+          check(rejectedAudit.response.status === 200 && rejectedAudit.data.logs?.some(log => log.action === 'SUBMITTED_FOR_APPROVAL' && log.updateId === rejected.id) && rejectedAudit.data.logs?.some(log => log.action === 'REJECTED' && log.updateId === rejected.id), 'audit log records committee submission and Admin rejection')
+          console.log('E2E test completed. Preview audit records verified; exact test identifiers saved for cleanup.')
+          NODE
+
+      - name: Clean up only this run's Preview test account and updates
+        if: always() && steps.e2e.outputs.test_login_id != '' && steps.e2e.outputs.test_marker != ''
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+          TEST_LOGIN_ID: ${{ steps.e2e.outputs.test_login_id }}
+          TEST_MARKER: ${{ steps.e2e.outputs.test_marker }}
+          TEST_FINANCE_LOGIN_IDS: ${{ steps.e2e.outputs.test_finance_login_ids }}
+        run: |
+          node --input-type=module <<'NODE'
+          const loginId = process.env.TEST_LOGIN_ID ?? ''
+          const marker = process.env.TEST_MARKER ?? ''
+          if (!/^ci[0-9a-f]{16}$/.test(loginId) || !/^CI Functional Test [0-9a-f]{12}$/.test(marker)) {
+            throw new Error('Unexpected test identifiers; refusing to delete any data.')
+          }
+          const response = await fetch('https://nhymindia-daily-updates-preview.2026jsr.workers.dev/api/admin/daily-updates/ci-cleanup', {
+            method: 'POST',
+            headers: {
+              authorization: 'Bearer ' + process.env.PREVIEW_ADMIN_TOKEN,
+              'content-type': 'application/json'
+            },
+            body: JSON.stringify({ loginId, marker, financeLoginIds: (process.env.TEST_FINANCE_LOGIN_IDS ?? '').split(',').filter(Boolean) })
+          })
+          const result = await response.json().catch(() => ({}))
+          if (!response.ok || result.ok !== true || result.auditHistoryPreserved !== true) {
+            throw new Error('Preview cleanup failed with HTTP ' + response.status + ': ' + JSON.stringify(result))
+          }
+          console.log('PASS Preview-only cleanup: ' + result.deletedUpdates + ' marked updates removed; ' + result.deletedTestAccounts + ' committee test accounts and ' + result.deletedFinanceTestUsers + ' finance test accounts removed; audit history preserved.')
+          NODE

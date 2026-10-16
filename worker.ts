@@ -41,8 +41,11 @@ function uppercaseRegistrationValues(value: unknown, key = ''): unknown {
 }
 
 function authorised(request: Request, env: Env) {
-  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-  return Boolean(env.ADMIN_TOKEN && token === env.ADMIN_TOKEN)
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim()
+  // Normalize accidental surrounding whitespace in deployment secrets while retaining
+  // an exact token comparison.
+  const configuredToken = env.ADMIN_TOKEN?.trim()
+  return Boolean(configuredToken && token && token === configuredToken)
 }
 
 async function financeDigest(value: string): Promise<string> {
@@ -61,6 +64,101 @@ function financeRandomHex(bytes = 16): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+async function getDailyUpdateMember(request: Request, env: Env) {
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
+  if (!token) return null
+  const tokenHash = await financeDigest(token)
+  return env.DB.prepare(`
+    SELECT u.id, u.display_name, u.login_id
+    FROM daily_update_sessions s
+    JOIN daily_update_users u ON u.id = s.user_id
+    WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now') AND u.is_active = 1
+  `).bind(tokenHash).first<{ id: string; display_name: string; login_id: string }>()
+}
+
+async function logDailyUpdate(env: Env, actorUserId: string | null, actorName: string, action: string, updateId: string | null, details?: unknown) {
+  await env.DB.prepare(`
+    INSERT INTO daily_update_audit_log (id, actor_user_id, actor_name, action, update_id, details_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).bind(crypto.randomUUID(), actorUserId, actorName, action, updateId, details === undefined ? null : JSON.stringify(details), new Date().toISOString()).run()
+}
+
+const DAILY_UPDATE_IMAGE_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
+
+async function storeDailyUpdatePhotos(env: Env, updateId: string, files: File[]) {
+  if (files.length > 5) throw new Error('एक अपडेट में अधिकतम 5 फोटो अपलोड की जा सकती हैं।')
+  const totalBytes = files.reduce((total, file) => total + file.size, 0)
+  if (totalBytes > 50 * 1024 * 1024) throw new Error('एक अपडेट की सभी फोटो का कुल आकार 50 MB से अधिक नहीं होना चाहिए।')
+  for (const file of files) {
+    if (!(file.type in DAILY_UPDATE_IMAGE_TYPES)) throw new Error('केवल JPG, PNG और WebP फोटो अपलोड की जा सकती हैं।')
+    if (file.size <= 0 || file.size > 20 * 1024 * 1024) throw new Error('हर फोटो का आकार 20 MB तक होना चाहिए।')
+  }
+
+  const storedKeys: string[] = []
+  try {
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index]
+      const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+      const detectedType =
+        bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? 'image/jpeg'
+        : bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 ? 'image/png'
+        : bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50 ? 'image/webp'
+        : ''
+      if (detectedType !== file.type) throw new Error('फोटो की वास्तविक फ़ाइल सामग्री और प्रकार मेल नहीं खाते।')
+
+      const id = crypto.randomUUID()
+      const key = `daily-updates/${updateId}/${id}.${DAILY_UPDATE_IMAGE_TYPES[file.type]}`
+      const reservationId = crypto.randomUUID()
+      const maxSharedStorageBytes = 10 * 1024 * 1024 * 1024
+      const reservationBatch = await env.DB.batch([
+        env.DB.prepare("DELETE FROM finance_storage_reservations WHERE expires_at <= CURRENT_TIMESTAMP"),
+        env.DB.prepare(`
+          INSERT INTO finance_storage_reservations (id, size_bytes, expires_at)
+          SELECT ?, ?, datetime('now', '+1 hour')
+          WHERE
+            (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+            (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
+            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
+            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) +
+            ? <= ?
+        `).bind(reservationId, file.size, file.size, maxSharedStorageBytes),
+      ])
+      if (Number(reservationBatch[1]?.meta?.changes ?? 0) !== 1) {
+        const usage = await env.DB.prepare(`
+          SELECT
+            (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+            (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
+            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
+            (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) AS total_bytes
+        `).first<{ total_bytes: number }>()
+        const usedBytes = Number(usage?.total_bytes ?? 0)
+        throw new Error(`साझा 10 GB स्टोरेज सीमा के कारण फोटो अपलोड नहीं हो सकी। उपलब्ध स्थान: ${Math.max(0, maxSharedStorageBytes - usedBytes)} bytes.`)
+      }
+      try {
+        await env.GALLERY.put(key, file.stream(), { httpMetadata: { contentType: file.type } })
+        storedKeys.push(key)
+        await env.DB.prepare(`
+          INSERT INTO daily_update_photos (id, update_id, r2_key, original_name, content_type, file_size, caption, display_order, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)
+        `).bind(id, updateId, key, file.name.slice(0, 255), file.type, file.size, index, new Date().toISOString()).run()
+      } catch (error) {
+        await env.GALLERY.delete(key).catch(() => undefined)
+        throw error
+      } finally {
+        await env.DB.prepare('DELETE FROM finance_storage_reservations WHERE id = ?').bind(reservationId).run().catch(() => undefined)
+      }
+    }
+  } catch (error) {
+    await Promise.all(storedKeys.map(key => env.GALLERY.delete(key).catch(() => undefined)))
+    await env.DB.prepare('DELETE FROM daily_update_photos WHERE update_id = ?').bind(updateId).run().catch(() => undefined)
+    throw error
+  }
+}
+
 function isValidFinanceDate(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
   if (!match) return false
@@ -77,6 +175,418 @@ function isValidFinanceDate(value: string): boolean {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+
+    // DAILY UPDATES — public list exposes only Admin-approved publications.
+    if (url.pathname === '/api/daily-updates' && request.method === 'GET') {
+      const result = await env.DB.prepare(`
+        SELECT id, title, body, category, event_date, published_at, created_at
+        FROM daily_updates
+        WHERE status = 'PUBLISHED'
+        ORDER BY event_date DESC, published_at DESC
+        LIMIT 100
+      `).all()
+      const updates = await Promise.all((result.results ?? []).map(async (row: any) => {
+        const photos = await env.DB.prepare(`
+          SELECT id, caption, file_size FROM daily_update_photos WHERE update_id = ? ORDER BY display_order, created_at
+        `).bind(row.id).all()
+        return {
+          id: row.id, title: row.title, body: row.body, category: row.category,
+          eventDate: row.event_date, publishedAt: row.published_at, createdAt: row.created_at,
+          photos: (photos.results ?? []).map((photo: any) => ({
+            id: photo.id, caption: photo.caption, fileSize: photo.file_size,
+            imageUrl: `/api/daily-updates/images/${encodeURIComponent(photo.id)}`
+          }))
+        }
+      }))
+      return json({ updates }, 200)
+    }
+
+    // DAILY UPDATES — public image route only serves photos belonging to published updates.
+    const dailyPublicImage = url.pathname.match(/^\/api\/daily-updates\/images\/([a-f0-9-]+)$/i)
+    if (dailyPublicImage && request.method === 'GET') {
+      const photo = await env.DB.prepare(`
+        SELECT p.r2_key, p.content_type
+        FROM daily_update_photos p JOIN daily_updates u ON u.id = p.update_id
+        WHERE p.id = ? AND u.status = 'PUBLISHED'
+      `).bind(dailyPublicImage[1]).first<{ r2_key: string; content_type: string }>()
+      if (!photo) return json({ error: 'Image not found' }, 404)
+      const object = await env.GALLERY.get(photo.r2_key)
+      if (!object) return json({ error: 'Image not found' }, 404)
+      const headers = new Headers()
+      object.writeHttpMetadata(headers)
+      headers.set('content-type', photo.content_type)
+      headers.set('x-content-type-options', 'nosniff')
+      headers.set('cache-control', 'public, max-age=86400')
+      headers.set('etag', object.httpEtag)
+      return new Response(object.body, { headers })
+    }
+
+    // DAILY UPDATES — authorized committee member login with rate limiting.
+    if (url.pathname === '/api/daily-updates/login' && request.method === 'POST') {
+      let body: { loginId?: string; password?: string }
+      try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+      const loginId = String(body.loginId ?? '').trim().toLowerCase()
+      const password = String(body.password ?? '')
+      if (!/^[a-z0-9._-]{3,80}$/.test(loginId) || !password || password.length > 200) {
+        return financeJson({ error: 'Valid Login ID and password are required.' }, 400)
+      }
+      const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown'
+      const attemptKey = await financeDigest(`daily-updates|${loginId}|${ip}`)
+      const now = Date.now()
+      const limit = await env.DB.prepare('SELECT failures, window_started_at, locked_until FROM daily_update_login_limits WHERE attempt_key = ?')
+        .bind(attemptKey).first<{ failures: number; window_started_at: string; locked_until: string | null }>()
+      if (limit?.locked_until && new Date(limit.locked_until).getTime() > now) {
+        return financeJson({ error: 'Too many failed attempts. Please try again after 15 minutes.' }, 429)
+      }
+      const user = await env.DB.prepare('SELECT id, display_name, login_id, password_salt, password_hash FROM daily_update_users WHERE login_id = ? COLLATE NOCASE AND is_active = 1')
+        .bind(loginId).first<{ id: string; display_name: string; login_id: string; password_salt: string; password_hash: string }>()
+      const passwordHash = user ? await financePasswordHash(password, user.password_salt) : ''
+      if (!user || passwordHash !== user.password_hash) {
+        const windowExpired = !limit || now - new Date(limit.window_started_at).getTime() > 15 * 60 * 1000
+        const failures = windowExpired ? 1 : Number(limit.failures) + 1
+        const windowStarted = windowExpired ? new Date(now).toISOString() : limit.window_started_at
+        const lockedUntil = failures >= 8 ? new Date(now + 15 * 60 * 1000).toISOString() : null
+        await env.DB.prepare(`
+          INSERT INTO daily_update_login_limits (id, attempt_key, failures, window_started_at, locked_until)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(attempt_key) DO UPDATE SET failures = excluded.failures, window_started_at = excluded.window_started_at, locked_until = excluded.locked_until
+        `).bind(crypto.randomUUID(), attemptKey, failures, windowStarted, lockedUntil).run()
+        return financeJson({ error: 'Login ID या password सही नहीं है।' }, 401)
+      }
+      await env.DB.prepare('DELETE FROM daily_update_login_limits WHERE attempt_key = ?').bind(attemptKey).run()
+      const token = financeRandomHex(32)
+      const tokenHash = await financeDigest(token)
+      const expiresAt = new Date(now + 12 * 60 * 60 * 1000).toISOString()
+      await env.DB.prepare('INSERT INTO daily_update_sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(crypto.randomUUID(), user.id, tokenHash, expiresAt, new Date(now).toISOString()).run()
+      await env.DB.prepare('UPDATE daily_update_users SET last_login_at = ? WHERE id = ?').bind(new Date(now).toISOString(), user.id).run()
+      return financeJson({ ok: true, token, expiresAt, user: { id: user.id, displayName: user.display_name, loginId: user.login_id } })
+    }
+
+    if (url.pathname === '/api/daily-updates/me' && request.method === 'GET') {
+      const actor = await getDailyUpdateMember(request, env)
+      if (!actor) return financeJson({ error: 'Sign in with an authorized committee account.' }, 401)
+      return financeJson({ user: { id: actor.id, displayName: actor.display_name, loginId: actor.login_id } })
+    }
+
+    // DAILY UPDATES — committee members can submit drafts, but never publish them.
+    if (url.pathname === '/api/daily-updates/submissions' && request.method === 'POST') {
+      const actor = await getDailyUpdateMember(request, env)
+      if (!actor) return financeJson({ error: 'Your session has expired. Please sign in again.' }, 401)
+      const form = await request.formData()
+      const title = String(form.get('title') ?? '').trim()
+      const body = String(form.get('body') ?? '').trim()
+      const category = String(form.get('category') ?? 'General').trim().slice(0, 80) || 'General'
+      const eventDate = String(form.get('eventDate') ?? '').trim()
+      if (!title || title.length > 160 || !body || body.length > 10000 || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || !isValidFinanceDate(eventDate)) {
+        return financeJson({ error: 'शीर्षक, विवरण और सही तारीख दर्ज करें।' }, 400)
+      }
+      const files = form.getAll('photos').filter((item): item is File => item instanceof File && item.size > 0)
+      const id = crypto.randomUUID()
+      const nowIso = new Date().toISOString()
+      try {
+        await env.DB.prepare(`
+          INSERT INTO daily_updates (id, title, body, category, event_date, status, created_by_user_id, created_by_name, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?)
+        `).bind(id, title, body, category, eventDate, actor.id, actor.display_name, nowIso, nowIso).run()
+        await storeDailyUpdatePhotos(env, id, files)
+        await logDailyUpdate(env, actor.id, actor.display_name, 'SUBMITTED_FOR_APPROVAL', id, { photoCount: files.length })
+        return financeJson({ ok: true, status: 'PENDING', message: 'Update submitted for Admin approval.' }, 201)
+      } catch (error) {
+        await env.DB.prepare('DELETE FROM daily_updates WHERE id = ?').bind(id).run().catch(() => undefined)
+        const message = error instanceof Error ? error.message : ''
+        return financeJson({ error: message || 'Update could not be saved.' }, 400)
+      }
+    }
+
+    // Preview-only schema bootstrap for isolated integration tests; production always returns 404.
+    if (url.pathname === '/api/admin/daily-updates/ci-prepare' && request.method === 'POST') {
+      if (env.FINANCE_PREVIEW_MODE !== 'true') return json({ error: 'Not found' }, 404)
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      await env.DB.batch([
+        env.DB.prepare(`CREATE TABLE IF NOT EXISTS gallery_photos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          r2_key TEXT NOT NULL UNIQUE,
+          title TEXT NOT NULL,
+          caption TEXT,
+          category TEXT NOT NULL DEFAULT 'NHYM Events',
+          content_type TEXT NOT NULL,
+          file_size INTEGER,
+          is_published INTEGER NOT NULL DEFAULT 1,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`),
+        env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_gallery_photos_published ON gallery_photos(is_published, display_order, created_at)')
+      ])
+      return financeJson({ ok: true, gallerySchemaReady: true })
+    }
+
+    // Preview-only seed of one temporary Finance Head when Preview already has real finance users.
+    // The seeded account is CI-prefixed, requires Main Admin auth, and is removed by ci-cleanup.
+    if (url.pathname === '/api/admin/daily-updates/ci-finance-prepare' && request.method === 'POST') {
+      if (env.FINANCE_PREVIEW_MODE !== 'true') return json({ error: 'Not found' }, 404)
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let payload: { loginId?: unknown; password?: unknown }
+      try { payload = await request.json() as { loginId?: unknown; password?: unknown } } catch { return financeJson({ error: 'Invalid JSON' }, 400) }
+      const loginId = typeof payload.loginId === 'string' ? payload.loginId : ''
+      const password = typeof payload.password === 'string' ? payload.password : ''
+      if (!/^ci-finance-head-[0-9a-f]{12}$/.test(loginId) || password.length < 12 || password.length > 200) {
+        return financeJson({ error: 'Invalid Preview Finance test credentials' }, 400)
+      }
+      const existing = await env.DB.prepare('SELECT id FROM finance_users WHERE login_id = ?').bind(loginId).first<{ id: string }>()
+      if (existing) return financeJson({ error: 'Preview Finance test login already exists' }, 409)
+      const salt = financeRandomHex(16)
+      const passwordHash = await financePasswordHash(password, salt)
+      await env.DB.prepare("INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) VALUES (?, 'CI Finance Head', ?, 'FINANCE_HEAD', ?, ?)").bind(crypto.randomUUID(), loginId, salt, passwordHash).run()
+      return financeJson({ ok: true, created: true }, 201)
+    }
+
+    // Preview-only CI cleanup. Never available on production; preserves audit history.
+    if (url.pathname === '/api/admin/daily-updates/ci-cleanup' && request.method === 'POST') {
+      if (env.FINANCE_PREVIEW_MODE !== 'true') return json({ error: 'Not found' }, 404)
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let payload: { loginId?: unknown; marker?: unknown; financeLoginIds?: unknown }
+      try { payload = await request.json() as { loginId?: unknown; marker?: unknown } } catch { return financeJson({ error: 'Invalid JSON' }, 400) }
+      const loginId = typeof payload.loginId === 'string' ? payload.loginId : ''
+      const marker = typeof payload.marker === 'string' ? payload.marker : ''
+      if (!/^ci[0-9a-f]{16}$/.test(loginId) || !/^CI Functional Test [0-9a-f]{12}$/.test(marker)) {
+        return financeJson({ error: 'Invalid Preview test identifiers' }, 400)
+      }
+      const updates = await env.DB.prepare("SELECT id FROM daily_updates WHERE title LIKE 'CI Functional Test %'").all<{ id: string }>()
+      const updateIds = (updates.results ?? []).map(row => row.id)
+      for (const updateId of updateIds) {
+        const photos = await env.DB.prepare('SELECT r2_key FROM daily_update_photos WHERE update_id = ?').bind(updateId).all<{ r2_key: string }>()
+        await Promise.all((photos.results ?? []).map(photo => env.GALLERY.delete(photo.r2_key).catch(() => undefined)))
+        await env.DB.prepare('DELETE FROM daily_update_photos WHERE update_id = ?').bind(updateId).run()
+      }
+      for (const updateId of updateIds) {
+        await env.DB.prepare('DELETE FROM daily_updates WHERE id = ?').bind(updateId).run()
+      }
+      const users = await env.DB.prepare("SELECT id FROM daily_update_users WHERE display_name = 'Automated Preview Test Member' AND login_id GLOB 'ci????????????????'").all<{ id: string }>()
+      for (const user of users.results ?? []) {
+        if (!/^ci[0-9a-f]{16}$/.test(String((await env.DB.prepare('SELECT login_id FROM daily_update_users WHERE id = ?').bind(user.id).first<{ login_id: string }>())?.login_id ?? ''))) continue
+        await env.DB.prepare('DELETE FROM daily_update_sessions WHERE user_id = ?').bind(user.id).run()
+        await env.DB.prepare('DELETE FROM daily_update_users WHERE id = ?').bind(user.id).run()
+      }
+      const financeLoginIds = payload.financeLoginIds === undefined ? [] : payload.financeLoginIds
+      if (!Array.isArray(financeLoginIds) || financeLoginIds.some(value => typeof value !== 'string' || !/^ci-finance-(head|operator|approver|auditor)-[0-9a-f]{12}$/.test(value))) {
+        return financeJson({ error: 'Invalid Preview finance test identifiers' }, 400)
+      }
+      let deletedFinanceTestUsers = 0
+      for (const financeLoginId of financeLoginIds as string[]) {
+        const financeUser = await env.DB.prepare('SELECT id FROM finance_users WHERE login_id = ?').bind(financeLoginId).first<{ id: string }>()
+        if (!financeUser) continue
+        await env.DB.prepare('DELETE FROM finance_audit_logs WHERE actor_user_id = ? OR entity_id = ?').bind(financeUser.id, financeUser.id).run()
+        await env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ?').bind(financeUser.id).run()
+        await env.DB.prepare('DELETE FROM finance_users WHERE id = ?').bind(financeUser.id).run()
+        deletedFinanceTestUsers++
+      }
+      return financeJson({ ok: true, deletedUpdates: updateIds.length, deletedTestAccounts: (users.results ?? []).length, deletedFinanceTestUsers, auditHistoryPreserved: true })
+    }
+
+    // DAILY UPDATES — admin-only list, including unpublished content for review.
+    if (url.pathname === '/api/admin/daily-updates' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const result = await env.DB.prepare('SELECT * FROM daily_updates ORDER BY CASE status WHEN \'PENDING\' THEN 0 WHEN \'DRAFT\' THEN 1 WHEN \'REJECTED\' THEN 2 ELSE 3 END, updated_at DESC').all()
+      const updates = await Promise.all((result.results ?? []).map(async (row: any) => {
+        const photoResult = await env.DB.prepare('SELECT id, original_name, caption FROM daily_update_photos WHERE update_id = ? ORDER BY display_order, created_at').bind(row.id).all()
+        return {
+          id: row.id, title: row.title, body: row.body, category: row.category, eventDate: row.event_date,
+          status: row.status, createdByName: row.created_by_name, createdAt: row.created_at,
+          publishedAt: row.published_at, rejectionNote: row.rejection_note,
+          photos: (photoResult.results ?? []).map((photo: any) => ({
+            id: photo.id, caption: photo.caption, originalName: photo.original_name,
+            imageUrl: `/api/admin/daily-updates/images/${encodeURIComponent(photo.id)}`
+          }))
+        }
+      }))
+      return financeJson({ updates })
+    }
+
+    // DAILY UPDATES — admin-only audit history, bounded to the newest 200 records.
+    if (url.pathname === '/api/admin/daily-updates/audit' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const requestedLimit = Number(url.searchParams.get('limit') ?? 100)
+      const limit = Number.isFinite(requestedLimit) ? Math.min(200, Math.max(1, Math.floor(requestedLimit))) : 100
+      const updateId = url.searchParams.get('updateId')
+      const result = updateId
+        ? await env.DB.prepare('SELECT id, actor_user_id, actor_name, action, update_id, details_json, created_at FROM daily_update_audit_log WHERE update_id = ? ORDER BY created_at DESC LIMIT ?').bind(updateId, limit).all()
+        : await env.DB.prepare('SELECT id, actor_user_id, actor_name, action, update_id, details_json, created_at FROM daily_update_audit_log ORDER BY created_at DESC LIMIT ?').bind(limit).all()
+      return financeJson({ logs: (result.results ?? []).map((row: any) => ({
+        id: row.id, actorUserId: row.actor_user_id, actorName: row.actor_name, action: row.action,
+        updateId: row.update_id, details: row.details_json, createdAt: row.created_at
+      })) })
+    }
+
+    // DAILY UPDATES — admin-only photo preview for pending submissions.
+    const dailyAdminImage = url.pathname.match(/^\/api\/admin\/daily-updates\/images\/([a-f0-9-]+)$/i)
+    if (dailyAdminImage && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const photo = await env.DB.prepare('SELECT r2_key, content_type FROM daily_update_photos WHERE id = ?').bind(dailyAdminImage[1]).first<{ r2_key: string; content_type: string }>()
+      if (!photo) return json({ error: 'Image not found' }, 404)
+      const object = await env.GALLERY.get(photo.r2_key)
+      if (!object) return json({ error: 'Image not found' }, 404)
+      const headers = new Headers()
+      object.writeHttpMetadata(headers)
+      headers.set('content-type', photo.content_type)
+      headers.set('x-content-type-options', 'nosniff')
+      headers.set('cache-control', 'private, no-store')
+      return new Response(object.body, { headers })
+    }
+
+    // DAILY UPDATES — Admin creates content; publishing is an explicit Admin action.
+    if (url.pathname === '/api/admin/daily-updates' && request.method === 'POST') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const form = await request.formData()
+      const title = String(form.get('title') ?? '').trim()
+      const body = String(form.get('body') ?? '').trim()
+      const category = String(form.get('category') ?? 'General').trim().slice(0, 80) || 'General'
+      const eventDate = String(form.get('eventDate') ?? '').trim()
+      const publishNow = String(form.get('publishNow') ?? 'true') === 'true'
+      if (!title || title.length > 160 || !body || body.length > 10000 || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || !isValidFinanceDate(eventDate)) {
+        return financeJson({ error: 'शीर्षक, विवरण और सही तारीख दर्ज करें।' }, 400)
+      }
+      const files = form.getAll('photos').filter((item): item is File => item instanceof File && item.size > 0)
+      const id = crypto.randomUUID()
+      const nowIso = new Date().toISOString()
+      const status = publishNow ? 'PUBLISHED' : 'DRAFT'
+      try {
+        await env.DB.prepare(`
+          INSERT INTO daily_updates (id, title, body, category, event_date, status, created_by_name, approved_by, approved_at, published_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'Admin', ?, ?, ?, ?, ?)
+        `).bind(id, title, body, category, eventDate, status, publishNow ? 'Admin' : null, publishNow ? nowIso : null, publishNow ? nowIso : null, nowIso, nowIso).run()
+        await storeDailyUpdatePhotos(env, id, files)
+        await logDailyUpdate(env, null, 'Admin', publishNow ? 'CREATED_AND_PUBLISHED' : 'CREATED_DRAFT', id, { photoCount: files.length })
+        return financeJson({ ok: true, status, message: publishNow ? 'Update published.' : 'Draft saved.' }, 201)
+      } catch (error) {
+        await env.DB.prepare('DELETE FROM daily_updates WHERE id = ?').bind(id).run().catch(() => undefined)
+        const message = error instanceof Error ? error.message : ''
+        return financeJson({ error: message || 'Update could not be saved.' }, 400)
+      }
+    }
+
+    // DAILY UPDATES — Admin approval / rejection.
+    const dailyUpdateAction = url.pathname.match(/^\/api\/admin\/daily-updates\/([a-f0-9-]+)$/i)
+    // Admin deletion removes photo objects and metadata while preserving audit history.
+    const dailyUpdateDelete = url.pathname.match(/^\/api\/admin\/daily-updates\/([a-f0-9-]+)$/i)
+    if (dailyUpdateDelete && request.method === 'DELETE') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const id = dailyUpdateDelete[1]
+      const existing = await env.DB.prepare('SELECT id, title, status FROM daily_updates WHERE id = ?').bind(id).first<{ id: string; title: string; status: string }>()
+      if (!existing) return financeJson({ error: 'Update not found.' }, 404)
+      const photos = await env.DB.prepare('SELECT r2_key FROM daily_update_photos WHERE update_id = ?').bind(id).all<{ r2_key: string }>()
+      const keys = (photos.results ?? []).map(photo => photo.r2_key)
+      const deletionResults = await Promise.allSettled(keys.map(key => env.GALLERY.delete(key)))
+      const failedDeletes = deletionResults.filter(result => result.status === 'rejected').length
+      if (failedDeletes > 0) {
+        await logDailyUpdate(env, null, 'Admin', 'DELETE_STORAGE_CLEANUP_FAILED', id, { photoCount: keys.length, failedDeletes })
+        return financeJson({ error: 'Deletion paused because photo storage cleanup could not be confirmed. Please retry.' }, 503)
+      }
+      await env.DB.prepare('DELETE FROM daily_update_photos WHERE update_id = ?').bind(id).run()
+      await env.DB.prepare('DELETE FROM daily_updates WHERE id = ?').bind(id).run()
+      await logDailyUpdate(env, null, 'Admin', 'DELETED', id, { title: existing.title, previousStatus: existing.status, deletedPhotoCount: keys.length })
+      return financeJson({ ok: true, deleted: true, deletedPhotoCount: keys.length })
+    }
+
+    if (dailyUpdateAction && request.method === 'PATCH') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let body: { action?: string; note?: string }
+      try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+      const id = dailyUpdateAction[1]
+      const existing = await env.DB.prepare('SELECT id, status, title FROM daily_updates WHERE id = ?').bind(id).first<{ id: string; status: string; title: string }>()
+      if (!existing) return financeJson({ error: 'Update not found.' }, 404)
+      const nowIso = new Date().toISOString()
+      if (body.action === 'approve' || body.action === 'publish') {
+        await env.DB.prepare("UPDATE daily_updates SET status = 'PUBLISHED', approved_by = 'Admin', approved_at = ?, published_at = ?, rejection_note = NULL, updated_at = ? WHERE id = ?")
+          .bind(nowIso, nowIso, nowIso, id).run()
+        await logDailyUpdate(env, null, 'Admin', 'APPROVED_AND_PUBLISHED', id, { previousStatus: existing.status })
+        return financeJson({ ok: true, status: 'PUBLISHED', message: 'Update approved and published.' })
+      }
+      if (body.action === 'reject') {
+        const note = String(body.note ?? '').trim().slice(0, 1000) || 'Please review and resubmit this update.'
+        const photos = await env.DB.prepare('SELECT r2_key FROM daily_update_photos WHERE update_id = ?').bind(id).all<{ r2_key: string }>()
+        const keys = (photos.results ?? []).map(photo => photo.r2_key)
+        const deletionResults = await Promise.allSettled(keys.map(key => env.GALLERY.delete(key)))
+        const failedDeletes = deletionResults.filter(result => result.status === 'rejected').length
+        if (failedDeletes > 0) {
+          await logDailyUpdate(env, null, 'Admin', 'REJECTION_STORAGE_CLEANUP_FAILED', id, { photoCount: keys.length, failedDeletes })
+          return financeJson({ error: 'Rejection paused because photo storage cleanup could not be confirmed. Please retry.' }, 503)
+        }
+        await env.DB.prepare('DELETE FROM daily_update_photos WHERE update_id = ?').bind(id).run()
+        await env.DB.prepare("UPDATE daily_updates SET status = 'REJECTED', rejection_note = ?, approved_by = 'Admin', approved_at = ?, updated_at = ? WHERE id = ?")
+          .bind(note, nowIso, nowIso, id).run()
+        await logDailyUpdate(env, null, 'Admin', 'REJECTED', id, { note, previousStatus: existing.status, deletedPhotoCount: keys.length })
+        return financeJson({ ok: true, status: 'REJECTED', message: 'Update rejected; attached photos removed from storage.', deletedPhotoCount: keys.length })
+      }
+      return financeJson({ error: 'Action must be approve, publish, or reject.' }, 400)
+    }
+
+    // DAILY UPDATES — admin manages authorized committee member accounts.
+    if (url.pathname === '/api/admin/daily-updates/users' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const result = await env.DB.prepare('SELECT id, display_name, login_id, is_active, created_at, last_login_at FROM daily_update_users ORDER BY created_at DESC').all()
+      return financeJson({ users: (result.results ?? []).map((row: any) => ({ id: row.id, displayName: row.display_name, loginId: row.login_id, isActive: Boolean(row.is_active), createdAt: row.created_at, lastLoginAt: row.last_login_at })) })
+    }
+
+    if (url.pathname === '/api/admin/daily-updates/users' && request.method === 'POST') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let body: { displayName?: string; loginId?: string; password?: string }
+      try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+      const displayName = String(body.displayName ?? '').trim().slice(0, 100)
+      const loginId = String(body.loginId ?? '').trim().toLowerCase()
+      const password = String(body.password ?? '')
+      if (displayName.length < 2 || !/^[a-z0-9._-]{3,80}$/.test(loginId) || password.length < 12 || password.length > 200) {
+        return financeJson({ error: 'नाम, सही Login ID और कम-से-कम 12 अक्षर का password आवश्यक है।' }, 400)
+      }
+      const id = crypto.randomUUID()
+      const salt = financeRandomHex(16)
+      const passwordHash = await financePasswordHash(password, salt)
+      try {
+        await env.DB.prepare('INSERT INTO daily_update_users (id, display_name, login_id, password_salt, password_hash, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
+          .bind(id, displayName, loginId, salt, passwordHash, new Date().toISOString()).run()
+      } catch (error) {
+        if (/unique constraint/i.test(error instanceof Error ? error.message : '')) return financeJson({ error: 'यह Login ID पहले से उपयोग में है।' }, 409)
+        throw error
+      }
+      await logDailyUpdate(env, null, 'Admin', 'MEMBER_CREATED', null, { userId: id, loginId })
+      return financeJson({ ok: true, message: 'Authorized member account created.' }, 201)
+    }
+
+    const dailyUpdateUserAction = url.pathname.match(/^\/api\/admin\/daily-updates\/users\/([a-f0-9-]+)$/i)
+    if (dailyUpdateUserAction && request.method === 'PATCH') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let body: { active?: boolean }
+      try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+      if (typeof body.active !== 'boolean') return financeJson({ error: 'active must be true or false.' }, 400)
+      const userId = dailyUpdateUserAction[1]
+      const result = await env.DB.prepare('UPDATE daily_update_users SET is_active = ? WHERE id = ?').bind(body.active ? 1 : 0, userId).run()
+      if (Number(result.meta.changes ?? 0) !== 1) return financeJson({ error: 'Member account not found.' }, 404)
+      if (!body.active) await env.DB.prepare('DELETE FROM daily_update_sessions WHERE user_id = ?').bind(userId).run()
+      await logDailyUpdate(env, null, 'Admin', body.active ? 'MEMBER_ENABLED' : 'MEMBER_DISABLED', null, { userId })
+      return financeJson({ ok: true, active: body.active })
+    }
+
+    const dailyUpdatePasswordReset = url.pathname.match(/^\/api\/admin\/daily-updates\/users\/([a-f0-9-]+)\/reset-password$/i)
+    if (dailyUpdatePasswordReset && request.method === 'POST') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let body: { password?: string }
+      try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+      const password = String(body.password ?? '')
+      if (password.length < 12 || password.length > 200) return financeJson({ error: 'Password must be at least 12 characters.' }, 400)
+      const userId = dailyUpdatePasswordReset[1]
+      const user = await env.DB.prepare('SELECT id, login_id FROM daily_update_users WHERE id = ?').bind(userId).first<{ id: string; login_id: string }>()
+      if (!user) return financeJson({ error: 'Member account not found.' }, 404)
+      const salt = financeRandomHex(16)
+      const passwordHash = await financePasswordHash(password, salt)
+      await env.DB.batch([
+        env.DB.prepare('UPDATE daily_update_users SET password_salt = ?, password_hash = ? WHERE id = ?').bind(salt, passwordHash, userId),
+        env.DB.prepare('DELETE FROM daily_update_sessions WHERE user_id = ?').bind(userId),
+      ])
+      await logDailyUpdate(env, null, 'Admin', 'MEMBER_PASSWORD_RESET', null, { userId, loginId: user.login_id })
+      return financeJson({ ok: true, message: 'Password reset. Existing sessions were revoked.' })
+    }
+
 
     // PUBLIC GALLERY — list published photos
 if (url.pathname === '/api/gallery' && request.method === 'GET') {
@@ -372,6 +882,7 @@ const reservationBatch = await env.DB.batch([
     SELECT ?, ?, datetime('now', '+1 hour')
     WHERE
       (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+      (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
       (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
       (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) +
       ? <= ?
@@ -381,6 +892,7 @@ if (Number(reservationBatch[1]?.meta?.changes ?? 0) !== 1) {
   const storageResult = await env.DB.prepare(`
     SELECT
       (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+      (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
       (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
       (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) AS total_bytes
   `).first<{ total_bytes: number }>()
@@ -945,6 +1457,7 @@ if (
             SELECT ?, ?, datetime('now', '+1 hour')
             WHERE
               (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
               (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
               (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) +
               ? <= ?
@@ -954,6 +1467,7 @@ if (
           const storageUsage = await env.DB.prepare(`
             SELECT
               (SELECT COALESCE(SUM(file_size), 0) FROM gallery_photos) +
+              (SELECT COALESCE(SUM(file_size), 0) FROM daily_update_photos) +
               (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_documents) +
               (SELECT COALESCE(SUM(size_bytes), 0) FROM finance_storage_reservations WHERE expires_at > CURRENT_TIMESTAMP) AS total_bytes
           `).first<{ total_bytes: number }>()

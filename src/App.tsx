@@ -11,6 +11,8 @@ const Admin = lazy(() => import('@/pages/Admin'))
 const Participant = lazy(() => import('@/pages/Participant'))
 const Register = lazy(() => import('@/pages/Register'))
 const Finance = lazy(() => import('@/pages/Finance'))
+const DailyUpdates = lazy(() => import('@/pages/DailyUpdates'))
+const DailyUpdatesAdmin = lazy(() => import('@/pages/DailyUpdatesAdmin'))
 
 /* This is a one-page site with one action, so there is no site-wide header or
    footer above the routes: the page owns its own shell, its own main and its
@@ -39,6 +41,9 @@ export default function App() {
         />
 
         <Route path="register" element={<Register />} />
+
+        <Route path="daily-updates" element={<DailyUpdates />} />
+        <Route path="admin/updates" element={<DailyUpdatesAdmin />} />
 
         <Route path="login" element={<Login />} />
 
