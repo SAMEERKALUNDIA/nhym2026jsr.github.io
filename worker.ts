@@ -296,6 +296,35 @@ export default {
       }
     }
 
+    // Preview-only CI cleanup. Never available on production; preserves audit history.
+    if (url.pathname === '/api/admin/daily-updates/ci-cleanup' && request.method === 'POST') {
+      if (env.FINANCE_PREVIEW_MODE !== 'true') return json({ error: 'Not found' }, 404)
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let payload: { loginId?: unknown; marker?: unknown }
+      try { payload = await request.json() as { loginId?: unknown; marker?: unknown } } catch { return financeJson({ error: 'Invalid JSON' }, 400) }
+      const loginId = typeof payload.loginId === 'string' ? payload.loginId : ''
+      const marker = typeof payload.marker === 'string' ? payload.marker : ''
+      if (!/^ci[0-9a-f]{16}$/.test(loginId) || !/^CI Functional Test [0-9a-f]{12}$/.test(marker)) {
+        return financeJson({ error: 'Invalid Preview test identifiers' }, 400)
+      }
+      const updates = await env.DB.prepare('SELECT id FROM daily_updates WHERE title LIKE ?').bind(marker + '%').all<{ id: string }>()
+      const updateIds = (updates.results ?? []).map(row => row.id)
+      for (const updateId of updateIds) {
+        const photos = await env.DB.prepare('SELECT r2_key FROM daily_update_photos WHERE update_id = ?').bind(updateId).all<{ r2_key: string }>()
+        await Promise.all((photos.results ?? []).map(photo => env.GALLERY.delete(photo.r2_key).catch(() => undefined)))
+        await env.DB.prepare('DELETE FROM daily_update_photos WHERE update_id = ?').bind(updateId).run()
+      }
+      for (const updateId of updateIds) {
+        await env.DB.prepare('DELETE FROM daily_updates WHERE id = ?').bind(updateId).run()
+      }
+      const user = await env.DB.prepare("SELECT id FROM daily_update_users WHERE login_id = ? AND display_name = 'Automated Preview Test Member'").bind(loginId).first<{ id: string }>()
+      if (user) {
+        await env.DB.prepare('DELETE FROM daily_update_sessions WHERE user_id = ?').bind(user.id).run()
+        await env.DB.prepare('DELETE FROM daily_update_users WHERE id = ?').bind(user.id).run()
+      }
+      return financeJson({ ok: true, deletedUpdates: updateIds.length, deletedTestAccount: Boolean(user), auditHistoryPreserved: true })
+    }
+
     // DAILY UPDATES — admin-only list, including unpublished content for review.
     if (url.pathname === '/api/admin/daily-updates' && request.method === 'GET') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
