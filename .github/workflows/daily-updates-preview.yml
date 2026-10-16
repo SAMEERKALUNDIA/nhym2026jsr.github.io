@@ -65,6 +65,21 @@ jobs:
           console.log('Worker syntax passed.')
           NODE
 
+      - name: Deploy isolated Daily Updates preview Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+          NHYM_EMAIL_SECRET: ${{ secrets.PREVIEW_NHYM_EMAIL_SECRET }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          test -n "$ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
+          test -n "$NHYM_EMAIL_SECRET" || (echo "Missing finance-preview environment secret PREVIEW_NHYM_EMAIL_SECRET" && exit 1)
+          printf '%s' "$ADMIN_TOKEN" | pnpm dlx wrangler@4 secret put ADMIN_TOKEN --config wrangler.daily-updates-preview.jsonc
+          printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.daily-updates-preview.jsonc
+          pnpm dlx wrangler@4 deploy --config wrangler.daily-updates-preview.jsonc
+
       - name: Prepare isolated Preview Gallery schema for integration tests
         env:
           PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
@@ -81,21 +96,6 @@ jobs:
           }
           console.log('PASS isolated Preview Gallery schema is ready.')
           NODE
-
-      - name: Deploy isolated Daily Updates preview Worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
-          NHYM_EMAIL_SECRET: ${{ secrets.PREVIEW_NHYM_EMAIL_SECRET }}
-        run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
-          test -n "$ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
-          test -n "$NHYM_EMAIL_SECRET" || (echo "Missing finance-preview environment secret PREVIEW_NHYM_EMAIL_SECRET" && exit 1)
-          printf '%s' "$ADMIN_TOKEN" | pnpm dlx wrangler@4 secret put ADMIN_TOKEN --config wrangler.daily-updates-preview.jsonc
-          printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.daily-updates-preview.jsonc
-          pnpm dlx wrangler@4 deploy --config wrangler.daily-updates-preview.jsonc
 
       - name: Wait for preview and smoke-test access controls
         env:
