@@ -181,7 +181,7 @@ export default {
     // Store only a SHA-256 hash; never store the visitor cookie itself.
     if (url.pathname === '/api/visitor-count' && request.method === 'GET') {
       const cookieHeader = request.headers.get('cookie') ?? ''
-      const cookieMatch = cookieHeader.match(/(?:^|;\\s*)nhym_visitor_id=([a-f0-9-]{36})(?:;|$)/i)
+      const cookieMatch = cookieHeader.match(/(?:^|;\s*)nhym_visitor_id=([a-f0-9-]{36})(?:;|$)/i)
       const visitorId = cookieMatch?.[1] ?? crypto.randomUUID()
       const visitorHash = await financeDigest(visitorId)
       await env.DB.prepare('INSERT OR IGNORE INTO homepage_visitors (visitor_hash) VALUES (?)').bind(visitorHash).run()
