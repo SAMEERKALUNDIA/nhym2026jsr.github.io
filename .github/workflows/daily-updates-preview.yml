@@ -75,9 +75,13 @@ jobs:
           pnpm dlx wrangler@4 deploy --config wrangler.daily-updates-preview.jsonc
 
       - name: Wait for preview and smoke-test access controls
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
         run: |
+          test -n "$PREVIEW_ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
           node --input-type=module <<'NODE'
           const base = 'https://nhymindia-daily-updates-preview.2026jsr.workers.dev'
+          const adminToken = process.env.PREVIEW_ADMIN_TOKEN
           const deadline = Date.now() + 180000
           let ready = false
           while (Date.now() < deadline) {
@@ -104,6 +108,20 @@ jobs:
               console.error('FAIL ' + name + ': expected ' + expected + ', got ' + response.status + '; ' + text.slice(0, 180))
               process.exitCode = 1
             } else console.log('PASS ' + name + ' (' + expected + ')')
+          }
+
+          const adminHeaders = { authorization: 'Bearer ' + adminToken }
+          for (const [name, path] of [
+            ['Preview admin token authentication', '/api/admin/auth-check'],
+            ['Authenticated Daily Updates admin list', '/api/admin/daily-updates'],
+            ['Authenticated Daily Updates member management', '/api/admin/daily-updates/users']
+          ]) {
+            const response = await fetch(base + path, { headers: adminHeaders })
+            const text = await response.text()
+            if (response.status !== 200) {
+              console.error('FAIL ' + name + ': expected 200, got ' + response.status + '; ' + text.slice(0, 180))
+              process.exitCode = 1
+            } else console.log('PASS ' + name + ' (200)')
           }
           if (process.exitCode) process.exit(1)
           NODE
