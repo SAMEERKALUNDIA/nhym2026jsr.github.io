@@ -646,7 +646,7 @@ export default function Finance() {
         String(x.received_from ?? ''), moneyValue(x.amount_paise), String(x.payment_mode ?? ''),
         [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
       ]),
-      [9, 42, 24, 29, 42, 25, 18, 16],
+      [9, 40, 23, 28, 34, 25, 18, 24],
       ['center', 'left', 'left', 'left', 'left', 'right', 'center', 'left'],
     )
 
