@@ -61,6 +61,7 @@ jobs:
           daily_db.execute('PRAGMA foreign_keys = ON')
           daily_db.executescript(Path('migrations/0003_daily_updates.sql').read_text())
           daily_db.executescript(Path('migrations/0004_gallery_storage_compat.sql').read_text())
+          daily_db.executescript(Path('migrations/0006_homepage_visitors.sql').read_text())
           daily_tables = {row[0] for row in daily_db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
           daily_required = {'daily_update_users','daily_update_sessions','daily_updates','daily_update_photos','daily_update_audit_log','daily_update_login_limits','gallery_photos'}
           assert daily_required <= daily_tables, f'Missing Daily Updates/Gallery tables: {daily_required - daily_tables}'
