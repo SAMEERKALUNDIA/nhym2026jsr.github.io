@@ -299,7 +299,7 @@ jobs:
           })
           check(memberFinalLogin.response.status === 200 && Boolean(memberFinalLogin.data.token), 'committee member can log in after final password reset')
           const memberAudit = await request('/api/admin/daily-updates/audit?limit=50', { headers: adminHeaders })
-          check(memberAudit.response.status === 200 && memberAudit.data.logs?.some(log => log.action === 'MEMBER_PASSWORD_RESET' && log.details?.userId === identity.data.user.id), 'committee member password reset is recorded in audit log')
+          check(memberAudit.response.status === 200 && memberAudit.data.logs?.some(log => log.action === 'MEMBER_PASSWORD_RESET' && (() => { try { return JSON.parse(log.details ?? '{}').userId === identity.data.user.id } catch { return false } })()), 'committee member password reset is recorded in audit log')
           const memberToken = memberFinalLogin.data.token
 
           // Cross-module authorization checks: role tokens must not cross into other modules.
