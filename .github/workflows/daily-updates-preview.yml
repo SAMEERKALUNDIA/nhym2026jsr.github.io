@@ -18,6 +18,11 @@ on:
 permissions:
   contents: read
 
+# Serialize deployments and secret updates for this single Preview Worker.
+concurrency:
+  group: daily-updates-preview-worker
+  cancel-in-progress: false
+
 jobs:
   deploy-preview:
     runs-on: ubuntu-latest
