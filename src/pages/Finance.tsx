@@ -520,7 +520,7 @@ export default function Finance() {
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(8.5)
       doc.setTextColor(...green)
-      doc.text(title.toUpperCase(), left + 3, y - 0.2)
+      doc.text(title.toUpperCase(), pageWidth / 2, y - 0.2, { align: 'center', maxWidth: contentWidth - 8 })
       y += 6
     }
     const drawTable = (headers: string[], rows: string[][], widths: number[], aligns: Array<'left' | 'right' | 'center'> = []) => {
@@ -626,39 +626,39 @@ export default function Finance() {
     doc.text('* Net cash movement is recorded income minus paid expenses; it is not a verified bank/cash balance.', left, y)
     y += 5
 
-    drawSection(`Expense Register — ${data.expenses.length} records`)
+    drawSection('Expense Register')
     drawTable(
-      ['Expense ID', 'Date', 'Category', 'Vendor / Payee', 'Purpose', 'Requested', 'Approved', 'Paid', 'Approval', 'Payment'],
-      data.expenses.map(x => [
-        x.expense_no, formatDate(x.expense_date), x.category_name, x.vendor_name, x.description,
+      ['S. No.', 'Expense ID', 'Date', 'Category', 'Vendor / Payee', 'Purpose', 'Requested', 'Approved', 'Paid', 'Approval', 'Payment'],
+      data.expenses.map((x, i) => [
+        String(i + 1), x.expense_no, formatDate(x.expense_date), x.category_name, x.vendor_name, x.description,
         moneyValue(x.requested_amount_paise), x.approved_amount_paise == null ? '—' : moneyValue(x.approved_amount_paise),
         moneyValue(x.paid_amount_paise), x.approval_status, x.payment_status,
       ]),
-      [42, 19, 30, 37, 47, 22, 22, 20, 21, 21],
-      ['left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'center', 'center'],
+      [9, 42, 19, 30, 37, 47, 22, 22, 20, 21, 21],
+      ['center', 'left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'center', 'center'],
     )
 
-    drawSection(`Income Register — ${data.incomes.length} records`)
+    drawSection('Income Register')
     drawTable(
-      ['Income ID', 'Received Date', 'Income Type', 'Received From', 'Amount', 'Mode', 'Reference / Receipt'],
-      data.incomes.map(x => [
-        String(x.income_no ?? ''), formatDate(x.received_at), String(x.income_type ?? ''),
+      ['S. No.', 'Income ID', 'Received Date', 'Income Type', 'Received From', 'Amount', 'Mode', 'Reference / Receipt'],
+      data.incomes.map((x, i) => [
+        String(i + 1), String(x.income_no ?? ''), formatDate(x.received_at), String(x.income_type ?? ''),
         String(x.received_from ?? ''), moneyValue(x.amount_paise), String(x.payment_mode ?? ''),
         [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
       ]),
-      [42, 24, 29, 42, 25, 18, 16],
-      ['left', 'left', 'left', 'left', 'right', 'center', 'left'],
+      [9, 42, 24, 29, 42, 25, 18, 16],
+      ['center', 'left', 'left', 'left', 'left', 'right', 'center', 'left'],
     )
 
-    drawSection(`Budget Register — ${data.budgets.length} records`)
+    drawSection('Budget Register')
     drawTable(
-      ['Budget Period', 'Category', 'Planned / Approved Amount', 'Status', 'Revision'],
-      data.budgets.map(x => [
-        String(x.budget_period ?? ''), String(x.category_name ?? ''),
+      ['S. No.', 'Budget Period', 'Category', 'Planned / Approved Amount', 'Status', 'Revision'],
+      data.budgets.map((x, i) => [
+        String(i + 1), String(x.budget_period ?? ''), String(x.category_name ?? ''),
         moneyValue(x.approved_amount_paise), String(x.status ?? ''), String(x.revision_no ?? ''),
       ]),
-      [38, 42, 48, 35, 23],
-      ['left', 'left', 'right', 'center', 'center'],
+      [9, 38, 42, 48, 35, 23],
+      ['center', 'left', 'left', 'right', 'center', 'center'],
     )
 
     const pageCount = doc.getNumberOfPages()
