@@ -256,6 +256,10 @@ export default function DailyUpdatesAdmin() {
             {error && <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
             <button disabled={busy} className="w-full rounded-md bg-primary px-4 py-3 font-medium text-primary-foreground disabled:opacity-50">{busy ? 'Signing in…' : 'Login'}</button>
           </form>
+          <div className="mt-4 border-t pt-4 text-sm">
+            <a href="/login" className="text-primary underline underline-offset-4">Main Admin login</a>
+            <p className="mt-1 text-xs text-muted-foreground">Admin access is separate from Committee member login.</p>
+          </div>
         </div>
         <DeveloperCredit />
       </div>
