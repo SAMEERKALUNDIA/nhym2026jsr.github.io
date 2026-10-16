@@ -150,14 +150,24 @@ export default function DailyUpdatesAdmin() {
     window.location.href = '/'
   }
 
-  function selectPhotos(fileList: FileList | null) {
+  function selectPhotos(fileList: FileList | null, input?: HTMLInputElement) {
     const selected = Array.from(fileList ?? [])
-    if (selected.length > 5) { setError('एक अपडेट में अधिकतम 5 फोटो चुनें।'); return }
+    const rejectSelection = (message: string) => {
+      if (input) input.value = ''
+      setPhotos([])
+      setError(message)
+    }
+    if (selected.length > 5) {
+      rejectSelection('एक अपडेट में अधिकतम 5 फोटो चुनें। 5 या उससे कम फोटो दोबारा चुनें।')
+      return
+    }
     if (selected.some(file => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size <= 0 || file.size > 20 * 1024 * 1024)) {
-      setError('केवल JPG, PNG या WebP फोटो चुनें; हर फोटो 20 MB तक होनी चाहिए।'); return
+      rejectSelection('केवल JPG, PNG या WebP फोटो चुनें; हर फोटो 20 MB तक होनी चाहिए.')
+      return
     }
     if (selected.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024) {
-      setError('सभी चुनी गई फोटो का कुल आकार 50 MB से कम रखें।'); return
+      rejectSelection('सभी चुनी गई फोटो का कुल आकार 50 MB से कम रखें।')
+      return
     }
     setError('')
     setPhotos(selected)
@@ -293,7 +303,7 @@ export default function DailyUpdatesAdmin() {
               <label className="block text-sm font-medium">तैयारी/गतिविधि की तारीख<input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} required className="mt-1 w-full rounded-md border bg-background px-3 py-2.5" /></label>
             </div>
             <label className="block text-sm font-medium">विवरण<textarea value={body} onChange={e => setBody(e.target.value)} rows={5} maxLength={10000} required className="mt-1 w-full rounded-md border bg-background px-3 py-2.5" placeholder="आज की तैयारी, कार्य की प्रगति या महत्वपूर्ण सूचना लिखें…" /></label>
-            <label className="block text-sm font-medium">फोटो (अधिकतम 5, प्रत्येक 20 MB तक)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e => selectPhotos(e.target.files)} className="mt-1 block w-full rounded-md border bg-background px-3 py-2.5 text-sm" /></label>
+            <label className="block text-sm font-medium">फोटो (अधिकतम 5, प्रत्येक 20 MB तक)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e => selectPhotos(e.currentTarget.files, e.currentTarget)} className="mt-1 block w-full rounded-md border bg-background px-3 py-2.5 text-sm" /></label>
             {photos.length > 0 && <p className="text-sm text-muted-foreground">{photos.length} फोटो चुनी गईं: {photos.map(f => f.name).join(', ')}</p>}
             {isAdmin && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={publishNow} onChange={e => setPublishNow(e.target.checked)} /> मंजूरी के बाद तुरंत सार्वजनिक वेबसाइट पर प्रकाशित करें</label>}
             <button disabled={busy} className="inline-flex w-fit items-center gap-2 rounded-md bg-primary px-5 py-3 font-medium text-primary-foreground disabled:opacity-50"><ImagePlus size={17} /> {busy ? 'Submitting…' : isAdmin && publishNow ? 'Publish update' : 'Send for Admin approval'}</button>
