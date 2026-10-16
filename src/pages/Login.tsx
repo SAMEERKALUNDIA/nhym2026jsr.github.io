@@ -21,20 +21,16 @@ export default function Login() {
     try {
       if (role === 'admin') {
         const cleanKey = adminKey.trim()
-        const isDailyUpdatesPreview = window.location.hostname === 'nhymindia-daily-updates-preview.2026jsr.workers.dev'
-
-        if (isDailyUpdatesPreview) {
-          const response = await fetch('/api/admin/auth-check', {
-            headers: { authorization: `Bearer ${cleanKey}` },
-          })
-          if (!response.ok) throw new Error('Preview Admin access key सही नहीं है।')
-          sessionStorage.setItem('nhym_admin_token', cleanKey)
-          navigate('/admin/updates', { replace: true })
-          return
-        }
+        // Validate the key on every environment before creating a local admin session.
+        // The previous hostname-only check skipped verification on branch Preview URLs.
+        const response = await fetch('/api/admin/auth-check', {
+          headers: { authorization: `Bearer ${cleanKey}` },
+        })
+        if (!response.ok) throw new Error('Admin access key सही नहीं है।')
 
         sessionStorage.setItem('nhym_admin_token', cleanKey)
-        navigate('/admin', { replace: true })
+        const isWorkerPreview = window.location.hostname.endsWith('.workers.dev')
+        navigate(isWorkerPreview ? '/admin/updates' : '/admin', { replace: true })
         return
       }
 
