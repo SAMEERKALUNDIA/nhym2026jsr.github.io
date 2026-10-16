@@ -338,7 +338,11 @@ export default {
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )`),
-        env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_gallery_photos_published ON gallery_photos(is_published, display_order, created_at)')
+        env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_gallery_photos_published ON gallery_photos(is_published, display_order, created_at)'),
+        env.DB.prepare(`CREATE TABLE IF NOT EXISTS homepage_visitors (
+          visitor_hash TEXT PRIMARY KEY,
+          first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`)
       ])
       return financeJson({ ok: true, gallerySchemaReady: true })
     }
