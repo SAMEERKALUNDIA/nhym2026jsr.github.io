@@ -149,7 +149,7 @@ jobs:
             ['/admin/finance', ['Finance Panel']],
             ['/participant', ['Participant Portal']],
             ['/gallery', ['Photo Gallery']],
-            ['/login?role=finance', ['Secure Login', 'Finance login ID']]
+            ['/login?role=finance', ['Secure Login']]
           ]
           try {
             for (const [route, expected] of routes) {
@@ -163,6 +163,7 @@ jobs:
               for (const text of expected) {
                 if (!body.toLowerCase().includes(text.toLowerCase())) throw new Error(route + ' missing expected UI text: ' + text)
               }
+              if (route === '/login?role=finance' && await page.locator('input[placeholder="Finance login ID"]').count() !== 1) throw new Error('Finance login mode did not render its dedicated Login ID field.')
               if (errors.length) throw new Error(route + ' raised browser errors: ' + errors.join('; '))
               console.log('PASS browser UI ' + route + ' (HTTP 200; expected UI visible; no uncaught page errors)')
               await page.close()
