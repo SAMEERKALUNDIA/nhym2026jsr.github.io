@@ -176,7 +176,7 @@ jobs:
           let adminList = await request('/api/admin/daily-updates', { headers: adminHeaders })
           const published = adminList.data.updates?.find(u => u.title === publishedTitle && u.status === 'PENDING')
           check(adminList.response.status === 200 && Boolean(published?.id), 'Admin sees pending submission')
-          const approve = await request('/api/admin/daily-updates/' + encodeURIComponent(published.id),
+          const approve = await request('/api/admin/daily-updates/' + encodeURIComponent(published.id), {
             method: 'PATCH', headers: { ...adminHeaders, 'content-type': 'application/json' },
             body: JSON.stringify({ action: 'approve' })
           })
