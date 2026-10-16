@@ -133,6 +133,44 @@ jobs:
           if (process.exitCode) process.exit(1)
           NODE
 
+      - name: Browser UI smoke tests for public and separated portals
+        env:
+          PREVIEW_BASE_URL: https://nhymindia-daily-updates-preview.2026jsr.workers.dev
+        run: |
+          pnpm add --save-dev playwright@1.55.0
+          pnpm exec playwright install chromium
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright'
+          const base = process.env.PREVIEW_BASE_URL
+          const browser = await chromium.launch({ headless: true })
+          const routes = [
+            ['/daily-updates', ['Daily Updates']],
+            ['/admin/updates', ['Committee', 'Admin']],
+            ['/admin/finance', ['Finance Panel']],
+            ['/participant', ['Participant Portal']],
+            ['/gallery', ['Photo Gallery']],
+            ['/login?role=finance', ['Secure Login', 'Finance login ID']]
+          ]
+          try {
+            for (const [route, expected] of routes) {
+              const page = await browser.newPage()
+              const errors = []
+              page.on('pageerror', error => errors.push(error.message))
+              const response = await page.goto(base + route, { waitUntil: 'networkidle', timeout: 45000 })
+              if (!response || response.status() !== 200) throw new Error(route + ' returned HTTP ' + (response?.status() ?? 'no response'))
+              const body = await page.locator('body').innerText({ timeout: 15000 })
+              for (const text of expected) {
+                if (!body.toLowerCase().includes(text.toLowerCase())) throw new Error(route + ' missing expected UI text: ' + text)
+              }
+              if (errors.length) throw new Error(route + ' raised browser errors: ' + errors.join('; '))
+              console.log('PASS browser UI ' + route + ' (HTTP 200; expected UI visible; no uncaught page errors)')
+              await page.close()
+            }
+          } finally {
+            await browser.close()
+          }
+          NODE
+
       - name: End-to-end committee submission, Admin review, publication and rejection
         id: e2e
         env:
