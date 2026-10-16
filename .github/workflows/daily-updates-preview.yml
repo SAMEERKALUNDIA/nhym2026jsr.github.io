@@ -171,20 +171,24 @@ jobs:
           ]
           try {
             for (const [route, expected] of routes) {
-              const page = await browser.newPage()
-              const errors = []
-              page.on('pageerror', error => errors.push(error.message))
-              const response = await page.goto(base + route, { waitUntil: 'domcontentloaded', timeout: 45000 })
-            await page.waitForTimeout(1200)
-              if (!response || response.status() !== 200) throw new Error(route + ' returned HTTP ' + (response?.status() ?? 'no response'))
-              const body = await page.locator('body').innerText({ timeout: 15000 })
-              for (const text of expected) {
-                if (!body.toLowerCase().includes(text.toLowerCase())) throw new Error(route + ' missing expected UI text: ' + text)
+              for (const viewport of [{ name: 'desktop', width: 1365, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
+                const page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height }, isMobile: viewport.name === 'mobile', hasTouch: viewport.name === 'mobile' })
+                const errors = []
+                page.on('pageerror', error => errors.push(error.message))
+                const response = await page.goto(base + route, { waitUntil: 'domcontentloaded', timeout: 45000 })
+                await page.waitForTimeout(1200)
+                if (!response || response.status() !== 200) throw new Error(route + ' (' + viewport.name + ') returned HTTP ' + (response?.status() ?? 'no response'))
+                const body = await page.locator('body').innerText({ timeout: 15000 })
+                for (const text of expected) {
+                  if (!body.toLowerCase().includes(text.toLowerCase())) throw new Error(route + ' (' + viewport.name + ') missing expected UI text: ' + text)
+                }
+                if (route === '/login?role=finance' && await page.locator('input[placeholder="Finance login ID"]').count() !== 1) throw new Error('Finance login mode did not render its dedicated Login ID field.')
+                const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
+                if (dimensions.scrollWidth > dimensions.width + 2) throw new Error(route + ' (' + viewport.name + ') has horizontal overflow: ' + JSON.stringify(dimensions))
+                if (errors.length) throw new Error(route + ' (' + viewport.name + ') raised browser errors: ' + errors.join('; '))
+                console.log('PASS browser UI ' + route + ' (' + viewport.name + ', HTTP 200; expected UI visible; no horizontal overflow; no uncaught page errors)')
+                await page.close()
               }
-              if (route === '/login?role=finance' && await page.locator('input[placeholder="Finance login ID"]').count() !== 1) throw new Error('Finance login mode did not render its dedicated Login ID field.')
-              if (errors.length) throw new Error(route + ' raised browser errors: ' + errors.join('; '))
-              console.log('PASS browser UI ' + route + ' (HTTP 200; expected UI visible; no uncaught page errors)')
-              await page.close()
             }
           } finally {
             await browser.close()
