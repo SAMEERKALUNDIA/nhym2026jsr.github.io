@@ -466,7 +466,7 @@ export default {
     // DAILY UPDATES — Admin approval / rejection.
     const dailyUpdateAction = url.pathname.match(/^\/api\/admin\/daily-updates\/([a-f0-9-]+)$/i)
     // Admin deletion removes photo objects and metadata while preserving audit history.
-    const dailyUpdateDelete = url.pathname.match(/^\\/api\\/admin\\/daily-updates\\/([a-f0-9-]+)$/i)
+    const dailyUpdateDelete = url.pathname.match(/^\/api\/admin\/daily-updates\/([a-f0-9-]+)$/i)
     if (dailyUpdateDelete && request.method === 'DELETE') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       const id = dailyUpdateDelete[1]
