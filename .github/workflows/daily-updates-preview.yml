@@ -248,7 +248,7 @@ jobs:
           if (financeSetup.data.setupComplete === false) {
             const financeSuffix = randomBytes(6).toString('hex')
             const financeLoginIds = ['head', 'operator', 'approver', 'auditor'].map(role => 'ci-finance-' + role + '-' + financeSuffix)
-            await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, 'test_finance_login_ids=' + financeLoginIds.join(',') + '\\n'))
+            await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, 'test_finance_login_ids=' + financeLoginIds.join(',') + '\n'))
             const financePassword = randomBytes(24).toString('hex')
             const financeTempPassword = randomBytes(24).toString('hex')
             const financeNewPassword = randomBytes(24).toString('hex')
@@ -317,7 +317,7 @@ jobs:
             const finalLogin = await financeLogin(financeUsers.OPERATOR.loginId, financeNewPassword)
             check(finalLogin.response.status === 200 && (await request('/api/finance/dashboard', { headers: financeHeaders(finalLogin.data.token) })).response.status === 200, 'Finance login works after password change')
           } else {
-            await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, 'test_finance_login_ids=\\n'))
+            await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, 'test_finance_login_ids=\n'))
             console.log('SKIP runtime Finance role setup because Preview already has Finance accounts; existing credentials and finance records were left untouched.')
           }
 
