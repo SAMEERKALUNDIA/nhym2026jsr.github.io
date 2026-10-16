@@ -542,9 +542,10 @@ export default function Finance() {
           doc.text(header, tx, y + 4.5, { align, maxWidth: widths[i] - 3 })
           x += widths[i]
         })
-        // One continuous full-width line beneath all column headings.
-        doc.setDrawColor(...green)
-        doc.setLineWidth(0.75)
+        // One continuous rule beneath the column headings, using a light
+        // stroke that visually matches the bold heading text without overpowering it.
+        doc.setDrawColor(82, 103, 90)
+        doc.setLineWidth(0.3)
         doc.line(left, y + 6.1, right, y + 6.1)
         y += baseRowHeight
       }
