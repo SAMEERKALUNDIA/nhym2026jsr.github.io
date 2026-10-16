@@ -513,15 +513,17 @@ export default function Finance() {
     const drawSection = (title: string) => {
       ensureSpace(11)
       y += 2
-      doc.setFillColor(...paleGreen)
-      doc.setDrawColor(...green)
-      doc.setLineWidth(0.35)
-      doc.roundedRect(left, y - 5, contentWidth, 7, 1.2, 1.2, 'FD')
+      // Keep register section labels clean: bold centered text with a strong underline,
+      // without the dark-green/pale-green filled heading bar.
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(8.5)
+      doc.setFontSize(9)
       doc.setTextColor(...green)
-      doc.text(title.toUpperCase(), pageWidth / 2, y - 0.2, { align: 'center', maxWidth: contentWidth - 8 })
-      y += 6
+      doc.text(title.toUpperCase(), pageWidth / 2, y, { align: 'center', maxWidth: contentWidth - 8 })
+      const underlineY = y + 1.4
+      doc.setDrawColor(...green)
+      doc.setLineWidth(0.8)
+      doc.line(left, underlineY, right, underlineY)
+      y += 7
     }
     const drawTable = (headers: string[], rows: string[][], widths: number[], aligns: Array<'left' | 'right' | 'center'> = []) => {
       // Scale every table to the available landscape page width to prevent
