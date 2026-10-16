@@ -243,6 +243,8 @@ jobs:
           }
           // Finance role regression tests use only CI-prefixed accounts and clean them up in the always-run step.
           // Existing Preview finance users, credentials, and records are never modified.
+          const bootstrapWithoutAdmin = await request('/api/finance/bootstrap', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ displayName: 'Unauthorized CI Head', loginId: 'ci-unauthorized-head', password: 'not-a-real-password-123' }) })
+          check(bootstrapWithoutAdmin.response.status === 401, 'Finance bootstrap rejects requests without Main Admin authorization')
           const financeSetup = await request('/api/finance/setup-status')
           check(financeSetup.response.status === 200, 'Finance setup status endpoint responds')
           const financeSuffix = randomBytes(6).toString('hex')
@@ -298,6 +300,8 @@ jobs:
             check(auditAccess.response.status === (role === 'AUDITOR' ? 200 : 403), role + ' audit permission is enforced')
             check((await request('/api/admin/daily-updates', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Admin Daily Updates')
             check((await request('/api/admin/gallery', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Admin Gallery')
+            check((await request('/api/admin/registrations', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Participant/Registration management')
+            check((await request('/api/admin/finance-users', { headers: financeHeaders(token) })).response.status === 401, role + ' cannot access Main Admin finance recovery controls')
           }
           const operatorToken = (await financeLogin(financeUsers.OPERATOR.loginId, financePassword)).data.token
           const unauthorizedReset = await request('/api/admin/finance-users/' + encodeURIComponent(financeUsers.OPERATOR.id) + '/reset-password', {
@@ -318,6 +322,8 @@ jobs:
             body: JSON.stringify({ currentPassword: financeTempPassword, newPassword: financeNewPassword })
           })
           check(changedPassword.response.status === 200, 'Finance user can replace reset temporary password')
+          const resetAudit = await request('/api/finance/audit?entityType=FINANCE_USER&limit=50', { headers: financeHeaders(headToken) })
+          check(resetAudit.response.status === 200 && resetAudit.data.logs?.some(log => log.action === 'ADMIN_PASSWORD_RESET' && log.entity_id === financeUsers.OPERATOR.id), 'Finance password reset is recorded in audit history')
           const finalLogin = await financeLogin(financeUsers.OPERATOR.loginId, financeNewPassword)
           check(finalLogin.response.status === 200 && (await request('/api/finance/dashboard', { headers: financeHeaders(finalLogin.data.token) })).response.status === 200, 'Finance login works after password change')
 
@@ -354,6 +360,17 @@ jobs:
           const publicImage = await fetch(new URL(publicPublished.photos[0].imageUrl, base))
           const publicImageBytes = Buffer.from(await publicImage.arrayBuffer())
           check(publicImage.status === 200 && publicImage.headers.get('content-type') === 'image/png' && publicImageBytes[0] === 0x89 && publicImageBytes[1] === 0x50 && publicImageBytes[2] === 0x4e && publicImageBytes[3] === 0x47, 'uploaded photo is retrievable from public image endpoint after approval')
+          const invalidPhotoTitle = marker + ' invalid-photo'
+          const invalidPhotoForm = new FormData()
+          invalidPhotoForm.set('title', invalidPhotoTitle)
+          invalidPhotoForm.set('body', 'Automated invalid image signature test; preview-only.')
+          invalidPhotoForm.set('category', 'Automated Test')
+          invalidPhotoForm.set('eventDate', date)
+          invalidPhotoForm.append('photos', new Blob([Buffer.from('not a real PNG')], { type: 'image/png' }), 'spoofed.png')
+          const invalidPhoto = await request('/api/daily-updates/submissions', { method: 'POST', headers: { authorization: 'Bearer ' + memberToken }, body: invalidPhotoForm })
+          check(invalidPhoto.response.status === 400, 'upload rejects a file with spoofed image MIME type')
+          const afterInvalidPhoto = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          check(!afterInvalidPhoto.data.updates?.some(u => u.title === invalidPhotoTitle), 'invalid image upload leaves no pending update')
           const adminPendingImage = await request('/api/admin/daily-updates', { headers: adminHeaders })
           check(adminPendingImage.response.status === 200 && adminPendingImage.data.updates?.find(u => u.id === published.id)?.photos?.length === 1, 'Admin review can see submitted photo metadata')
           const rejectedTitle = marker + ' reject'
@@ -405,5 +422,5 @@ jobs:
           if (!response.ok || result.ok !== true || result.auditHistoryPreserved !== true) {
             throw new Error('Preview cleanup failed with HTTP ' + response.status + ': ' + JSON.stringify(result))
           }
-          console.log('PASS Preview-only cleanup: ' + result.deletedUpdates + ' marked updates removed; ' + result.deletedTestAccounts + ' automated test accounts removed; audit history preserved.')
+          console.log('PASS Preview-only cleanup: ' + result.deletedUpdates + ' marked updates removed; ' + result.deletedTestAccounts + ' committee test accounts and ' + result.deletedFinanceTestUsers + ' finance test accounts removed; audit history preserved.')
           NODE
