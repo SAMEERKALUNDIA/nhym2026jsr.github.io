@@ -41,8 +41,11 @@ function uppercaseRegistrationValues(value: unknown, key = ''): unknown {
 }
 
 function authorised(request: Request, env: Env) {
-  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-  return Boolean(env.ADMIN_TOKEN && token === env.ADMIN_TOKEN)
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim()
+  // Normalize accidental surrounding whitespace in deployment secrets while retaining
+  // an exact token comparison.
+  const configuredToken = env.ADMIN_TOKEN?.trim()
+  return Boolean(configuredToken && token && token === configuredToken)
 }
 
 async function financeDigest(value: string): Promise<string> {
