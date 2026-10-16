@@ -319,6 +319,26 @@ export default {
       return financeJson({ ok: true, gallerySchemaReady: true })
     }
 
+    // Preview-only seed of one temporary Finance Head when Preview already has real finance users.
+    // The seeded account is CI-prefixed, requires Main Admin auth, and is removed by ci-cleanup.
+    if (url.pathname === '/api/admin/daily-updates/ci-finance-prepare' && request.method === 'POST') {
+      if (env.FINANCE_PREVIEW_MODE !== 'true') return json({ error: 'Not found' }, 404)
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      let payload: { loginId?: unknown; password?: unknown }
+      try { payload = await request.json() as { loginId?: unknown; password?: unknown } } catch { return financeJson({ error: 'Invalid JSON' }, 400) }
+      const loginId = typeof payload.loginId === 'string' ? payload.loginId : ''
+      const password = typeof payload.password === 'string' ? payload.password : ''
+      if (!/^ci-finance-head-[0-9a-f]{12}$/.test(loginId) || password.length < 12 || password.length > 200) {
+        return financeJson({ error: 'Invalid Preview Finance test credentials' }, 400)
+      }
+      const existing = await env.DB.prepare('SELECT id FROM finance_users WHERE login_id = ?').bind(loginId).first<{ id: string }>()
+      if (existing) return financeJson({ error: 'Preview Finance test login already exists' }, 409)
+      const salt = financeRandomHex(16)
+      const passwordHash = await financePasswordHash(password, salt)
+      await env.DB.prepare("INSERT INTO finance_users (id, display_name, login_id, role, password_salt, password_hash) VALUES (?, 'CI Finance Head', ?, 'FINANCE_HEAD', ?, ?)").bind(crypto.randomUUID(), loginId, salt, passwordHash).run()
+      return financeJson({ ok: true, created: true }, 201)
+    }
+
     // Preview-only CI cleanup. Never available on production; preserves audit history.
     if (url.pathname === '/api/admin/daily-updates/ci-cleanup' && request.method === 'POST') {
       if (env.FINANCE_PREVIEW_MODE !== 'true') return json({ error: 'Not found' }, 404)
