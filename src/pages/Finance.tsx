@@ -637,7 +637,7 @@ export default function Finance() {
         moneyValue(x.requested_amount_paise), x.approved_amount_paise == null ? '—' : moneyValue(x.approved_amount_paise),
         moneyValue(x.paid_amount_paise), x.approval_status, x.payment_status,
       ]),
-      [9, 42, 19, 30, 37, 47, 22, 22, 20, 21, 21],
+      [13, 40, 19, 30, 37, 47, 22, 22, 20, 21, 21],
       ['center', 'left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'center', 'center'],
     )
 
