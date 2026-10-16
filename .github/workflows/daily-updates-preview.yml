@@ -255,5 +255,5 @@ jobs:
           if (!response.ok || result.ok !== true || result.auditHistoryPreserved !== true) {
             throw new Error('Preview cleanup failed with HTTP ' + response.status + ': ' + JSON.stringify(result))
           }
-          console.log('PASS Preview-only cleanup: ' + result.deletedUpdates + ' marked updates removed; test account removed=' + result.deletedTestAccount + '; audit history preserved.')
+          console.log('PASS Preview-only cleanup: ' + result.deletedUpdates + ' marked updates removed; ' + result.deletedTestAccounts + ' automated test accounts removed; audit history preserved.')
           NODE
