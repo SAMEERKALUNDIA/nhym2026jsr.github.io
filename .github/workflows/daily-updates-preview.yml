@@ -11,6 +11,7 @@ on:
       - "migrations/0003_daily_updates.sql"
       - "migrations/0004_gallery_storage_compat.sql"
       - "migrations/0005_finance_payment_reference_index_normalization.sql"
+      - "migrations/0006_homepage_visitors.sql"
       - "wrangler.daily-updates-preview.jsonc"
       - "package.json"
       - "pnpm-lock.yaml"
