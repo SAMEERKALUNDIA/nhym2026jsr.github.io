@@ -53,7 +53,7 @@ jobs:
           })
           const errors = (result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error)
           if (errors.length) {
-            for (const diagnostic of errors) console.error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\\n'))
+            for (const diagnostic of errors) console.error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
             process.exit(1)
           }
           console.log('Worker syntax passed.')
@@ -149,7 +149,7 @@ jobs:
           const password = randomBytes(24).toString('hex')
           const marker = 'CI Functional Test ' + randomBytes(6).toString('hex')
           // Publish exact identifiers immediately so the always-run cleanup can target only this run's test records.
-          await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, `test_login_id=${loginId}\\ntest_marker=${marker}\\n`))
+          await import('node:fs/promises').then(({ appendFile }) => appendFile(process.env.GITHUB_OUTPUT, `test_login_id=${loginId}\ntest_marker=${marker}\n`))
           const date = new Date().toISOString().slice(0, 10)
           const created = await request('/api/admin/daily-updates/users', {
             method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
@@ -250,8 +250,8 @@ jobs:
             `DELETE FROM daily_updates WHERE title LIKE ${prefix};`,
             `DELETE FROM daily_update_sessions WHERE user_id IN (SELECT id FROM daily_update_users WHERE login_id = ${login});`,
             `DELETE FROM daily_update_users WHERE login_id = ${login};`
-          ].join('\\n')
-          await writeFile('/tmp/nhym-daily-updates-preview-cleanup.sql', sql + '\\n', { mode: 0o600 })
+          ].join('\n')
+          await writeFile('/tmp/nhym-daily-updates-preview-cleanup.sql', sql + '\n', { mode: 0o600 })
           console.log('Validated exact Preview-only cleanup targets. Audit history is intentionally retained.')
           NODE
           pnpm dlx wrangler@4 d1 execute nhym2026-finance-preview --remote --config wrangler.daily-updates-preview.jsonc --file /tmp/nhym-daily-updates-preview-cleanup.sql
