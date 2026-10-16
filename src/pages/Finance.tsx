@@ -540,16 +540,12 @@ export default function Finance() {
           const align = aligns[i] || 'left'
           const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
           doc.text(header, tx, y + 4.5, { align, maxWidth: widths[i] - 3 })
-          doc.setDrawColor(...green)
-          doc.setLineWidth(0.55)
-          const underlineStart = x + 1.5
-          const underlineEnd = x + widths[i] - 1.5
-          doc.line(underlineStart, y + 6.1, underlineEnd, y + 6.1)
           x += widths[i]
         })
-        doc.setDrawColor(220, 227, 221)
-        doc.setLineWidth(0.15)
-        doc.line(left, y + baseRowHeight, right, y + baseRowHeight)
+        // One continuous full-width line beneath all column headings.
+        doc.setDrawColor(...green)
+        doc.setLineWidth(0.75)
+        doc.line(left, y + 6.1, right, y + 6.1)
         y += baseRowHeight
       }
       drawTableHeader()
@@ -653,7 +649,7 @@ export default function Finance() {
         String(x.received_from ?? ''), moneyValue(x.amount_paise), String(x.payment_mode ?? ''),
         [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
       ]),
-      [9, 40, 23, 28, 34, 25, 18, 24],
+      [13, 38, 23, 28, 34, 25, 18, 24],
       ['center', 'left', 'left', 'left', 'left', 'right', 'center', 'left'],
     )
 
