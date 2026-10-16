@@ -5,7 +5,7 @@ import {
   X,
 } from 'lucide-react'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Brand } from '@/components/Brand'
 import { Button } from '@/components/ui/button'
@@ -61,6 +61,23 @@ const PROGRAMME = [
 
 export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [visitorCount, setVisitorCount] = useState<number | null>(null)
+  const visitorRequestStarted = useRef(false)
+
+  useEffect(() => {
+    if (visitorRequestStarted.current) return
+    visitorRequestStarted.current = true
+
+    fetch('/api/visitor-count', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error('Visitor count unavailable')
+        return response.json() as Promise<{ totalVisitors: number }>
+      })
+      .then((data) => {
+        if (Number.isFinite(data.totalVisitors)) setVisitorCount(data.totalVisitors)
+      })
+      .catch(() => setVisitorCount(null))
+  }, [])
 
   return (
     <div className="min-h-dvh bg-background">
@@ -613,6 +630,28 @@ export default function Home() {
                 >
                   {EVENT.email}
                 </a>
+              </p>
+            </div>
+          </div>
+          <div
+            className="mt-8 flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card px-5 py-5 text-center shadow-sm sm:flex-row sm:gap-4"
+            aria-live="polite"
+          >
+            <div className="flex size-10 items-center justify-center rounded-full bg-brand/10 text-brand" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" />
+                <circle cx="12" cy="12" r="2.5" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-label text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                NHYM India · Website Visitors
+              </p>
+              <p className="mt-1 font-display text-2xl font-bold tabular-nums text-foreground">
+                {visitorCount === null ? '—' : visitorCount.toLocaleString('en-IN')}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Estimated unique browsers since the visitor counter was launched
               </p>
             </div>
           </div>
