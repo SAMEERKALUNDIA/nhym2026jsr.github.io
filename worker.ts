@@ -323,7 +323,7 @@ export default {
     if (url.pathname === '/api/admin/daily-updates/ci-cleanup' && request.method === 'POST') {
       if (env.FINANCE_PREVIEW_MODE !== 'true') return json({ error: 'Not found' }, 404)
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
-      let payload: { loginId?: unknown; marker?: unknown }
+      let payload: { loginId?: unknown; marker?: unknown; financeLoginIds?: unknown }
       try { payload = await request.json() as { loginId?: unknown; marker?: unknown } } catch { return financeJson({ error: 'Invalid JSON' }, 400) }
       const loginId = typeof payload.loginId === 'string' ? payload.loginId : ''
       const marker = typeof payload.marker === 'string' ? payload.marker : ''
@@ -346,7 +346,20 @@ export default {
         await env.DB.prepare('DELETE FROM daily_update_sessions WHERE user_id = ?').bind(user.id).run()
         await env.DB.prepare('DELETE FROM daily_update_users WHERE id = ?').bind(user.id).run()
       }
-      return financeJson({ ok: true, deletedUpdates: updateIds.length, deletedTestAccounts: (users.results ?? []).length, auditHistoryPreserved: true })
+      const financeLoginIds = payload.financeLoginIds === undefined ? [] : payload.financeLoginIds
+      if (!Array.isArray(financeLoginIds) || financeLoginIds.some(value => typeof value !== 'string' || !/^ci-finance-(head|operator|approver|auditor)-[0-9a-f]{12}$/.test(value))) {
+        return financeJson({ error: 'Invalid Preview finance test identifiers' }, 400)
+      }
+      let deletedFinanceTestUsers = 0
+      for (const financeLoginId of financeLoginIds as string[]) {
+        const financeUser = await env.DB.prepare('SELECT id FROM finance_users WHERE login_id = ?').bind(financeLoginId).first<{ id: string }>()
+        if (!financeUser) continue
+        await env.DB.prepare('DELETE FROM finance_audit_logs WHERE actor_user_id = ? OR entity_id = ?').bind(financeUser.id, financeUser.id).run()
+        await env.DB.prepare('DELETE FROM finance_sessions WHERE user_id = ?').bind(financeUser.id).run()
+        await env.DB.prepare('DELETE FROM finance_users WHERE id = ?').bind(financeUser.id).run()
+        deletedFinanceTestUsers++
+      }
+      return financeJson({ ok: true, deletedUpdates: updateIds.length, deletedTestAccounts: (users.results ?? []).length, deletedFinanceTestUsers, auditHistoryPreserved: true })
     }
 
     // DAILY UPDATES — admin-only list, including unpublished content for review.
