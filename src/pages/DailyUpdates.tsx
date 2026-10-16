@@ -46,13 +46,13 @@ export default function DailyUpdates() {
   useEffect(() => { void loadUpdates() }, [])
 
   return (
-    <main className="min-h-dvh bg-background text-foreground">
+    <main className="min-h-dvh max-w-full overflow-x-clip bg-background text-foreground">
       <Meta title="Daily Updates — National Ho Youth Meet 2026" description="Verified daily preparation updates, photos and announcements for NHYM-26 in Jamshedpur." />
       <header className="border-b border-border/70 bg-background/95 px-gutter">
-        <div className="mx-auto flex min-h-20 max-w-content items-center justify-between gap-4">
+        <div className="mx-auto flex min-h-20 max-w-content flex-wrap items-center justify-between gap-3 py-3">
           <a href="/" className="shrink-0 rounded-md"><Brand /></a>
-          <div className="flex flex-wrap items-center gap-2">
-            <a href="/admin/updates" className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Committee / Admin Login</a>
+          <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+            <a href="/admin/updates" className="max-w-full rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Committee / Admin Login</a>
             <a href="/" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
               <ArrowLeft size={16} /> Home
             </a>
