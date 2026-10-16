@@ -142,6 +142,7 @@ jobs:
           const checks = [
             ['public Daily Updates page', '/daily-updates', 200, 'GET'],
             ['public published-update API', '/api/daily-updates', 200, 'GET'],
+            ['public homepage visitor counter', '/api/visitor-count', 200, 'GET'],
             ['admin update list requires admin token', '/api/admin/daily-updates', 401, 'GET'],
             ['member identity requires member session', '/api/daily-updates/me', 401, 'GET'],
             ['member submission requires member session', '/api/daily-updates/submissions', 401, 'POST'],
