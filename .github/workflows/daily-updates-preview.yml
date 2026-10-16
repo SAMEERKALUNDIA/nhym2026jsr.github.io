@@ -271,7 +271,7 @@ jobs:
           check(publicList.response.status === 200 && publicList.data.updates?.some(u => u.id === published.id && u.title === publishedTitle), 'published update appears on public API')
           const publicPublished = publicList.data.updates?.find(u => u.id === published.id)
           check(publicPublished?.photos?.length === 1, 'uploaded photo metadata appears with published update')
-          const publicImage = await fetch(new URL(publicPublished.photos[0].imageUrl, baseUrl))
+          const publicImage = await fetch(new URL(publicPublished.photos[0].imageUrl, base))
           const publicImageBytes = Buffer.from(await publicImage.arrayBuffer())
           check(publicImage.status === 200 && publicImage.headers.get('content-type') === 'image/png' && publicImageBytes[0] === 0x89 && publicImageBytes[1] === 0x50 && publicImageBytes[2] === 0x4e && publicImageBytes[3] === 0x47, 'uploaded photo is retrievable from public image endpoint after approval')
           const adminPendingImage = await request('/api/admin/daily-updates', { headers: adminHeaders })
