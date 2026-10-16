@@ -199,11 +199,18 @@ jobs:
                 const errors = []
                 page.on('pageerror', error => errors.push(error.message))
                 const response = await page.goto(base + route, { waitUntil: 'domcontentloaded', timeout: 45000 })
-                await page.waitForTimeout(1200)
                 if (!response || response.status() !== 200) throw new Error(route + ' (' + viewport.name + ') returned HTTP ' + (response?.status() ?? 'no response'))
-                const body = await page.locator('body').innerText({ timeout: 15000 })
+                // Cloudflare can briefly serve the previous asset bundle immediately after deployment.
+                // Wait for the expected UI text to appear before classifying the route as broken.
+                let body = ''
+                const deadline = Date.now() + 15000
+                while (Date.now() < deadline) {
+                  body = await page.locator('body').innerText({ timeout: 15000 }).catch(() => '')
+                  if (expected.every(text => body.toLowerCase().includes(text.toLowerCase()))) break
+                  await page.waitForTimeout(750)
+                }
                 for (const text of expected) {
-                  if (!body.toLowerCase().includes(text.toLowerCase())) throw new Error(route + ' (' + viewport.name + ') missing expected UI text: ' + text)
+                  if (!body.toLowerCase().includes(text.toLowerCase())) throw new Error(route + ' (' + viewport.name + ') missing expected UI text after waiting for hydration/deployment propagation: ' + text + '; body=' + body.slice(0, 240))
                 }
                 if (route === '/login?role=finance' && await page.locator('input[placeholder="Finance login ID"]').count() !== 1) throw new Error('Finance login mode did not render its dedicated Login ID field.')
                 const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }))
