@@ -1,6 +1,20 @@
 name: Daily Updates Preview Deployment and Smoke Tests
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "worker.ts"
+      - "src/**"
+      - "public/**"
+      - "migrations/0003_daily_updates.sql"
+      - "migrations/0004_gallery_storage_compat.sql"
+      - "migrations/0005_finance_payment_reference_index_normalization.sql"
+      - "wrangler.daily-updates-preview.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/daily-updates-preview.yml"
   push:
     branches:
       - feature/daily-updates-management
