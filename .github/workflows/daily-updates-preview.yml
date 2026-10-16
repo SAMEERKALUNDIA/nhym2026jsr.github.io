@@ -234,7 +234,7 @@ jobs:
             const result = await request('/api/daily-updates/submissions', {
               method: 'POST', headers: { authorization: 'Bearer ' + memberToken }, body: form
             })
-            check(result.response.status === 201 && result.data.status === 'PENDING', 'committee submission enters PENDING')
+            check(result.response.status === 201 && result.data.status === 'PENDING', 'committee submission enters PENDING (HTTP ' + result.response.status + ': ' + JSON.stringify(result.data) + ')')
             return result.data
           }
           const publishedTitle = marker + ' publish'
