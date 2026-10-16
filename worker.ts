@@ -307,7 +307,7 @@ export default {
       if (!/^ci[0-9a-f]{16}$/.test(loginId) || !/^CI Functional Test [0-9a-f]{12}$/.test(marker)) {
         return financeJson({ error: 'Invalid Preview test identifiers' }, 400)
       }
-      const updates = await env.DB.prepare('SELECT id FROM daily_updates WHERE title LIKE ?').bind(marker + '%').all<{ id: string }>()
+      const updates = await env.DB.prepare("SELECT id FROM daily_updates WHERE title LIKE 'CI Functional Test %'").all<{ id: string }>()
       const updateIds = (updates.results ?? []).map(row => row.id)
       for (const updateId of updateIds) {
         const photos = await env.DB.prepare('SELECT r2_key FROM daily_update_photos WHERE update_id = ?').bind(updateId).all<{ r2_key: string }>()
@@ -317,12 +317,13 @@ export default {
       for (const updateId of updateIds) {
         await env.DB.prepare('DELETE FROM daily_updates WHERE id = ?').bind(updateId).run()
       }
-      const user = await env.DB.prepare("SELECT id FROM daily_update_users WHERE login_id = ? AND display_name = 'Automated Preview Test Member'").bind(loginId).first<{ id: string }>()
-      if (user) {
+      const users = await env.DB.prepare("SELECT id FROM daily_update_users WHERE display_name = 'Automated Preview Test Member' AND login_id GLOB 'ci????????????????'").all<{ id: string }>()
+      for (const user of users.results ?? []) {
+        if (!/^ci[0-9a-f]{16}$/.test(String((await env.DB.prepare('SELECT login_id FROM daily_update_users WHERE id = ?').bind(user.id).first<{ login_id: string }>())?.login_id ?? ''))) continue
         await env.DB.prepare('DELETE FROM daily_update_sessions WHERE user_id = ?').bind(user.id).run()
         await env.DB.prepare('DELETE FROM daily_update_users WHERE id = ?').bind(user.id).run()
       }
-      return financeJson({ ok: true, deletedUpdates: updateIds.length, deletedTestAccount: Boolean(user), auditHistoryPreserved: true })
+      return financeJson({ ok: true, deletedUpdates: updateIds.length, deletedTestAccounts: (users.results ?? []).length, auditHistoryPreserved: true })
     }
 
     // DAILY UPDATES — admin-only list, including unpublished content for review.
