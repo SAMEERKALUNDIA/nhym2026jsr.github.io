@@ -125,3 +125,75 @@ jobs:
           }
           if (process.exitCode) process.exit(1)
           NODE
+
+      - name: End-to-end committee submission, Admin review, publication and rejection
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { randomBytes } from 'node:crypto'
+          const base = 'https://nhymindia-daily-updates-preview.2026jsr.workers.dev'
+          const adminToken = process.env.PREVIEW_ADMIN_TOKEN
+          const adminHeaders = { authorization: 'Bearer ' + adminToken }
+          const check = (condition, message) => { if (!condition) throw new Error(message); console.log('PASS ' + message) }
+          const request = async (path, options = {}) => {
+            const response = await fetch(base + path, options)
+            let data = {}
+            try { data = await response.json() } catch {}
+            return { response, data }
+          }
+          const loginId = 'ci' + randomBytes(8).toString('hex')
+          const password = randomBytes(24).toString('hex')
+          const marker = 'CI Functional Test ' + randomBytes(6).toString('hex')
+          const date = new Date().toISOString().slice(0, 10)
+          const created = await request('/api/admin/daily-updates/users', {
+            method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ displayName: 'Automated Preview Test Member', loginId, password })
+          })
+          check(created.response.status === 201, 'temporary committee test account created')
+          const login = await request('/api/daily-updates/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password })
+          })
+          check(login.response.status === 200 && Boolean(login.data.token), 'committee member login succeeds')
+          const memberToken = login.data.token
+          const identity = await request('/api/daily-updates/me', { headers: { authorization: 'Bearer ' + memberToken } })
+          check(identity.response.status === 200 && identity.data.user?.loginId === loginId, 'committee session identity verified')
+          const submit = async title => {
+            const form = new FormData()
+            form.set('title', title)
+            form.set('body', 'Automated end-to-end test; preview-only content.')
+            form.set('category', 'Automated Test')
+            form.set('eventDate', date)
+            const result = await request('/api/daily-updates/submissions', {
+              method: 'POST', headers: { authorization: 'Bearer ' + memberToken }, body: form
+            })
+            check(result.response.status === 201 && result.data.status === 'PENDING', 'committee submission enters PENDING')
+            return result.data
+          }
+          const publishedTitle = marker + ' publish'
+          const published = await submit(publishedTitle)
+          let adminList = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          check(adminList.response.status === 200 && adminList.data.updates?.some(u => u.id === published.id && u.status === 'PENDING'), 'Admin sees pending submission')
+          const approve = await request('/api/admin/daily-updates/' + encodeURIComponent(published.id), {
+            method: 'PATCH', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'approve' })
+          })
+          check(approve.response.status === 200 && approve.data.status === 'PUBLISHED', 'Admin approves and publishes submission')
+          const publicList = await request('/api/daily-updates')
+          check(publicList.response.status === 200 && publicList.data.updates?.some(u => u.id === published.id && u.title === publishedTitle), 'published update appears on public API')
+          const rejectedTitle = marker + ' reject'
+          const rejected = await submit(rejectedTitle)
+          const reject = await request('/api/admin/daily-updates/' + encodeURIComponent(rejected.id), {
+            method: 'PATCH', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'reject', note: 'Automated preview rejection test' })
+          })
+          check(reject.response.status === 200 && reject.data.status === 'REJECTED', 'Admin rejects second submission')
+          adminList = await request('/api/admin/daily-updates', { headers: adminHeaders })
+          check(adminList.response.status === 200 && adminList.data.updates?.some(u => u.id === rejected.id && u.status === 'REJECTED' && u.rejectionNote === 'Automated preview rejection test'), 'rejection status and note are persisted')
+          const publicAfterReject = await request('/api/daily-updates')
+          check(publicAfterReject.response.status === 200 && !publicAfterReject.data.updates?.some(u => u.id === rejected.id), 'rejected update is not public')
+          const users = await request('/api/admin/daily-updates/users', { headers: adminHeaders })
+          check(users.response.status === 200 && users.data.users?.some(u => u.loginId === loginId), 'test member appears in Admin member list')
+          console.log('E2E test completed. Preview-only test account and two marked test updates were created; no production data was touched.')
+          NODE
