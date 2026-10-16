@@ -296,6 +296,29 @@ export default {
       }
     }
 
+    // Preview-only schema bootstrap for isolated integration tests; production always returns 404.
+    if (url.pathname === '/api/admin/daily-updates/ci-prepare' && request.method === 'POST') {
+      if (env.FINANCE_PREVIEW_MODE !== 'true') return json({ error: 'Not found' }, 404)
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      await env.DB.batch([
+        env.DB.prepare(`CREATE TABLE IF NOT EXISTS gallery_photos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          r2_key TEXT NOT NULL UNIQUE,
+          title TEXT NOT NULL,
+          caption TEXT,
+          category TEXT NOT NULL DEFAULT 'NHYM Events',
+          content_type TEXT NOT NULL,
+          file_size INTEGER,
+          is_published INTEGER NOT NULL DEFAULT 1,
+          display_order INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`),
+        env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_gallery_photos_published ON gallery_photos(is_published, display_order, created_at)')
+      ])
+      return financeJson({ ok: true, gallerySchemaReady: true })
+    }
+
     // Preview-only CI cleanup. Never available on production; preserves audit history.
     if (url.pathname === '/api/admin/daily-updates/ci-cleanup' && request.method === 'POST') {
       if (env.FINANCE_PREVIEW_MODE !== 'true') return json({ error: 'Not found' }, 404)
