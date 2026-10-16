@@ -262,6 +262,46 @@ jobs:
           const identity = await request('/api/daily-updates/me', { headers: { authorization: 'Bearer ' + memberToken } })
           check(identity.response.status === 200 && identity.data.user?.loginId === loginId, 'committee session identity verified')
 
+          // Main Admin-only committee member password reset: verify authorization, session revocation,
+          // rejection of the old password, successful replacement credentials, and audit history.
+          const memberTempPassword = randomBytes(24).toString('hex')
+          const memberNewPassword = randomBytes(24).toString('hex')
+          const memberResetDenied = await request('/api/admin/daily-updates/users/' + encodeURIComponent(identity.data.user.id) + '/reset-password', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ password: memberTempPassword })
+          })
+          check(memberResetDenied.response.status === 401, 'unauthenticated request cannot reset committee member password')
+          const memberReset = await request('/api/admin/daily-updates/users/' + encodeURIComponent(identity.data.user.id) + '/reset-password', {
+            method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ password: memberTempPassword })
+          })
+          check(memberReset.response.status === 200, 'Main Admin can reset committee member password')
+          check((await request('/api/daily-updates/me', { headers: { authorization: 'Bearer ' + memberToken } })).response.status === 401, 'committee member password reset revokes existing session')
+          const oldMemberLogin = await request('/api/daily-updates/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password })
+          })
+          check(oldMemberLogin.response.status === 401, 'old committee member password is rejected after reset')
+          const memberTempLogin = await request('/api/daily-updates/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password: memberTempPassword })
+          })
+          check(memberTempLogin.response.status === 200 && Boolean(memberTempLogin.data.token), 'committee member can log in with reset password')
+          const memberPasswordChange = await request('/api/admin/daily-updates/users/' + encodeURIComponent(identity.data.user.id) + '/reset-password', {
+            method: 'POST', headers: { ...adminHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ password: memberNewPassword })
+          })
+          check(memberPasswordChange.response.status === 200, 'Admin can issue a second committee password for final session test')
+          check((await request('/api/daily-updates/me', { headers: { authorization: 'Bearer ' + memberTempLogin.data.token } })).response.status === 401, 'second committee password reset revokes temporary session')
+          const memberFinalLogin = await request('/api/daily-updates/login', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ loginId, password: memberNewPassword })
+          })
+          check(memberFinalLogin.response.status === 200 && Boolean(memberFinalLogin.data.token), 'committee member can log in after final password reset')
+          const memberAudit = await request('/api/admin/daily-updates/audit?limit=50', { headers: adminHeaders })
+          check(memberAudit.response.status === 200 && memberAudit.data.logs?.some(log => log.action === 'MEMBER_PASSWORD_RESET' && log.details?.userId === identity.data.user.id), 'committee member password reset is recorded in audit log')
+          const memberToken = memberFinalLogin.data.token
+
           // Cross-module authorization checks: role tokens must not cross into other modules.
           for (const [name, path, token] of [
             ['committee token cannot access Admin Daily Updates API', '/api/admin/daily-updates', memberToken],
