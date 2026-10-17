@@ -177,6 +177,26 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
 
+    // Public homepage visitor counter: one anonymous, cookie-based browser record.
+    // Store only a SHA-256 hash; never store the visitor cookie itself.
+    if (url.pathname === '/api/visitor-count' && request.method === 'GET') {
+      const cookieHeader = request.headers.get('cookie') ?? ''
+      const cookieMatch = cookieHeader.match(/(?:^|;\s*)nhym_visitor_id=([a-f0-9-]{36})(?:;|$)/i)
+      const visitorId = cookieMatch?.[1] ?? crypto.randomUUID()
+      const visitorHash = await financeDigest(visitorId)
+      await env.DB.prepare('INSERT OR IGNORE INTO homepage_visitors (visitor_hash) VALUES (?)').bind(visitorHash).run()
+      const count = await env.DB.prepare('SELECT COUNT(*) AS total FROM homepage_visitors').first<{ total: number }>()
+      const headers = new Headers({
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'private, no-store',
+        'x-content-type-options': 'nosniff',
+      })
+      if (!cookieMatch) {
+        headers.append('set-cookie', `nhym_visitor_id=${visitorId}; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax`)
+      }
+      return new Response(JSON.stringify({ totalVisitors: Number(count?.total ?? 0) }), { status: 200, headers })
+    }
+
     // DAILY UPDATES — public list exposes only Admin-approved publications.
     if (url.pathname === '/api/daily-updates' && request.method === 'GET') {
       const result = await env.DB.prepare(`
@@ -318,7 +338,11 @@ export default {
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )`),
-        env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_gallery_photos_published ON gallery_photos(is_published, display_order, created_at)')
+        env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_gallery_photos_published ON gallery_photos(is_published, display_order, created_at)'),
+        env.DB.prepare(`CREATE TABLE IF NOT EXISTS homepage_visitors (
+          visitor_hash TEXT PRIMARY KEY,
+          first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`)
       ])
       return financeJson({ ok: true, gallerySchemaReady: true })
     }
