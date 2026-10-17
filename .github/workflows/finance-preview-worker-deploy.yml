@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - feature/admin-finance-password-recovery
+      - fix/finance-audit-details-mobile
     paths:
       - "worker.ts"
       - "src/**"
