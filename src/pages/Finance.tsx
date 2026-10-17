@@ -43,7 +43,7 @@ const AuditChangeSummary = ({ before, after }: { before: unknown; after: unknown
     { title: 'Before change', value: before },
     { title: 'After change', value: after }
   ]
-  return <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">{sections.map(section => <div key={section.title} className="w-full min-w-0 rounded-md border bg-background p-2"><h3 className="text-xs font-semibold">{section.title}</h3><div className="mt-1 space-y-1">{auditReadableEntries(section.value).filter(entry => !['Request Id', 'RequestID'].includes(entry.label)).map((entry, index) => <p key={entry.label + index} className="whitespace-normal break-words text-xs leading-4"><span className="text-muted-foreground">{entry.label}: </span><span>{entry.value}</span></p>)}</div></div>)}</div>
+  return <div className="mt-2 grid grid-cols-1 gap-2">{sections.map(section => <div key={section.title} className="w-full min-w-0 rounded-md border bg-background p-2"><h3 className="text-xs font-semibold">{section.title}</h3><div className="mt-1 space-y-1">{auditReadableEntries(section.value).filter(entry => !['Request Id', 'RequestID'].includes(entry.label)).map((entry, index) => <p key={entry.label + index} className="whitespace-normal break-words text-xs leading-4"><span className="text-muted-foreground">{entry.label}: </span><span>{entry.value}</span></p>)}</div></div>)}</div>
 }
 
 async function readApiJson<T>(response: Response): Promise<T> {
