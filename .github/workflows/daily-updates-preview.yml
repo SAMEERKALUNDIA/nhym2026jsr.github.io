@@ -121,6 +121,15 @@ jobs:
           printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.daily-updates-preview.jsonc
           pnpm dlx wrangler@4 deploy --config wrangler.daily-updates-preview.jsonc
 
+      - name: Apply visitor-counter schema to isolated Preview D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          pnpm dlx wrangler@4 d1 execute nhym2026-finance-preview --remote --file=migrations/0006_homepage_visitors.sql --config wrangler.daily-updates-preview.jsonc
+
       - name: Wait for preview and smoke-test access controls
         env:
           PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
