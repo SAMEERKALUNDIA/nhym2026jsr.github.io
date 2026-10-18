@@ -696,7 +696,7 @@ if (
       let body: RegistrationPayload
       try { body = await request.json() as RegistrationPayload } catch { return json({ error: 'Invalid request.' }, 400) }
       body = uppercaseRegistrationValues(body) as RegistrationPayload
-      if (!body.email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(body.email.trim())) return json({ error: 'A valid email address is required.' }, 400)
+      if (!body.email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(body.email.trim())) return json({ error: 'A valid email address is required.' }, 400)
       if (!Array.isArray(body.participants) || body.participants.length < 1 || body.participants.length > 100) return json({ error: 'Add between 1 and 100 participants per registration.' }, 400)
       if (!['UPI', 'BANK', 'CASH', 'OTHER'].includes(body.paymentMode) || !body.paymentReference || body.paymentReference.trim().length < 2 || body.paymentReference.length > 200) return json({ error: 'A valid payment method and transaction/reference number are required.' }, 400)
       if (!body.declarations || !['INFO', 'PAYMENT', 'FINAL'].every((key) => body.declarations[key.toLowerCase()] === true)) return json({ error: 'All declarations are required.' }, 400)
