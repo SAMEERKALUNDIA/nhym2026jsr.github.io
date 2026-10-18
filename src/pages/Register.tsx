@@ -6,6 +6,7 @@ import {
   Mail,
   Phone,
   Send,
+  Trash2,
 } from 'lucide-react'
 
 import { Brand } from '@/components/Brand'
@@ -560,6 +561,21 @@ if (!row.dob.trim()) {
                         <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
                           Participant {index + 1}
                         </legend>
+                        {rows.length > 1 && (
+                          <div className="mb-4 flex justify-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-10 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => removeRow(row.key)}
+                              aria-label={`Remove participant ${index + 1}`}
+                            >
+                              <Trash2 className="mr-2 size-4" aria-hidden="true" />
+                              Remove participant
+                            </Button>
+                          </div>
+                        )}
                         <div className="grid gap-4 sm:grid-cols-[1.6fr_0.7fr]">
                           <div className="min-w-0">
                             <Label htmlFor={`name-${row.key}`}>Full name</Label>
@@ -926,17 +942,7 @@ if (!row.dob.trim()) {
                           </p>
                         )}
 
-                        {rows.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="mt-3 h-11 px-2 text-muted-foreground hover:text-destructive"
-                            onClick={() => removeRow(row.key)}
-                          >
-                            Remove this participant
-                          </Button>
-                        )}
+
                       </fieldset>
                     ))}
 
