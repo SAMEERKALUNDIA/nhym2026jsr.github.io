@@ -661,6 +661,16 @@ if (
     return json({ error: 'Image not found' }, 404)
   }
 
+  // Public access is limited to images explicitly published in the Gallery.
+  // Daily Updates and unpublished uploads share the same private R2 bucket.
+  const publishedPhoto = await env.DB.prepare(
+    'SELECT id FROM gallery_photos WHERE r2_key = ? AND is_published = 1 LIMIT 1'
+  ).bind(key).first<{ id: number }>()
+
+  if (!publishedPhoto) {
+    return json({ error: 'Image not found' }, 404)
+  }
+
   const object = await env.GALLERY.get(key)
 
   if (!object) {
@@ -686,10 +696,42 @@ if (
       let body: RegistrationPayload
       try { body = await request.json() as RegistrationPayload } catch { return json({ error: 'Invalid request.' }, 400) }
       body = uppercaseRegistrationValues(body) as RegistrationPayload
-      if (!body.email || !body.email.includes('@')) return json({ error: 'A valid email address is required.' }, 400)
-      if (!Array.isArray(body.participants) || body.participants.length < 1) return json({ error: 'Add at least one participant.' }, 400)
-      if (!body.paymentMode || !body.paymentReference || body.paymentReference.trim().length < 2) return json({ error: 'Payment method and transaction/reference number are required.' }, 400)
-      if (!body.declarations || !Object.values(body.declarations).every(Boolean)) return json({ error: 'All declarations are required.' }, 400)
+      if (!body.email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(body.email.trim())) return json({ error: 'A valid email address is required.' }, 400)
+      if (!Array.isArray(body.participants) || body.participants.length < 1 || body.participants.length > 100) return json({ error: 'Add between 1 and 100 participants per registration.' }, 400)
+      if (!['UPI', 'BANK', 'CASH', 'OTHER'].includes(body.paymentMode) || !body.paymentReference || body.paymentReference.trim().length < 2 || body.paymentReference.length > 200) return json({ error: 'A valid payment method and transaction/reference number are required.' }, 400)
+      if (!body.declarations || !['INFO', 'PAYMENT', 'FINAL'].every((key) => body.declarations[key.toLowerCase()] === true)) return json({ error: 'All declarations are required.' }, 400)
+
+      // Recalculate each fee from the server's approved fee schedule. Never trust
+      // the amount or fee values supplied by the browser.
+      const expectedFees: number[] = []
+      for (const participant of body.participants) {
+        const category = String(participant.category ?? '')
+        let expectedFee: number
+        if (category === 'STUDENT') expectedFee = 500
+        else if (category === 'NOT-EARNING') expectedFee = 1000
+        else if (category === 'EARNING') expectedFee = 1500
+        else if (category === 'VISITOR') {
+          const contribution = String(participant.contribution ?? '')
+          if (contribution === 'AMOUNT-100') expectedFee = 100
+          else if (contribution === 'AMOUNT-200') expectedFee = 200
+          else if (contribution === 'AMOUNT-500') expectedFee = 500
+          else if (contribution === 'OTHER') {
+            const otherAmount = Number(String(participant.other ?? '').trim())
+            if (!Number.isSafeInteger(otherAmount) || otherAmount < 100) return json({ error: 'Visitor contribution must be at least ₹100.' }, 400)
+            expectedFee = otherAmount
+          } else return json({ error: 'Invalid participant category or visitor contribution.' }, 400)
+        } else return json({ error: 'Invalid participant category.' }, 400)
+
+        const submittedFee = Number(participant.fee)
+        if (!Number.isSafeInteger(submittedFee) || submittedFee !== expectedFee) {
+          return json({ error: 'Participant fee does not match the approved fee schedule.' }, 400)
+        }
+        expectedFees.push(expectedFee)
+      }
+      const expectedTotal = expectedFees.reduce((sum, fee) => sum + fee, 0)
+      if (!Number.isSafeInteger(expectedTotal) || !Number.isSafeInteger(Number(body.total)) || Number(body.total) !== expectedTotal) {
+        return json({ error: 'Registration total does not match the participant fees.' }, 400)
+      }
 
       // Treat references consistently so spacing/case changes cannot bypass duplicate protection.
       const normalizedReference = body.paymentReference.trim().replace(/\s+/g, '').toUpperCase()
@@ -762,7 +804,7 @@ if (
           .trim()
           .toLowerCase()
 
-      if (!registrationId || !email) {
+      if (!registrationId || !email || email.length > 254 || registrationId.length > 32) {
         return json(
           {
             error:
@@ -771,6 +813,15 @@ if (
           400
         )
       }
+
+      // Apply a per-client-IP failure limit to the public lookup endpoint.
+      // Reuse the existing D1 rate-limit table with a namespaced, hashed key.
+      const lookupIp = request.headers.get('CF-Connecting-IP') ?? 'unknown'
+      const lookupAttemptKey = await financeDigest(`participant-lookup:${lookupIp}`)
+      const lookupLimit = await env.DB.prepare(
+        "SELECT locked_until FROM finance_login_limits WHERE attempt_key = ? AND datetime(locked_until) > datetime('now')"
+      ).bind(lookupAttemptKey).first<{ locked_until: string }>()
+      if (lookupLimit) return financeJson({ error: 'Too many lookup attempts. Please try again after 15 minutes.' }, 429)
 
       const registration = await env.DB.prepare(`
         SELECT
@@ -807,6 +858,21 @@ if (
        * whether a particular Registration ID exists.
        */
       if (!registration) {
+        await env.DB.prepare(`
+          INSERT INTO finance_login_limits (attempt_key, failed_attempts, window_started_at, locked_until, updated_at)
+          VALUES (?, 1, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP)
+          ON CONFLICT(attempt_key) DO UPDATE SET
+            failed_attempts = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now', '-15 minutes') THEN 1 ELSE finance_login_limits.failed_attempts + 1 END,
+            window_started_at = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now', '-15 minutes') THEN CURRENT_TIMESTAMP ELSE finance_login_limits.window_started_at END,
+            locked_until = CASE WHEN datetime(finance_login_limits.window_started_at) <= datetime('now', '-15 minutes') THEN NULL ELSE finance_login_limits.locked_until END,
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(lookupAttemptKey).run()
+        await env.DB.prepare(`
+          UPDATE finance_login_limits SET locked_until = datetime('now', '+15 minutes'), updated_at = CURRENT_TIMESTAMP
+          WHERE attempt_key = ? AND failed_attempts >= 5
+            AND datetime(window_started_at) > datetime('now', '-15 minutes')
+            AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))
+        `).bind(lookupAttemptKey).run()
         return json(
           {
             error:
@@ -815,6 +881,8 @@ if (
           404
         )
       }
+
+      await env.DB.prepare('DELETE FROM finance_login_limits WHERE attempt_key = ?').bind(lookupAttemptKey).run()
 
       const participantResult = await env.DB.prepare(`
         SELECT
