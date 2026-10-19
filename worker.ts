@@ -467,7 +467,7 @@ export default {
     }
 
     // DAILY UPDATES — Admin edits published and unpublished updates, including attached photos.
-    const dailyUpdateEdit = url.pathname.match(/^\\/api\\/admin\\/daily-updates\\/([a-f0-9-]+)\\/edit$/i)
+    const dailyUpdateEdit = url.pathname.match(/^\/api\/admin\/daily-updates\/([a-f0-9-]+)\/edit$/i)
     if (dailyUpdateEdit && request.method === 'POST') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       const id = dailyUpdateEdit[1]
