@@ -466,6 +466,65 @@ export default {
       }
     }
 
+    // DAILY UPDATES — Admin edits published and unpublished updates, including attached photos.
+    const dailyUpdateEdit = url.pathname.match(/^\\/api\\/admin\\/daily-updates\\/([a-f0-9-]+)\\/edit$/i)
+    if (dailyUpdateEdit && request.method === 'POST') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const id = dailyUpdateEdit[1]
+      const existing = await env.DB.prepare('SELECT id, title, body, category, event_date, status FROM daily_updates WHERE id = ?').bind(id).first<any>()
+      if (!existing) return financeJson({ error: 'Update not found.' }, 404)
+      let form: FormData
+      try { form = await request.formData() } catch { return financeJson({ error: 'Invalid form data.' }, 400) }
+      const title = String(form.get('title') ?? '').trim()
+      const body = String(form.get('body') ?? '').trim()
+      const category = String(form.get('category') ?? 'General').trim().slice(0, 80) || 'General'
+      const eventDate = String(form.get('eventDate') ?? '').trim()
+      if (!title || title.length > 160 || !body || body.length > 10000 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(eventDate) || !isValidFinanceDate(eventDate)) {
+        return financeJson({ error: 'शीर्षक, विवरण और सही तारीख दर्ज करें।' }, 400)
+      }
+      let removePhotoIds: string[] = []
+      try {
+        const parsed = JSON.parse(String(form.get('removePhotoIds') ?? '[]'))
+        if (!Array.isArray(parsed) || parsed.some(value => typeof value !== 'string')) throw new Error('Invalid photo list')
+        removePhotoIds = [...new Set(parsed as string[])]
+      } catch { return financeJson({ error: 'फोटो हटाने की सूची सही नहीं है।' }, 400) }
+      const newFiles = form.getAll('photos').filter((item): item is File => item instanceof File && item.size > 0)
+      const currentPhotos = await env.DB.prepare('SELECT id, r2_key, file_size FROM daily_update_photos WHERE update_id = ?').bind(id).all<{ id: string; r2_key: string; file_size: number }>()
+      const current = currentPhotos.results ?? []
+      if (removePhotoIds.some(photoId => !current.some(photo => photo.id === photoId))) return financeJson({ error: 'फोटो सूची अपडेट से मेल नहीं खाती। Refresh करके दोबारा प्रयास करें।' }, 400)
+      const remaining = current.filter(photo => !removePhotoIds.includes(photo.id))
+      if (remaining.length + newFiles.length > 5) return financeJson({ error: 'एक अपडेट में अधिकतम 5 फोटो रखी जा सकती हैं।' }, 400)
+      if (remaining.reduce((sum, photo) => sum + Number(photo.file_size || 0), 0) + newFiles.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024) {
+        return financeJson({ error: 'एक अपडेट की सभी फोटो का कुल आकार 50 MB से अधिक नहीं होना चाहिए।' }, 400)
+      }
+      try {
+        if (newFiles.length) await storeDailyUpdatePhotos(env, id, newFiles)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : ''
+        return financeJson({ error: message || 'नई फोटो सेव नहीं हो सकीं।' }, 400)
+      }
+      const keysToDelete = current.filter(photo => removePhotoIds.includes(photo.id))
+      const deleteResults = await Promise.allSettled(keysToDelete.map(photo => env.GALLERY.delete(photo.r2_key)))
+      const failedDeletes = deleteResults.filter(result => result.status === 'rejected').length
+      if (failedDeletes) {
+        await logDailyUpdate(env, null, 'Admin', 'EDIT_STORAGE_CLEANUP_FAILED', id, { failedDeletes, requestedPhotoRemovals: removePhotoIds.length })
+        return financeJson({ error: 'कुछ फोटो स्टोरेज से नहीं हट सकीं। अपडेट रिफ्रेश करके जाँचें और दोबारा प्रयास करें।' }, 503)
+      }
+      if (removePhotoIds.length) {
+        const placeholders = removePhotoIds.map(() => '?').join(', ')
+        await env.DB.prepare(`DELETE FROM daily_update_photos WHERE update_id = ? AND id IN (${placeholders})`).bind(id, ...removePhotoIds).run()
+      }
+      const nowIso = new Date().toISOString()
+      await env.DB.prepare('UPDATE daily_updates SET title = ?, body = ?, category = ?, event_date = ?, updated_at = ? WHERE id = ?')
+        .bind(title, body, category, eventDate, nowIso, id).run()
+      await logDailyUpdate(env, null, 'Admin', 'EDITED', id, {
+        previous: { title: existing.title, category: existing.category, eventDate: existing.event_date, status: existing.status, photoCount: current.length },
+        updated: { title, category, eventDate, photoCount: remaining.length + newFiles.length },
+        removedPhotoCount: removePhotoIds.length, addedPhotoCount: newFiles.length,
+      })
+      return financeJson({ ok: true, status: existing.status, message: 'Update saved.', addedPhotoCount: newFiles.length, removedPhotoCount: removePhotoIds.length })
+    }
+
     // DAILY UPDATES — Admin approval / rejection.
     const dailyUpdateAction = url.pathname.match(/^\/api\/admin\/daily-updates\/([a-f0-9-]+)$/i)
     // Admin deletion removes photo objects and metadata while preserving audit history.
