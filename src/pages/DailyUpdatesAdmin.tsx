@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Check, ImagePlus, LogOut, RefreshCw, ShieldCheck, UserPlus, X, ClipboardList, KeyRound } from 'lucide-react'
+import { ArrowLeft, Check, ImagePlus, LogOut, RefreshCw, ShieldCheck, UserPlus, X, ClipboardList, KeyRound, Pencil, Trash2 } from 'lucide-react'
 import { Meta } from '@/components/Meta'
 import { DeveloperCredit } from '@/components/DeveloperCredit'
 
@@ -59,6 +59,8 @@ export default function DailyUpdatesAdmin() {
   const [category, setCategory] = useState(CATEGORIES[0])
   const [eventDate, setEventDate] = useState(new Date().toLocaleDateString('en-CA'))
   const [photos, setPhotos] = useState<File[]>([])
+  const [editingUpdate, setEditingUpdate] = useState<Update | null>(null)
+  const [removePhotoIds, setRemovePhotoIds] = useState<string[]>([])
   const [publishNow, setPublishNow] = useState(true)
   const [newName, setNewName] = useState('')
   const [newLogin, setNewLogin] = useState('')
@@ -213,8 +215,13 @@ export default function DailyUpdatesAdmin() {
       photos.forEach(photo => form.append('photos', photo))
       let response: Response
       if (isAdmin) {
-        form.set('publishNow', publishNow ? 'true' : 'false')
-        response = await requestAdmin('/api/admin/daily-updates', { method: 'POST', body: form })
+        if (editingUpdate) {
+          form.set('removePhotoIds', JSON.stringify(removePhotoIds))
+          response = await requestAdmin(`/api/admin/daily-updates/${encodeURIComponent(editingUpdate.id)}/edit`, { method: 'POST', body: form })
+        } else {
+          form.set('publishNow', publishNow ? 'true' : 'false')
+          response = await requestAdmin('/api/admin/daily-updates', { method: 'POST', body: form })
+        }
       } else {
         response = await fetch('/api/daily-updates/submissions', {
           method: 'POST', headers: { authorization: `Bearer ${memberToken}` }, body: form,
@@ -222,12 +229,37 @@ export default function DailyUpdatesAdmin() {
       }
       const result = await response.json() as { error?: string; message?: string }
       if (!response.ok) throw new Error(result.error || 'Update could not be submitted.')
-      setTitle(''); setBody(''); setPhotos([])
-      setNotice(isAdmin && publishNow ? 'अपडेट प्रकाशित कर दिया गया है।' : 'अपडेट Admin की मंजूरी के लिए भेज दिया गया है।')
+      setTitle(''); setBody(''); setPhotos([]); setEditingUpdate(null); setRemovePhotoIds([])
+      setNotice(editingUpdate ? 'अपडेट में बदलाव सुरक्षित कर दिए गए हैं।' : isAdmin && publishNow ? 'अपडेट प्रकाशित कर दिया गया है।' : 'अपडेट Admin की मंजूरी के लिए भेज दिया गया है।')
       if (isAdmin) await loadAdminData()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Update could not be submitted.')
     } finally { setBusy(false) }
+  }
+
+  function startEditing(update: Update) {
+    setEditingUpdate(update); setTitle(update.title); setBody(update.body); setCategory(update.category)
+    setEventDate(update.eventDate); setPhotos([]); setRemovePhotoIds([]); setPublishNow(update.status === 'PUBLISHED')
+    setError(''); setNotice(''); window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function cancelEditing() {
+    setEditingUpdate(null); setTitle(''); setBody(''); setCategory(CATEGORIES[0]); setEventDate(new Date().toLocaleDateString('en-CA'))
+    setPhotos([]); setRemovePhotoIds([]); setError(''); setNotice('')
+  }
+
+  async function deleteUpdate(update: Update) {
+    if (!window.confirm(`क्या आप इस अपडेट को स्थायी रूप से हटाना चाहते हैं?\\n\\n${update.title}\\n\\nइसके साथ जुड़ी फोटो भी हट जाएँगी।`)) return
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const response = await requestAdmin(`/api/admin/daily-updates/${encodeURIComponent(update.id)}`, { method: 'DELETE' })
+      const result = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(result.error || 'अपडेट हटाया नहीं जा सका।')
+      if (editingUpdate?.id === update.id) cancelEditing()
+      setNotice('अपडेट और उससे जुड़ी फोटो हटा दी गई हैं।')
+      await loadAdminData(); await loadAudit()
+    } catch (e) { setError(e instanceof Error ? e.message : 'अपडेट हटाया नहीं जा सका।') }
+    finally { setBusy(false) }
   }
 
   async function moderate(updateId: string, action: 'approve' | 'reject') {
@@ -322,8 +354,8 @@ export default function DailyUpdatesAdmin() {
         {error && <p role="alert" className="mt-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
 
         <section className="mt-6 rounded-2xl border bg-card p-5 sm:p-7">
-          <h2 className="text-xl font-semibold">{isAdmin ? 'Create an update' : 'नया दैनिक अपडेट भेजें'}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{isAdmin ? 'Admin के रूप में प्रकाशित करें या ड्राफ्ट रखें।' : 'आपका अपडेट समीक्षा के बाद ही सार्वजनिक वेबसाइट पर दिखेगा।'}</p>
+          <h2 className="text-xl font-semibold">{editingUpdate ? 'Edit update' : isAdmin ? 'Create an update' : 'नया दैनिक अपडेट भेजें'}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{editingUpdate ? 'अपडेट का विवरण और फोटो बदलकर बदलाव सुरक्षित करें।' : isAdmin ? 'Admin के रूप में प्रकाशित करें या ड्राफ्ट रखें।' : 'आपका अपडेट समीक्षा के बाद ही सार्वजनिक वेबसाइट पर दिखेगा।'}</p>
           <form onSubmit={submitUpdate} className="mt-5 grid gap-4">
             <label className="block text-sm font-medium">शीर्षक<input value={title} onChange={e => setTitle(e.target.value)} maxLength={160} required className="mt-1 w-full rounded-md border bg-background px-3 py-2.5" /></label>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -331,10 +363,11 @@ export default function DailyUpdatesAdmin() {
               <label className="block text-sm font-medium">तैयारी/गतिविधि की तारीख<input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} required className="mt-1 w-full rounded-md border bg-background px-3 py-2.5" /></label>
             </div>
             <label className="block text-sm font-medium">विवरण<textarea value={body} onChange={e => setBody(e.target.value)} rows={5} maxLength={10000} required className="mt-1 w-full rounded-md border bg-background px-3 py-2.5" placeholder="आज की तैयारी, कार्य की प्रगति या महत्वपूर्ण सूचना लिखें…" /></label>
-            <label className="block text-sm font-medium">फोटो (अधिकतम 5, प्रत्येक 20 MB तक)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e => selectPhotos(e.currentTarget.files, e.currentTarget)} className="mt-1 block w-full rounded-md border bg-background px-3 py-2.5 text-sm" /></label>
+            {editingUpdate && editingUpdate.photos.length > 0 && <fieldset className="rounded-lg border p-3"><legend className="px-1 text-sm font-medium">मौजूदा फोटो (हटाने के लिए चुनें)</legend><div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{editingUpdate.photos.map(photo => <label key={photo.id} className="flex flex-col gap-2 rounded-md border p-2 text-xs"><PrivatePhoto photo={photo} token={adminToken} alt={photo.caption || editingUpdate.title} /><span className="flex items-center gap-2"><input type="checkbox" checked={removePhotoIds.includes(photo.id)} onChange={e => setRemovePhotoIds(current => e.target.checked ? [...current, photo.id] : current.filter(id => id !== photo.id))} /> हटाएँ</span></label>)}</div></fieldset>}
+            <label className="block text-sm font-medium">{editingUpdate ? 'नई फोटो जोड़ें (कुल अधिकतम 5)' : 'फोटो (अधिकतम 5, प्रत्येक 20 MB तक)'}<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e => selectPhotos(e.currentTarget.files, e.currentTarget)} className="mt-1 block w-full rounded-md border bg-background px-3 py-2.5 text-sm" /></label>
             {photos.length > 0 && <p className="text-sm text-muted-foreground">{photos.length} फोटो चुनी गईं: {photos.map(f => f.name).join(', ')}</p>}
-            {isAdmin && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={publishNow} onChange={e => setPublishNow(e.target.checked)} /> मंजूरी के बाद तुरंत सार्वजनिक वेबसाइट पर प्रकाशित करें</label>}
-            <button disabled={busy} className="inline-flex w-fit items-center gap-2 rounded-md bg-primary px-5 py-3 font-medium text-primary-foreground disabled:opacity-50"><ImagePlus size={17} /> {busy ? 'Submitting…' : isAdmin && publishNow ? 'Publish update' : 'Send for Admin approval'}</button>
+            {isAdmin && !editingUpdate && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={publishNow} onChange={e => setPublishNow(e.target.checked)} /> मंजूरी के बाद तुरंत सार्वजनिक वेबसाइट पर प्रकाशित करें</label>}
+            <div className="flex flex-wrap gap-2"><button disabled={busy} className="inline-flex w-fit items-center gap-2 rounded-md bg-primary px-5 py-3 font-medium text-primary-foreground disabled:opacity-50"><ImagePlus size={17} /> {busy ? 'Saving…' : editingUpdate ? 'Save changes' : isAdmin && publishNow ? 'Publish update' : 'Send for Admin approval'}</button>{editingUpdate && <button type="button" disabled={busy} onClick={cancelEditing} className="rounded-md border px-4 py-3 text-sm">Cancel edit</button>}</div>
           </form>
         </section>
 
@@ -359,6 +392,7 @@ export default function DailyUpdatesAdmin() {
                 <p className="mt-2 text-xs text-muted-foreground">Submitted by {update.createdByName} · {update.photos?.length || 0} photo(s)</p>
                 {update.photos?.length > 0 && <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{update.photos.map(photo => <PrivatePhoto key={photo.id} photo={photo} token={adminToken} alt={photo.caption || update.title} />)}</div>}
                 {update.rejectionNote && <p className="mt-3 text-sm text-destructive">Note: {update.rejectionNote}</p>}
+                <div className="mt-4 flex flex-wrap gap-2"><button disabled={busy} onClick={() => startEditing(update)} className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"><Pencil size={15} /> Edit</button><button disabled={busy} onClick={() => void deleteUpdate(update)} className="inline-flex items-center gap-2 rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"><Trash2 size={15} /> Delete</button></div>
                 {update.status !== 'PUBLISHED' && <div className="mt-4 flex flex-wrap gap-2">
                   <button disabled={busy} onClick={() => void moderate(update.id, 'approve')} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"><Check size={15} /> Approve & publish</button>
                   {update.status !== 'REJECTED' && <button disabled={busy} onClick={() => void moderate(update.id, 'reject')} className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"><X size={15} /> Reject</button>}
