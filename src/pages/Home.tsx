@@ -358,6 +358,83 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ---- Directions to the venue ------------------------------------ */}
+        <section
+          id="directions"
+          className="scroll-mt-20 border-y border-border bg-card px-gutter py-section"
+        >
+          <div className="mx-auto max-w-content">
+            <div className="max-w-3xl">
+              <p className="font-label text-xs font-semibold tracking-[0.16em] text-brand uppercase">
+                NHYM 2026 · SIRJON
+              </p>
+              <h2 className="mt-2 text-[clamp(1.75rem,3.4vw,2.6rem)]">
+                How to Reach the Venue
+              </h2>
+              <p className="mt-4 text-lg text-muted-foreground">
+                Travelling to Birsa Munda Town Hall, Sidhgora, Jamshedpur? Choose your starting
+                point below to open the route in Google Maps. Maps can show current route options
+                and estimated travel time.
+              </p>
+            </div>
+
+            <div className="mt-8 grid gap-5 md:grid-cols-2">
+              <article className="flex flex-col rounded-xl border border-border bg-background p-6 shadow-sm">
+                <div className="text-3xl" aria-hidden="true">🚆</div>
+                <h3 className="mt-3 font-display text-xl font-semibold">
+                  From Tatanagar Railway Station
+                </h3>
+                <p className="mt-2 flex-1 text-sm text-muted-foreground">
+                  For participants arriving by train, open driving directions from Tatanagar
+                  Railway Station to the venue.
+                </p>
+                <Button asChild className="mt-5 w-full">
+                  <a
+                    href="https://www.google.com/maps/dir/?api=1&origin=Tatanagar+Railway+Station%2C+Jamshedpur%2C+Jharkhand&destination=Birsa+Munda+Town+Hall%2C+Sidhgora%2C+Jamshedpur%2C+Jharkhand&travelmode=driving"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View route in Google Maps <span aria-hidden="true">↗</span>
+                  </a>
+                </Button>
+              </article>
+
+              <article className="flex flex-col rounded-xl border border-border bg-background p-6 shadow-sm">
+                <div className="text-3xl" aria-hidden="true">🚌</div>
+                <h3 className="mt-3 font-display text-xl font-semibold">
+                  From Mango Bus Stand
+                </h3>
+                <p className="mt-2 flex-1 text-sm text-muted-foreground">
+                  For participants arriving by bus, open driving directions from Mango Bus Stand
+                  to the venue.
+                </p>
+                <Button asChild className="mt-5 w-full">
+                  <a
+                    href="https://www.google.com/maps/dir/?api=1&origin=Mango+Bus+Stand%2C+Jamshedpur%2C+Jharkhand&destination=Birsa+Munda+Town+Hall%2C+Sidhgora%2C+Jamshedpur%2C+Jharkhand&travelmode=driving"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View route in Google Maps <span aria-hidden="true">↗</span>
+                  </a>
+                </Button>
+              </article>
+            </div>
+
+            <p className="mt-5 text-sm text-muted-foreground">
+              Please confirm the venue pin before travelling. Routes and journey times may change
+              with traffic and road conditions.
+            </p>
+            <a
+              href="https://www.google.com/maps/search/?api=1&query=Birsa+Munda+Town+Hall%2C+Sidhgora%2C+Jamshedpur%2C+Jharkhand"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex rounded-sm font-medium text-foreground underline decoration-brand underline-offset-4 hover:text-brand"
+            >
+              Open venue location in Google Maps ↗
+            </a>
+          </div>
+        </section>
+
         {/* ---- The dark band: the programme and the fee answer --------------- */}
         <section
           id="fees"
