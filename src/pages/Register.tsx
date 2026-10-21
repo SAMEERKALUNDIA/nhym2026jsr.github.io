@@ -141,6 +141,7 @@ const DECLARATIONS: Declaration[] = [
 
 type TesseractWorker = {
   recognize: (image: File) => Promise<{ data: { text: string } }>
+  setParameters?: (parameters: Record<string, string>) => Promise<unknown>
   terminate: () => Promise<unknown>
 }
 type TesseractApi = {
@@ -426,22 +427,1334 @@ if (!row.dob.trim()) {
     return pdfjs
   }
 
-  function findValue(text: string, labels: string[]): string {
-    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-    for (const label of labels) {
-      const line = lines.find((item) => item.toLowerCase().includes(label.toLowerCase()))
-      if (!line) continue
-      const at = line.toLowerCase().indexOf(label.toLowerCase()) + label.length
-      const value = line.slice(at).replace(/^[\s:._-]+/, '').trim()
-      if (value && !/^(dd\/mm\/yyyy|yes|no|maybe|male|female|transgender)$/i.test(value)) return value
+  const OCR_FIELD_LABELS = [
+    'full name', 'participant name', 'name',
+    'date of birth', 'dob',
+    'full residential address', 'residential address', 'address',
+    'district', 'state / union territory', 'state/union territory', 'state',
+    'pin code', 'pincode', 'pin', 'postal code',
+    'email address', 'email',
+  ]
+
+  function cleanOcrValue(value: string): string {
+    return value
+      .replace(/[|]/g, 'I')
+      .replace(/^[\s:;,.#._-]+|[\s:;,.#_-]+$/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  }
+
+  function looksLikeOcrLabel(value: string): boolean {
+    const normalized = value.toLowerCase().replace(/[^a-z/ ]/g, '').replace(/\s+/g, ' ').trim()
+    return OCR_FIELD_LABELS.some((label) => {
+      const target = label.toLowerCase().replace(/[^a-z/ ]/g, '').replace(/\s+/g, ' ').trim()
+      return normalized === target || normalized.startsWith(target + ' ')
+    }) || /^(participant details|personal details|dd mm yyyy|dd\/mm\/yyyy|male female transgender)$/i.test(normalized)
+  }
+
+  function findValue(text: string, labels: string[], options: { multiline?: boolean } = {}): string {
+    const lines = text.split(/\r?\n/).map((line) => cleanOcrValue(line)).filter(Boolean)
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]
+      for (const label of labels) {
+        const patternLabel = label.replace(/\s+/g, '\\s*')
+        const match = line.match(new RegExp('(?:^|\\b)' + patternLabel + '\\s*(?:[:：=.-]\\s*)?(.*)
+
+  async function readOfflineForm(event: React.ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    if (!isPdf && !file.type.startsWith('image/')) {
+      setOcrMessage('Choose a PDF or a photo of the completed offline form.')
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setOcrMessage('Choose a file smaller than 15 MB.')
+      return
+    }
+    setOcrBusy(true)
+    setOcrMessage('Reading locally in this browser. The file is not uploaded or saved.')
+    let worker: TesseractWorker | undefined
+    let canvas: HTMLCanvasElement | undefined
+    try {
+      let imageFile: File = file
+      if (isPdf) {
+        const pdfjs = await loadPdfJs()
+        const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
+        const page = await pdf.getPage(1)
+        const viewport = page.getViewport({ scale: 2 })
+        canvas = document.createElement('canvas')
+        canvas.width = Math.ceil(viewport.width)
+        canvas.height = Math.ceil(viewport.height)
+        const context = canvas.getContext('2d')
+        if (!context) throw new Error('Could not prepare the PDF page for reading.')
+        await page.render({ canvasContext: context, viewport }).promise
+        const blob = await new Promise<Blob>((resolve, reject) => canvas!.toBlob((result) => result ? resolve(result) : reject(new Error('Could not read the PDF page.')), 'image/png'))
+        imageFile = new File([blob], 'offline-form-page.png', { type: 'image/png' })
+        await pdf.destroy()
+      }
+      const tesseract = await loadTesseract()
+      worker = await tesseract.createWorker('eng')
+      if (worker.setParameters) {
+        await worker.setParameters({
+          tessedit_pageseg_mode: '11',
+          preserve_interword_spaces: '1',
+        })
+      }
+      const processedImage = await preprocessOcrImage(imageFile)
+      const result = await worker.recognize(processedImage)
+      const text = result.data.text
+      const name = findValue(text, ['Full Name', 'Participant Name', 'Name'])
+      const dob = parseOfflineDate(findValue(text, ['Date of Birth', 'DOB']))
+      const address = findValue(text, ['Full Residential Address', 'Residential Address', 'Address'], { multiline: true })
+      const district = findValue(text, ['District'])
+      const state = findValue(text, ['State / Union Territory', 'State/Union Territory', 'State'])
+      const pin = (findValue(text, ['PIN Code', 'Pincode', 'Postal Code', 'PIN']).match(/\b\d{6}\b/) || [])[0] || ''
+      const emailValue = findValue(text, ['Email Address', 'Email'])
+      const patch: Partial<Draft> = {}
+      if (name && name.length < 100) patch.name = name
+      if (dob) { patch.dob = dob; patch.age = calculateAge(dob) }
+      if (address && address.length < 250) patch.address = address
+      if (district && district.length < 100) patch.district = district
+      if (state && state.length < 100) patch.state = state
+      if (pin) patch.pin = pin
+      if (Object.keys(patch).length) update(rows[0].key, patch)
+      if (emailValue && EMAIL.test(emailValue.trim())) setEmail(emailValue.trim())
+      setOcrMessage('Text extracted where readable. Review every field. Activity checkboxes, yes/no choices, category, payment mode, transaction reference and declarations must be entered or confirmed manually. OCR does not verify signatures or payment.')
+    } catch (error) {
+      setOcrMessage(error instanceof Error ? error.message : 'Could not read the form. Please enter the details manually.')
+    } finally {
+      if (worker) await worker.terminate().catch(() => undefined)
+      if (canvas) { canvas.width = 0; canvas.height = 0 }
+      setOcrBusy(false)
+    }
+  }
+
+  async function readPaymentScreenshot(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setOcrMessage('Please select an image file.')
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setOcrMessage('Choose an image smaller than 15 MB.')
+      return
+    }
+    setOcrBusy(true)
+    setOcrMessage('Reading screenshot in this browser…')
+    let worker: TesseractWorker | undefined
+    try {
+      const tesseract = await loadTesseract()
+      worker = await tesseract.createWorker('eng')
+      const result = await worker.recognize(file)
+      const text = result.data.text.toUpperCase()
+      const labelled = text.match(/(?:UTR|UPI\s*(?:REF(?:ERENCE)?|TXN|TRANSACTION)?\s*(?:ID|NO)?|TRANSACTION\s*(?:ID|NO|REF(?:ERENCE)?))[^A-Z0-9]{0,30}([A-Z0-9]{8,35})/i)
+      const candidates = text.match(/\b[A-Z0-9]{8,35}\b/g) ?? []
+      const candidate = labelled?.[1] ?? candidates.find((value) =>
+        /\d/.test(value) && !/^(PAYMENT|TRANSACTION|SUCCESSFUL|REFERENCE|GOOGLEPAY|PHONEPE|PAYTM|AMAZONPAY)$/.test(value)
+      )
+      if (candidate) {
+        setPaymentReference(candidate.replace(/\s+/g, '').toUpperCase())
+        setOcrMessage('Transaction reference detected. Please verify it against your payment receipt before submitting.')
+      } else {
+        setOcrMessage('Could not confidently identify a transaction ID. Please enter it manually from the receipt.')
+      }
+    } catch (error) {
+      setOcrMessage(error instanceof Error ? error.message : 'OCR failed. Please enter the transaction ID manually.')
+    } finally {
+      if (worker) await worker.terminate().catch(() => undefined)
+      setOcrBusy(false)
+    }
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!validate() || sending) return
+    setSending(true)
+    setFormError('')
+    try {
+      const response = await fetch('/api/registrations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(), total, paymentMode, paymentReference: paymentReference.trim().replace(/\s+/g, '').toUpperCase(), agreed,
+          declarations: agreed,
+          participants: rows.map((row) => ({ ...row, fee: feeOf(row) ?? 0 })),
+        }),
+      })
+      const result = await response.json() as { registrationId?: string; error?: string }
+      if (!response.ok || !result.registrationId) throw new Error(result.error || 'Registration could not be saved.')
+      setRegistrationId(result.registrationId)
+      setSubmitted(true)
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Registration could not be saved. Please try again.')
+    } finally { setSending(false) }
+  }
+
+  return (
+    <div className="min-h-dvh bg-background">
+      {/* ---- First screen ------------------------------------------------- */}
+      <header className="relative isolate overflow-hidden px-gutter py-6">
+        <div
+          aria-hidden="true"
+          className="glow-brand pointer-events-none absolute -top-40 -right-24 -z-10 h-[26rem] w-[26rem] opacity-70"
+        />
+        <div className="mx-auto flex max-w-content items-center justify-between gap-4">
+  <a href="#top" className="rounded-md">
+    <Brand />
+    <span className="sr-only">
+      Back to the top of the page
+    </span>
+  </a>
+
+  <div className="flex items-center gap-2">
+    <Button
+      asChild
+      variant="outline"
+      className="h-10 px-3 sm:px-4"
+    >
+      <a href="/participant">
+        <span className="hidden sm:inline">
+          Participant Login
+        </span>
+        <span className="sm:hidden">
+          Participant
+        </span>
+      </a>
+    </Button>
+
+    <Button
+      asChild
+      variant="outline"
+      className="h-10 px-3 sm:px-4"
+    >
+      <a href="/admin">
+        <span className="hidden sm:inline">
+          Admin Login
+        </span>
+        <span className="sm:hidden">
+          Admin
+        </span>
+      </a>
+    </Button>
+  </div>
+</div>
+      </header>
+
+      <main id="top">
+        <section
+          id="register"
+          className="relative isolate scroll-mt-6 overflow-hidden px-gutter py-section"
+        >
+          <div className="mx-auto max-w-content">
+            <div className="max-w-2xl">
+              <h2 className="text-[clamp(1.75rem,3.4vw,2.6rem)]">
+  NHYM 2026 Registration
+</h2>
+<p className="mt-4 text-lg text-muted-foreground">
+  Register yourself or multiple participants together in a single registration.
+  Add one participant at a time, select the appropriate participant category,
+  and complete the required details. The total registration fee will be
+  calculated automatically based on the selected participant categories.
+</p>
+            </div>
+
+            <div className="relative mt-10 grid gap-8 lg:grid-cols-[1.5fr_1fr] lg:items-start lg:gap-12">
+              <div
+                aria-hidden="true"
+                className="glow-brand pointer-events-none absolute -top-20 right-0 -z-10 h-[24rem] w-[24rem] opacity-50"
+              />
+              <form onSubmit={submit} noValidate className="space-y-4">
+                {submitted ? (
+                  <Confirmation
+                    rows={rows}
+                    email={email}
+                    registrationId={registrationId}
+                    paymentMode={paymentMode}
+                    paymentReference={paymentReference}
+                    onEdit={() => setSubmitted(false)}
+                  />
+                ) : (
+                  <>
+                    <section className="rounded-lg border border-brand/30 bg-secondary/30 p-4 sm:p-5">
+                      <h3 className="font-semibold">Already filled an offline registration form?</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">Choose its PDF or a photo to fill some online fields automatically. The file is read in this browser only; it is not uploaded or stored. Review and correct all detected details before submitting.</p>
+                      <Label htmlFor="offline-form-upload" className="mt-4 block">Choose offline form (PDF or photo)</Label>
+                      <Input id="offline-form-upload" type="file" accept="application/pdf,image/*" disabled={ocrBusy || sending} onChange={readOfflineForm} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" />
+                      {ocrMessage && <p role="status" className="mt-3 text-sm text-muted-foreground">{ocrBusy ? 'Reading form… ' : ''}{ocrMessage}</p>}
+                    </section>
+                    {rows.map((row, index) => (
+                      <fieldset
+                        key={row.key}
+                        className="rounded-lg border border-border bg-card p-4 sm:p-5"
+                      >
+                        <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                          Participant {index + 1}
+                        </legend>
+                        {rows.length > 1 && (
+                          <div className="mb-4 flex justify-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-10 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => removeRow(row.key)}
+                              aria-label={`Remove participant ${index + 1}`}
+                            >
+                              <Trash2 className="mr-2 size-4" aria-hidden="true" />
+                              Remove participant
+                            </Button>
+                          </div>
+                        )}
+                        <div className="grid gap-4 sm:grid-cols-[1.6fr_0.7fr]">
+                          <div className="min-w-0">
+                            <Label htmlFor={`name-${row.key}`}>Full name</Label>
+                            <Input
+                              id={`name-${row.key}`}
+                              value={row.name}
+                              onChange={(e) => update(row.key, { name: e.target.value })}
+                              aria-invalid={Boolean(row.error)}
+                              aria-describedby={row.error ? `name-error-${row.key}` : undefined}                        
+                              className="mt-2 h-11"
+                            />
+                          </div>
+                          </div>
+                      
+                        {/* ---- Participant details, in the desk's own order --- */}
+                        <div className="mt-6 border-t border-border pt-5">
+                          <p className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                            Participant details
+                          </p>
+                          <p className="mt-2 max-w-lg text-sm text-muted-foreground">
+                            The desk files every entry under these, so all of them are needed.
+                          </p>
+<div className="mt-4 grid gap-4 sm:grid-cols-3">
+  <div>
+    <Label htmlFor={`dob-${row.key}`}>Date of Birth</Label>
+    <Input
+      id={`dob-${row.key}`}
+      type="date"
+      value={row.dob}
+      onChange={(e) =>
+        update(row.key, {
+          dob: e.target.value,
+          age: calculateAge(e.target.value),
+        })
+      }
+      aria-invalid={Boolean(row.error)}
+      className="mt-2 h-11"
+    />
+  </div>
+
+  <div>
+    <Label htmlFor={`age-${row.key}`}>Age</Label>
+    <Input
+      id={`age-${row.key}`}
+      value={row.age}
+      readOnly
+      className="mt-2 h-11 bg-muted/40"
+    />
+  </div>
+
+  <div>
+    <Label htmlFor={`gender-${row.key}`}>Gender</Label>
+                              <Select
+                                value={row.gender}
+                                onValueChange={(value) =>
+                                  update(row.key, { gender: value as GenderId, error: undefined })
+                                }
+                              >
+                                <SelectTrigger
+                                  id={`gender-${row.key}`}
+                                  className="mt-2 h-11 w-full"
+                                >
+                                  <SelectValue placeholder="Choose" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {GENDERS.map((gender) => (
+                                    <SelectItem key={gender.id} value={gender.id}>
+                                      {gender.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            <Label htmlFor={`address-${row.key}`}>
+                              Full Residential Address
+                            </Label>
+                            <Input
+                              id={`address-${row.key}`}
+                              value={row.address}
+                              onChange={(e) => update(row.key, { address: e.target.value })}
+                              placeholder="House, street, village or town"
+                              autoComplete="street-address"
+                              className="mt-2 h-11"
+                            />
+                          </div>
+
+                          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                            <div>
+                              <Label htmlFor={`district-${row.key}`}>District</Label>
+                              <Input
+                                id={`district-${row.key}`}
+                                value={row.district}
+                                onChange={(e) => update(row.key, { district: e.target.value })}                                
+                                className="mt-2 h-11"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`state-${row.key}`}>State / Union Territory</Label>
+                              <Input
+                                id={`state-${row.key}`}
+                                value={row.state}
+                                onChange={(e) => update(row.key, { state: e.target.value })}                                
+                                className="mt-2 h-11"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`pin-${row.key}`}>PIN Code</Label>
+                              <Input
+                                id={`pin-${row.key}`}
+                                value={row.pin}
+                                onChange={(e) => update(row.key, { pin: e.target.value })}
+                                inputMode="numeric"
+                                autoComplete="postal-code"                                
+                                className="mt-2 h-11"
+                              />
+                            </div>
+                          </div>
+
+                          <fieldset className="mt-6">
+                            <legend className="text-sm font-medium">
+                              Which NHYM activities are you interested in?
+                            </legend>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Please select the topic(s) you would like to participate in during the NHYM Open Stage Discussion. Select at least one and no more than three topics.
+                            </p>
+                            <p className="mt-1 text-xs font-medium text-brand" aria-live="polite">
+                              {row.activities.length} of 3 topics selected
+                            </p>
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                              {ACTIVITIES.map((activity) => {
+                                const checked = row.activities.includes(activity)
+                                return (
+                                  <label
+                                    key={activity}
+                                    className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-sm transition-colors duration-[var(--motion-fast)] ${
+                                      checked
+                                        ? 'border-brand bg-secondary/50 text-foreground'
+                                        : 'border-border text-muted-foreground hover:border-brand/50'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={!checked && row.activities.length >= 3}
+                                      onChange={(e) =>
+                                        update(row.key, {
+                                          activities: e.target.checked
+                                            ? row.activities.length < 3
+                                              ? [...row.activities, activity]
+                                              : row.activities
+                                            : row.activities.filter((item) => item !== activity),
+                                          error: undefined,
+                                        })
+                                      }
+                                      className="size-4 shrink-0 accent-[var(--brand)] disabled:cursor-not-allowed"
+                                    />
+                                    <span>{activity}</span>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </fieldset>
+
+                          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                            <YesNoRow
+                              id={`cultural-${row.key}`}
+                              label="Interested in Cultural Participation?"
+                              value={row.cultural}
+                              options="yesnomaybe"
+                              onChange={(value) =>
+                                update(row.key, { cultural: value, error: undefined })
+                              }
+                            />
+                            <YesNoRow
+                              id={`sports-${row.key}`}
+                              label="Interested in Sports Participation?"
+                              value={row.sports}
+                              options="yesnomaybe"
+                              onChange={(value) => update(row.key, { sports: value, error: undefined })}
+                            />
+                            <YesNoRow
+                              id={`outside-${row.key}`}
+                              label="Travelling from Outside Jamshedpur?"
+                              value={row.fromOutside}
+                              options="yesno"
+                              onChange={(value) =>
+                                update(row.key, { fromOutside: value, error: undefined })
+                              }
+                            />
+                            <YesNoRow
+                              id={`stay-${row.key}`}
+                              label="Accommodation Required?"
+                              hint="Accommodation is subject to availability and organiser approval."
+                              value={row.accommodation}
+                              options="yesno"
+                              onChange={(value) =>
+                                update(row.key, { accommodation: value, error: undefined })
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-4">
+                          <div>
+                            <Label htmlFor={`category-${row.key}`}>Participant Category</Label>
+                            <Select
+                              value={row.category}
+                              onValueChange={(value) =>
+                                update(row.key, {
+                                  category: value as CategoryId,
+                                  error: undefined,
+                                })
+                              }
+                            >
+                              <SelectTrigger
+                                id={`category-${row.key}`}
+                                className="mt-2 h-11 w-full"
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {core.map((category) => (
+                                  <SelectItem key={category.id} value={category.id}>
+                                    {category.name} — Fixed Fee {inr(category.fee)}
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value="visitor">
+                                  {EVENT.terms.audience} — contribution
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        {/* Only an audience entry asks for an amount: the three
+                            core categories carry a fixed fee. */}
+                        {row.category === 'visitor' && (
+                          <div className="mt-4 rounded-md bg-secondary/60 p-4">
+                            <Label htmlFor={`contribution-${row.key}`}>
+                              Audience / visitor contribution
+                            </Label>
+                            <div
+                              id={`contribution-${row.key}`}
+                              role="radiogroup"
+                              aria-label="Audience or visitor contribution"
+                              className="mt-3 grid gap-2 sm:grid-cols-2"
+                            >
+                              {CONTRIBUTIONS.map((choice) => {
+                                const selected = row.contribution === choice.id
+                                return (
+                                  <label
+                                    key={choice.id}
+                                    className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-sm transition-colors duration-[var(--motion-fast)] ${
+                                      selected
+                                        ? 'border-brand bg-card text-foreground'
+                                        : 'border-border bg-card text-muted-foreground hover:border-brand/50'
+                                    }`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name={`contribution-${row.key}`}
+                                      value={choice.id}
+                                      checked={selected}
+                                      onChange={() =>
+                                        update(row.key, {
+                                          contribution: choice.id,
+                                          error: undefined,
+                                        })
+                                      }
+                                      className="size-4 shrink-0 accent-[var(--brand)]"
+                                    />
+                                    <span className="font-medium">{choice.label}</span>
+                                    <span className="ml-auto text-xs text-muted-foreground">
+                                      {choice.kind === 'open'
+                                        ? `from ${inr(choice.from)}`
+                                        : `${inr(choice.from)} to ${inr(choice.to ?? choice.from)}`}
+                                    </span>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                            {row.contribution === 'other' && (
+                              <div className="mt-3 max-w-xs">
+                                <Label htmlFor={`other-${row.key}`}>
+                                  Other contribution amount
+                                </Label>
+                                <Input
+                                  id={`other-${row.key}`}
+                                  value={row.other}
+                                  onChange={(e) => update(row.key, { other: e.target.value })}
+                                  inputMode="numeric"
+                                  placeholder={String(EVENT.contributionFloor)}
+                                  className="mt-2 h-11"
+                                />
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  Minimum {inr(EVENT.contributionFloor)}. Add a little extra if you
+                                  can, for the shared costs of the meet.
+                                </p>
+                              </div>
+                            )}
+
+                            <p className="mt-4 text-sm text-muted-foreground">
+                              Pay the displayed amount and enter the payment reference below.
+                            </p>
+
+                            <div className="mt-4 grid gap-4">
+                              <div>
+                                <Label htmlFor={`mode-${row.key}`}>Payment mode</Label>
+                                <Select
+                                  value={row.mode}
+                                  onValueChange={(value) =>
+                                    update(row.key, {
+                                      mode: value as PaymentMode,
+                                      error: undefined,
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger id={`mode-${row.key}`} className="mt-2 h-11 w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {PAYMENT_MODES.map((mode) => (
+                                      <SelectItem key={mode.id} value={mode.id}>
+                                        {mode.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="max-w-sm">
+                                <Label htmlFor={`reference-${row.key}`}>Payment reference</Label>
+                                <Input
+                                  id={`reference-${row.key}`}
+                                  value={row.reference}
+                                  onChange={(e) =>
+                                    update(row.key, {
+                                      reference: e.target.value,
+                                      error: undefined,
+                                    })
+                                  }
+                                  aria-invalid={Boolean(row.error)}
+                                  placeholder="UTR / transaction ID / receipt number"
+                                  className="mt-2 h-11"
+                                />
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  The desk matches this against the payment before the pass is
+                                  handed over. Cash taken at an authorised counter gets a receipt
+                                  number instead.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {row.error && (
+                          <p
+                            id={`name-error-${row.key}`}
+                            className="mt-3 text-sm font-medium text-destructive"
+                          >
+                            {row.error}
+                          </p>
+                        )}
+
+
+                      </fieldset>
+                    ))}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-12 w-full border-dashed text-base"
+                      onClick={addRow}
+                    >
+                      Add another participant
+                    </Button>
+
+                    <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
+                      <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                        Email address
+                      </legend>
+                      <p className="max-w-lg text-sm text-muted-foreground">
+                        One address for the whole list. The registration department sends the
+                        approval message here once it has verified your payment.
+                      </p>
+                      <div className="mt-4 max-w-md">
+                        <Label htmlFor="contact-email">Email address</Label>
+                        <Input
+                          id="contact-email"
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          autoComplete="email"
+                          aria-invalid={formError !== '' && !EMAIL.test(email.trim())}
+                          placeholder="you@example.com"
+                          className="mt-2 h-11"
+                        />
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          The approval message comes from {EVENT.email}, so add that address to your
+                          contacts and check your spam folder for it.
+                        </p>
+                      </div>
+                    </fieldset>
+
+                    <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
+                      <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">Payment reference</legend>
+                      <p className="max-w-lg text-sm text-muted-foreground">Pay the total using the bank/UPI details shown on this page, then enter the reference below. The committee will verify it before approval.</p>
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <div><Label>Payment method</Label><Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent></Select></div>
+                        <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /><p className="mt-2 text-xs text-muted-foreground">Each payment reference can be used for only one registration. Enter it exactly as shown in your payment receipt.</p><Label htmlFor="payment-screenshot" className="mt-4 block">Read from payment screenshot (optional)</Label><Input id="payment-screenshot" type="file" accept="image/*" disabled={ocrBusy} onChange={readPaymentScreenshot} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" /><p className="mt-2 text-xs text-muted-foreground">OCR runs in your browser. The screenshot is not uploaded or saved. Please check the detected reference yourself.</p>{ocrMessage && <p role="status" className="mt-2 text-xs text-muted-foreground">{ocrBusy ? 'Processing… ' : ''}{ocrMessage}</p>}</div>
+                      </div>
+                    </fieldset>
+
+                    <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
+                      <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                        Declarations
+                      </legend>
+                      <p className="max-w-lg text-sm text-muted-foreground">
+                        All three are required. They cover everyone on this form.
+                      </p>
+                      <ul className="mt-4 space-y-3">
+                        {DECLARATIONS.map((declaration) => (
+                          <li
+                            key={declaration.id}
+                            className={`rounded-md border px-3 py-3 transition-colors duration-[var(--motion-fast)] ${
+                              agreed[declaration.id]
+                                ? 'border-brand/60 bg-secondary/50'
+                                : 'border-border'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <input
+                                type="checkbox"
+                                id={`declare-${declaration.id}`}
+                                checked={agreed[declaration.id]}
+                                onChange={(e) => {
+                                  setAgreed((prev) => ({
+                                    ...prev,
+                                    [declaration.id]: e.target.checked,
+                                  }))
+                                  if (e.target.checked) setFormError('')
+                                }}
+                                aria-invalid={unticked.length > 0 && !agreed[declaration.id]}
+                                className="mt-1 size-5 shrink-0 accent-[var(--brand)]"
+                              />
+                              <div>
+                                <label
+                                  htmlFor={`declare-${declaration.id}`}
+                                  className="block cursor-pointer text-sm font-semibold"
+                                >
+                                  {declaration.label}{' '}
+                                  <span className="font-normal text-brand" aria-hidden="true">
+                                    *
+                                  </span>
+                                  <span className="sr-only">(required)</span>
+                                </label>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                  {declaration.detail}
+                                </p>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </fieldset>
+
+                    {formError && (
+                      <p role="alert" className="text-sm font-medium text-destructive">
+                        {formError}
+                      </p>
+                    )}
+
+                    <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center">
+                      <Button
+                        type="submit"
+                        size="lg"
+                        className="h-12 bg-brand px-7 text-base text-brand-foreground hover:bg-brand/90"
+                      >
+                        {sending ? 'Saving registration…' : 'Submit registration'}
+                      </Button>
+                      <p className="text-sm text-muted-foreground">
+                        {rows.length} {rows.length === 1 ? 'participant' : 'participants'} ·{' '}
+                        {settled
+                          ? `${inr(total)} to send to the committee`
+                          : 'choose a contribution to see the total'}
+                        {unticked.length > 0 &&
+                          ` · ${unticked.length} declaration${unticked.length === 1 ? '' : 's'} still to tick`}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </form>
+
+                      <FeeStub rows={rows} total={total} />
+
+            </div>
+          </div>
+        </section>
+
+        {/* ---- Closing: the fee total, how to pay it, and who to call ------- */}
+        <section className="relative isolate overflow-hidden border-t border-border px-gutter py-section">
+          <div
+            aria-hidden="true"
+            className="glow-brand pointer-events-none absolute -bottom-32 -left-24 -z-10 h-[26rem] w-[26rem] opacity-40"
+          />
+          <div className="mx-auto grid max-w-content gap-12 lg:grid-cols-[1fr_1fr] lg:gap-16">
+            <div>
+              <h2 className="text-[clamp(1.75rem,3.4vw,2.6rem)]">
+                How the fee reaches the committee
+              </h2>
+              <p className="mt-4 max-w-lg text-lg text-muted-foreground">
+                Add your total on the form to {TREASURER.name}, and bring the receipt to the desk on
+                the morning of 28 November. The passes are handed over once the payment is verified
+                and the organisers have approved the registration.
+              </p>
+              <dl className="mt-8 space-y-5">
+                <div>
+                  <dt className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                    Account name
+                  </dt>
+                  <dd className="mt-1 font-display text-lg font-semibold">{EVENT.account.name}</dd>
+                </div>
+                <div>
+                  <dt className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                    Account number
+                  </dt>
+                  <dd className="mt-1 font-mono text-lg font-semibold tracking-[0.06em] break-all">
+                    {EVENT.account.number}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                    IFSC and branch
+                  </dt>
+                  <dd className="mt-1 font-mono text-lg font-semibold tracking-[0.06em]">
+                    {EVENT.account.ifsc}
+                    <span className="ml-2 font-sans text-sm font-normal text-muted-foreground">
+                      {EVENT.account.branch}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+
+              {/* The committee's own UPI code, with the two things it encodes
+                  written out beside it: a visitor who cannot scan the picture
+                  can still type the number or the VPA. */}
+              <div className="mt-8 flex flex-col gap-5 rounded-lg border border-border bg-card p-5 sm:flex-row sm:items-center sm:gap-6">
+                <img
+                  src="/images/ravi-sawaiyan-upi.webp"
+                  alt="UPI payment code for the National Ho Youth Meet 2026, registered to Ravi Sawaiyan"
+                  width={1050}
+                  height={1500}
+                  loading="lazy"
+                  className="size-40 shrink-0 self-start rounded-md border border-border bg-card object-contain p-1.5 sm:size-44"
+                />
+                <div className="min-w-0">
+                  <p className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                    Or pay by UPI
+                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Scan the code with any UPI app, or enter the UPI ID by hand.
+                  </p>
+                  <dl className="mt-4 space-y-3">
+                    <div>
+                      <dt className="font-label text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                        UPI ID
+                      </dt>
+                      <dd className="mt-1 font-mono text-base font-semibold break-all">
+                        {UPI.vpa}
+                      </dd>
+                      <dd className="mt-1 text-sm text-muted-foreground">
+                        Registered to {UPI.name}.
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+              <p className="mt-6 text-sm text-muted-foreground">
+                Nothing is collected on this page. The totals above are only a check on your side.
+              </p>
+            </div>
+
+          </div>
+        </section>
+      </main>
+
+      <footer className="px-gutter py-10">
+        <div className="mx-auto max-w-content">
+          <div className="flex flex-col gap-8 sm:flex-row sm:justify-between">
+            <div>
+              <Brand />
+              <p className="mt-4 max-w-sm text-sm text-muted-foreground">
+                National Ho Youth Meet 2026, Jamshedpur. 28 and 29 November 2026 at Birsa Munda Town
+                Hall.
+              </p>
+              <p className="mt-4 max-w-sm text-sm text-muted-foreground">{EVENT.address}</p>
+              <p className="mt-2 max-w-sm text-sm break-words">
+                Email -{' '}
+                <a
+                  className="rounded-sm font-medium underline underline-offset-4"
+                  href={`mailto:${EVENT.email}`}
+                >
+                  {EVENT.email}
+                </a>
+              </p>
+            </div>
+            <div className="sm:text-right">
+              <h2 className="font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+                Office bearers
+              </h2>
+              <ul className="mt-4 space-y-3 text-sm">
+                {ROLE_ORDER.flatMap((role) =>
+  COMMITTEE.filter((entry) => entry.role === role).map((person) => (
+    <li key={`${person.role}-${person.name}`}>
+      <span className="block font-medium text-foreground">
+        {person.name} · {person.role}
+      </span>
+
+      <span className="block text-muted-foreground">
+        {person.phones.map((phone, index) => (
+          <span key={phone}>
+            {index > 0 && ' · '}
+            <a
+              className="rounded-sm underline underline-offset-4"
+              href={telHref(phone)}
+            >
+              {displayPhone(phone)}
+            </a>
+          </span>
+        ))}
+      </span>
+    </li>
+  ))
+)}
+              </ul>
+            </div>
+          </div>
+          <Separator className="my-6" />
+          <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+            <p className="max-w-xl">
+              Your registration will be submitted to the NHYM 2026 organising committee for review. Registration will be confirmed only after the payment has been verified and the registration has been approved by the committee.
+            </p>
+          </div>
+        </div>
+      </footer>
+      <DeveloperCredit />
+    </div>
+  )
+}
+
+/* The fee stub beside the form: the running total, built as a ticket with a
+   serrated edge so it reads as the counterfoil of the form. */
+function FeeStub({ rows, total }: { rows: Draft[]; total: number }) {
+  const lines = rows.map((row, index) => ({
+    key: row.key,
+    kind: row.category === 'visitor' ? EVENT.terms.audience : EVENT.terms[row.category],
+    index: index + 1,
+    amount: feeOf(row),
+    mode: row.mode,
+    reference: row.reference.trim(),
+    activities: row.activities,
+  }))
+
+  return (
+    <aside className="lg:sticky lg:top-8">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-raised">
+        <div className="texture-lines flex items-baseline justify-between gap-4 bg-primary px-5 py-4 text-primary-foreground">
+          <span className="font-label text-xs font-semibold tracking-[0.18em] uppercase">
+            Your total
+          </span>
+          <span className="font-display text-3xl font-bold">{inr(total)}</span>
+        </div>
+        <div className="px-5 py-5">
+          <ul className="space-y-3 text-sm">
+            {lines.map((line) => (
+              <li key={line.key} className="flex items-baseline justify-between gap-4">
+                <span className="text-muted-foreground">
+                  Participant {line.index} · {line.kind}
+                  {line.reference ? (
+                    <span className="mt-0.5 block font-mono text-xs break-all text-muted-foreground/80">
+                      {labelOfMode(line.mode)} · {line.reference}
+                    </span>
+                  ) : null}
+                  {line.activities.length > 0 && (
+                    <span className="mt-0.5 block text-xs text-muted-foreground/80">
+                      {line.activities.join(' · ')}
+                    </span>
+                  )}
+                </span>                <span className="shrink-0 font-display text-base font-semibold">
+                  {line.amount === null ? '—' : inr(line.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Separator className="my-4" />
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li className="flex items-center justify-between gap-4">
+              <span className="flex items-center gap-2">
+                <IndianRupee
+                  className="size-4 shrink-0 text-brand"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+                Payable to the committee
+              </span>
+              <span className="font-display text-base font-semibold text-foreground">
+                {inr(total)}
+              </span>
+            </li>
+            <li className="flex items-center justify-between gap-4">
+              <span>Paid on this page</span>
+              <span className="font-display text-base font-semibold text-foreground">₹0</span>
+            </li>
+          </ul>
+          <p className="mt-4 text-xs text-muted-foreground">
+            A contribution left unchosen shows as a dash until you pick one. The payment mode and
+            reference print under an audience entry once you enter them. Nothing is charged here.
+          </p>
+        </div>
+        <Separator />
+        <div className="texture-lines h-4 bg-primary" aria-hidden="true" />
+      </div>
+    </aside>
+  )
+}
+
+function labelOfMode(mode: PaymentMode) {
+  return PAYMENT_MODES.find((entry) => entry.id === mode)?.label ?? mode
+}
+
+function yesNoLabel(value: YesNo | '') {
+  return value === '' ? '' : value === 'yes' ? 'Yes' : value === 'no' ? 'No' : 'Maybe'
+}
+
+/* The sheet's yes/no questions. `maybe` is offered only where the sheet offers
+   it, so the four questions use two shapes of the same control. */
+function YesNoRow({
+  id,
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+}: {
+  id: string
+  label: string
+  hint?: string
+  value: YesNo | ''
+  options: YesNoOptions
+  onChange: (value: YesNo) => void
+}) {
+  const choices: YesNo[] =
+    options === 'yesnomaybe' ? ['yes', 'no', 'maybe'] : ['yes', 'no']
+  return (
+    <fieldset>
+      <legend className={`text-sm font-medium ${hint ? 'text-muted-foreground' : ''}`}>
+        {label}
+      </legend>
+      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {choices.map((choice) => {
+          const selected = value === choice
+          return (
+            <label
+              key={choice}
+              className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm transition-colors duration-[var(--motion-fast)] ${
+                selected
+                  ? 'border-brand bg-secondary/50 font-medium text-foreground'
+                  : 'border-border text-muted-foreground hover:border-brand/50'
+              }`}
+            >
+              <input
+                type="radio"
+                name={id}
+                id={`${id}-${choice}`}
+                value={choice}
+                checked={selected}
+                onChange={() => onChange(choice)}
+                className="size-4 shrink-0 accent-[var(--brand)]"
+              />
+              <span>{yesNoLabel(choice)}</span>
+            </label>
+          )
+        })}
+      </div>
+    </fieldset>
+  )
+}
+
+/* The confirmation. It restates exactly what was entered, because there is no
+   server and nothing is sent anywhere. The one thing it cannot do on its own is
+   send the approval message, so it says who does and to where. */
+function Confirmation({
+  rows, email, registrationId, paymentMode, paymentReference, onEdit,
+}: { rows: Draft[]; email: string; registrationId: string; paymentMode: PaymentMode; paymentReference: string; onEdit: () => void }) {
+  const total = rows.reduce((sum, row) => sum + (feeOf(row) ?? 0), 0)
+
+  return (
+    <div role="status" className="rounded-lg border border-success/30 bg-card p-6 shadow-raised">
+      <div className="flex items-start gap-4">
+        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-success text-success-foreground">
+          <Check className="size-5" strokeWidth={2} aria-hidden="true" />
+        </span>
+        <div>
+          <h3 className="font-display text-2xl font-bold">
+            Registration saved — {registrationId}
+          </h3>
+          <p className="mt-2 text-muted-foreground">
+            Your registration is now stored with status Pending Verification. Total: {inr(total)}.
+          </p>
+        </div>
+      </div>
+
+      <ul className="mt-6 divide-y divide-border border-y border-border">
+        {rows.map((row, index) => (
+          <li key={row.key} className="flex items-baseline justify-between gap-4 py-3">
+            <span>
+              <span className="font-medium">
+                {index + 1}. {row.name.trim()}
+              </span>
+              <span className="block text-sm text-muted-foreground">
+                {labelOf(row)}
+                {row.note.trim() ? ` · ${row.note.trim()}` : ''}
+                {row.age.trim() ? ` · ${row.age.trim()} years` : ''}
+              </span>
+              <span className="mt-0.5 block text-sm text-muted-foreground">
+                Born {row.dob.trim()}
+                {row.gender ? ` · ${GENDERS.find((g) => g.id === row.gender)?.label}` : ''}
+                {' · '}
+                {row.district.trim()}, {row.state.trim()} {row.pin.trim()}
+              </span>
+              <span className="mt-0.5 block text-sm text-muted-foreground">
+                {row.activities.join(' · ')}
+              </span>
+              <span className="mt-0.5 block text-sm text-muted-foreground">
+                Cultural {yesNoLabel(row.cultural)} · Sports {yesNoLabel(row.sports)} · From
+                outside {yesNoLabel(row.fromOutside)} · Accommodation{' '}
+                {yesNoLabel(row.accommodation)}
+              </span>
+              {row.category === 'visitor' && referenceOk(row.reference) && (
+                <span className="mt-0.5 block font-mono text-xs break-all text-muted-foreground">
+                  {labelOfMode(row.mode)} · {row.reference.trim()}
+                </span>
+              )}
+            </span>
+            <span className="shrink-0 font-display text-lg font-semibold">
+              {inr(feeOf(row) ?? 0)}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-5 rounded-md bg-secondary/60 px-4 py-3">
+        <p className="font-label text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+          Declarations given
+        </p>
+        <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+          {DECLARATIONS.map((declaration) => (
+            <li key={declaration.id} className="flex gap-2">
+              <Check
+                className="mt-0.5 size-4 shrink-0 text-success"
+                strokeWidth={2}
+                aria-hidden="true"
+              />
+              <span>
+                <span className="font-medium text-foreground">{declaration.label}</span> —{' '}
+                {declaration.detail}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <Separator className="my-5" />
+
+      {/* The one thing that happens off this page: the desk verifies the payment
+          and writes back. Named here rather than described in general. */}
+      <section aria-labelledby="verify-heading">
+        <div className="flex items-start gap-3">
+          <span
+            aria-hidden="true"
+            className="grid size-9 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground"
+          >
+            <Mail className="size-4" strokeWidth={2} />
+          </span>
+          <div>
+            <h4 id="verify-heading" className="font-display text-xl font-bold">
+              {VERIFICATION.heading}
+            </h4>
+            <p className="mt-2 max-w-2xl text-muted-foreground">{VERIFICATION.lead}</p>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-md border border-border bg-secondary/50 px-4 py-4">
+          <p className="font-label text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+            Your email address
+          </p>
+          <p className="mt-1 font-mono text-base font-semibold break-all text-foreground">
+            {email.trim()}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {VERIFICATION.subject} messages come from{' '}
+            <a
+              href={`mailto:${EVENT.email}?subject=${encodeURIComponent(
+                `${VERIFICATION.subject} — ${rows[0]?.name.trim() ?? ''} (${inr(total)} paid)`,
+              )}`}
+              className="rounded-sm font-medium text-foreground underline decoration-brand/60 underline-offset-4 transition-colors duration-[var(--motion-fast)] hover:decoration-brand"
+            >
+              {EVENT.email}
+            </a>
+            — this address has no way of sending it, so the desk's mail is the one to wait for.
+          </p>
+        </div>
+
+        <ol className="mt-5 space-y-3">
+          {VERIFICATION.steps.map((step) => (
+            <li key={step} className="flex gap-3 text-sm">
+              <Check
+                className="mt-0.5 size-4 shrink-0 text-success"
+                strokeWidth={2}
+                aria-hidden="true"
+              />
+              <span className="text-muted-foreground">{step}</span>
+            </li>
+          ))}
+        </ol>
+
+        <p className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+          {VERIFICATION.waiting} See the account and UPI details above for the payment itself.
+          <a
+            href={telHref(TREASURER.phones[0])}
+            className="inline-flex items-center gap-2 rounded-sm font-medium text-foreground underline decoration-brand/60 underline-offset-4 transition-colors duration-[var(--motion-fast)] hover:decoration-brand"
+          >
+            <Phone className="size-4 shrink-0 text-brand" strokeWidth={2} aria-hidden="true" />
+            {displayPhone(TREASURER.phones[0])}
+          </a>
+        </p>
+
+        {email.trim() !== '' && (
+          <Button asChild variant="outline" className="mt-5 h-11">
+            <a
+              href={`mailto:${EVENT.email}?subject=${encodeURIComponent(
+                `${VERIFICATION.subject} — ${rows[0]?.name.trim() ?? ''} (${inr(total)} paid)`,
+              )}&body=${encodeURIComponent(
+                [
+                  `Name: ${rows.map((row) => row.name.trim()).join(', ')}`,
+                  `Amount paid: ${inr(total)}`,
+                  'Payment reference: ',
+                  'Paid on: ',
+                  'Method: ',
+                  `Reply to: ${email.trim()}`,
+                ].join('\n'),
+              )}`}
+            >
+              <Send className="size-4" strokeWidth={2} aria-hidden="true" />
+              Email these details to the committee
+            </a>
+          </Button>
+        )}
+      </section>
+
+      <Separator className="my-5" />
+
+      <p className="text-sm text-muted-foreground">
+        Registration ID: <strong>{registrationId}</strong>. Payment reference: <strong>{paymentReference}</strong> ({labelOfMode(paymentMode)}). Your registration has been saved and is pending payment verification and organiser approval. Keep this registration ID for follow-up.
+      </p>
+
+      <Button type="button" variant="outline" className="mt-6 h-11" onClick={onEdit}>
+        Change the list
+      </Button>
+    </div>
+  )
+}
+, 'i'))
+        if (!match) continue
+        let value = cleanOcrValue(match[1] || '')
+        if (!value || looksLikeOcrLabel(value) || /^(enter|write|select|dd\/?mm\/?yyyy)$/i.test(value)) {
+          for (let next = i + 1; next < Math.min(lines.length, i + 4); next += 1) {
+            const candidate = cleanOcrValue(lines[next])
+            if (!candidate || looksLikeOcrLabel(candidate)) break
+            if (/^(male|female|transgender|yes|no|maybe)$/i.test(candidate)) continue
+            value = candidate
+            break
+          }
+        }
+        if (!value || looksLikeOcrLabel(value)) continue
+        if (!options.multiline) value = value.split(/\s{2,}/)[0]
+        return cleanOcrValue(value)
+      }
     }
     return ''
   }
 
+  async function preprocessOcrImage(file: File): Promise<File> {
+    const bitmap = await createImageBitmap(file)
+    try {
+      const maxWidth = 2600
+      const scale = Math.min(2, maxWidth / bitmap.width)
+      const width = Math.max(1, Math.round(bitmap.width * scale))
+      const height = Math.max(1, Math.round(bitmap.height * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d', { willReadFrequently: true })
+      if (!context) throw new Error('Could not prepare the form image. Please try a clearer photo.')
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, width, height)
+      context.drawImage(bitmap, 0, 0, width, height)
+      const pixels = context.getImageData(0, 0, width, height)
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        const gray = Math.round(0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2])
+        const contrast = Math.max(0, Math.min(255, Math.round((gray - 128) * 1.18 + 128)))
+        pixels.data[i] = contrast
+        pixels.data[i + 1] = contrast
+        pixels.data[i + 2] = contrast
+      }
+      context.putImageData(pixels, 0, 0)
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not process the form image.')), 'image/png'),
+      )
+      return new File([blob], 'offline-form-processed.png', { type: 'image/png' })
+    } finally {
+      bitmap.close()
+    }
+  }
+
   function parseOfflineDate(value: string): string {
-    const match = value.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
-    if (match) return match[3] + '-' + match[2].padStart(2, '0') + '-' + match[1].padStart(2, '0')
-    return ''
+    const input = value.trim().replace(/[.]/g, '/').replace(/\s+/g, '')
+    const dayFirst = input.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+    const yearFirst = input.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/)
+    let year = 0
+    let month = 0
+    let day = 0
+    if (dayFirst) {
+      day = Number(dayFirst[1]); month = Number(dayFirst[2]); year = Number(dayFirst[3])
+    } else if (yearFirst) {
+      year = Number(yearFirst[1]); month = Number(yearFirst[2]); day = Number(yearFirst[3])
+    } else {
+      return ''
+    }
+    const date = new Date(year, month - 1, day)
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return ''
+    return year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0')
   }
 
   async function readOfflineForm(event: React.ChangeEvent<HTMLInputElement>) {
