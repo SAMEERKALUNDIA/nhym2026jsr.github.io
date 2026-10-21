@@ -429,11 +429,15 @@ if (!row.dob.trim()) {
 
   const OCR_FIELD_LABELS = [
     'full name', 'participant name', 'name',
-    'date of birth', 'dob',
+    'date of birth', 'dob', 'age', 'gender',
     'full residential address', 'residential address', 'address',
     'district', 'state / union territory', 'state/union territory', 'state',
     'pin code', 'pincode', 'pin', 'postal code',
     'email address', 'email',
+    'participant category', 'which nhym activities', 'interested in cultural participation',
+    'interested in sports participation', 'travelling from outside jamshedpur',
+    'accommodation required', 'participant declaration', 'payment declaration',
+    'final confirmation', 'payment reference', 'transaction id', 'utr',
   ]
 
   function cleanOcrValue(value: string): string {
