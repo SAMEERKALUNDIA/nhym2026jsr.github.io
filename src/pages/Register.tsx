@@ -405,6 +405,110 @@ if (!row.dob.trim()) {
     return ok
   }
 
+  async function loadPdfJs(): Promise<any> {
+    const existing = (window as any).pdfjsLib
+    if (existing) return existing
+    await new Promise<void>((resolve, reject) => {
+      const current = document.querySelector<HTMLScriptElement>('script[data-nhym-pdfjs]')
+      const script = current ?? document.createElement('script')
+      script.onload = () => resolve()
+      script.onerror = () => reject(new Error('PDF reader could not be loaded. Please try a photo instead.'))
+      if (!current) {
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+        script.async = true
+        script.dataset.nhymPdfjs = 'true'
+        document.head.appendChild(script)
+      }
+    })
+    const pdfjs = (window as any).pdfjsLib
+    if (!pdfjs) throw new Error('PDF reader did not start. Please try a photo instead.')
+    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+    return pdfjs
+  }
+
+  function findValue(text: string, labels: string[]): string {
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    for (const label of labels) {
+      const line = lines.find((item) => item.toLowerCase().includes(label.toLowerCase()))
+      if (!line) continue
+      const at = line.toLowerCase().indexOf(label.toLowerCase()) + label.length
+      const value = line.slice(at).replace(/^[\s:._-]+/, '').trim()
+      if (value && !/^(dd\/mm\/yyyy|yes|no|maybe|male|female|transgender)$/i.test(value)) return value
+    }
+    return ''
+  }
+
+  function parseOfflineDate(value: string): string {
+    const match = value.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+    if (match) return match[3] + '-' + match[2].padStart(2, '0') + '-' + match[1].padStart(2, '0')
+    return ''
+  }
+
+  async function readOfflineForm(event: React.ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    if (!isPdf && !file.type.startsWith('image/')) {
+      setOcrMessage('Choose a PDF or a photo of the completed offline form.')
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setOcrMessage('Choose a file smaller than 15 MB.')
+      return
+    }
+    setOcrBusy(true)
+    setOcrMessage('Reading locally in this browser. The file is not uploaded or saved.')
+    let worker: TesseractWorker | undefined
+    let canvas: HTMLCanvasElement | undefined
+    try {
+      let imageFile: File = file
+      if (isPdf) {
+        const pdfjs = await loadPdfJs()
+        const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
+        const page = await pdf.getPage(1)
+        const viewport = page.getViewport({ scale: 2 })
+        canvas = document.createElement('canvas')
+        canvas.width = Math.ceil(viewport.width)
+        canvas.height = Math.ceil(viewport.height)
+        const context = canvas.getContext('2d')
+        if (!context) throw new Error('Could not prepare the PDF page for reading.')
+        await page.render({ canvasContext: context, viewport }).promise
+        const blob = await new Promise<Blob>((resolve, reject) => canvas!.toBlob((result) => result ? resolve(result) : reject(new Error('Could not read the PDF page.')), 'image/png'))
+        imageFile = new File([blob], 'offline-form-page.png', { type: 'image/png' })
+        await pdf.destroy()
+      }
+      const tesseract = await loadTesseract()
+      worker = await tesseract.createWorker('eng')
+      const result = await worker.recognize(imageFile)
+      const text = result.data.text
+      const name = findValue(text, ['Full Name', 'Participant Name'])
+      const dob = parseOfflineDate(findValue(text, ['Date of Birth', 'DOB']))
+      const address = findValue(text, ['Full Residential Address', 'Residential Address'])
+      const district = findValue(text, ['District'])
+      const state = findValue(text, ['State / Union Territory', 'State'])
+      const pin = (findValue(text, ['PIN Code', 'Pincode']).match(/\b\d{6}\b/) || [])[0] || ''
+      const emailValue = findValue(text, ['Email Address', 'Email'])
+      const patch: Partial<Draft> = {}
+      if (name && name.length < 100) patch.name = name
+      if (dob) { patch.dob = dob; patch.age = calculateAge(dob) }
+      if (address && address.length < 250) patch.address = address
+      if (district && district.length < 100) patch.district = district
+      if (state && state.length < 100) patch.state = state
+      if (pin) patch.pin = pin
+      if (Object.keys(patch).length) update(rows[0].key, patch)
+      if (emailValue && EMAIL.test(emailValue.trim())) setEmail(emailValue.trim())
+      setOcrMessage('Text extracted where readable. Review every field. Activity checkboxes, yes/no choices, category, payment mode, transaction reference and declarations must be entered or confirmed manually. OCR does not verify signatures or payment.')
+    } catch (error) {
+      setOcrMessage(error instanceof Error ? error.message : 'Could not read the form. Please enter the details manually.')
+    } finally {
+      if (worker) await worker.terminate().catch(() => undefined)
+      if (canvas) { canvas.width = 0; canvas.height = 0 }
+      setOcrBusy(false)
+    }
+  }
+
   async function readPaymentScreenshot(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0]
     event.currentTarget.value = ''
@@ -553,6 +657,13 @@ if (!row.dob.trim()) {
                   />
                 ) : (
                   <>
+                    <section className="rounded-lg border border-brand/30 bg-secondary/30 p-4 sm:p-5">
+                      <h3 className="font-semibold">Already filled an offline registration form?</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">Choose its PDF or a photo to fill some online fields automatically. The file is read in this browser only; it is not uploaded or stored. Review and correct all detected details before submitting.</p>
+                      <Label htmlFor="offline-form-upload" className="mt-4 block">Choose offline form (PDF or photo)</Label>
+                      <Input id="offline-form-upload" type="file" accept="application/pdf,image/*" disabled={ocrBusy || sending} onChange={readOfflineForm} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" />
+                      {ocrMessage && <p role="status" className="mt-3 text-sm text-muted-foreground">{ocrBusy ? 'Reading form… ' : ''}{ocrMessage}</p>}
+                    </section>
                     {rows.map((row, index) => (
                       <fieldset
                         key={row.key}
