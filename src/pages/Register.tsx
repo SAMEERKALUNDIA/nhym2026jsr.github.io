@@ -141,6 +141,7 @@ const DECLARATIONS: Declaration[] = [
 
 type TesseractWorker = {
   recognize: (image: File) => Promise<{ data: { text: string } }>
+  setParameters?: (parameters: Record<string, string>) => Promise<unknown>
   terminate: () => Promise<unknown>
 }
 type TesseractApi = {
@@ -426,22 +427,101 @@ if (!row.dob.trim()) {
     return pdfjs
   }
 
+  const OCR_FIELD_LABELS = [
+    'full name', 'participant name', 'name',
+    'date of birth', 'dob', 'age', 'gender',
+    'full residential address', 'residential address', 'address',
+    'district', 'state / union territory', 'state/union territory', 'state',
+    'pin code', 'pincode', 'pin', 'postal code',
+    'email address', 'email',
+    'participant category', 'which nhym activities', 'interested in cultural participation',
+    'interested in sports participation', 'travelling from outside jamshedpur',
+    'accommodation required', 'participant declaration', 'payment declaration',
+    'final confirmation', 'payment reference', 'transaction id', 'utr',
+  ]
+
+  function cleanOcrValue(value: string): string {
+    return value.replace(/^[\s:;,.#._-]+|[\s:;,.#_-]+$/g, '').replace(/\s{2,}/g, ' ').trim()
+  }
+
+  function looksLikeOcrLabel(value: string): boolean {
+    const normalized = value.toLowerCase().replace(/[^a-z/ ]/g, '').replace(/\s+/g, ' ').trim()
+    return OCR_FIELD_LABELS.some((label) => {
+      const target = label.toLowerCase().replace(/[^a-z/ ]/g, '').replace(/\s+/g, ' ').trim()
+      return normalized === target || normalized.startsWith(target + ' ')
+    }) || /^(participant details|personal details|dd mm yyyy|dd\/mm\/yyyy)$/i.test(normalized)
+  }
+
   function findValue(text: string, labels: string[]): string {
-    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-    for (const label of labels) {
-      const line = lines.find((item) => item.toLowerCase().includes(label.toLowerCase()))
-      if (!line) continue
-      const at = line.toLowerCase().indexOf(label.toLowerCase()) + label.length
-      const value = line.slice(at).replace(/^[\s:._-]+/, '').trim()
-      if (value && !/^(dd\/mm\/yyyy|yes|no|maybe|male|female|transgender)$/i.test(value)) return value
+    const lines = text.split(/\r?\n/).map(cleanOcrValue).filter(Boolean)
+    for (let i = 0; i < lines.length; i += 1) {
+      for (const label of labels) {
+        const pattern = label.split(/\s+/).map((part) => part.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('\\s*')
+        const match = lines[i].match(new RegExp('(?:^|\\b)' + pattern + '\\s*(?:[:：=.-]\\s*)?(.*)$', 'i'))
+        if (!match) continue
+        let value = cleanOcrValue(match[1] || '')
+        if (!value || looksLikeOcrLabel(value) || /^(enter|write|select|dd\/?mm\/?yyyy)$/i.test(value)) {
+          for (let next = i + 1; next < Math.min(lines.length, i + 4); next += 1) {
+            const candidate = cleanOcrValue(lines[next])
+            if (!candidate || looksLikeOcrLabel(candidate)) break
+            if (/^(male|female|transgender|yes|no|maybe)$/i.test(candidate)) continue
+            value = candidate
+            break
+          }
+        }
+        if (value && !looksLikeOcrLabel(value)) return value
+      }
     }
     return ''
   }
 
+  async function preprocessOcrImage(file: File): Promise<File> {
+    const bitmap = await createImageBitmap(file)
+    try {
+      const scale = Math.min(2, 2600 / bitmap.width)
+      const width = Math.max(1, Math.round(bitmap.width * scale))
+      const height = Math.max(1, Math.round(bitmap.height * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d', { willReadFrequently: true })
+      if (!context) throw new Error('Could not prepare the form image. Please try a clearer photo.')
+      context.fillStyle = '#fff'
+      context.fillRect(0, 0, width, height)
+      context.drawImage(bitmap, 0, 0, width, height)
+      const pixels = context.getImageData(0, 0, width, height)
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        const gray = Math.round(0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2])
+        const contrast = Math.max(0, Math.min(255, Math.round((gray - 128) * 1.18 + 128)))
+        pixels.data[i] = contrast
+        pixels.data[i + 1] = contrast
+        pixels.data[i + 2] = contrast
+      }
+      context.putImageData(pixels, 0, 0)
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not process the form image.')), 'image/png'),
+      )
+      return new File([blob], 'offline-form-processed.png', { type: 'image/png' })
+    } finally {
+      bitmap.close()
+    }
+  }
+
   function parseOfflineDate(value: string): string {
-    const match = value.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
-    if (match) return match[3] + '-' + match[2].padStart(2, '0') + '-' + match[1].padStart(2, '0')
-    return ''
+    const input = value.trim().replace(/[.]/g, '/').replace(/\s+/g, '')
+    const dayFirst = input.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+    const yearFirst = input.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/)
+    let year = 0
+    let month = 0
+    let day = 0
+    if (dayFirst) {
+      day = Number(dayFirst[1]); month = Number(dayFirst[2]); year = Number(dayFirst[3])
+    } else if (yearFirst) {
+      year = Number(yearFirst[1]); month = Number(yearFirst[2]); day = Number(yearFirst[3])
+    } else return ''
+    const date = new Date(year, month - 1, day)
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return ''
+    return year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0')
   }
 
   async function readOfflineForm(event: React.ChangeEvent<HTMLInputElement>) {
@@ -481,14 +561,18 @@ if (!row.dob.trim()) {
       }
       const tesseract = await loadTesseract()
       worker = await tesseract.createWorker('eng')
-      const result = await worker.recognize(imageFile)
+      if (worker.setParameters) {
+        await worker.setParameters({ tessedit_pageseg_mode: '11', preserve_interword_spaces: '1' })
+      }
+      const processedImage = await preprocessOcrImage(imageFile)
+      const result = await worker.recognize(processedImage)
       const text = result.data.text
-      const name = findValue(text, ['Full Name', 'Participant Name'])
+      const name = findValue(text, ['Full Name', 'Participant Name', 'Name'])
       const dob = parseOfflineDate(findValue(text, ['Date of Birth', 'DOB']))
-      const address = findValue(text, ['Full Residential Address', 'Residential Address'])
+      const address = findValue(text, ['Full Residential Address', 'Residential Address', 'Address'])
       const district = findValue(text, ['District'])
-      const state = findValue(text, ['State / Union Territory', 'State'])
-      const pin = (findValue(text, ['PIN Code', 'Pincode']).match(/\b\d{6}\b/) || [])[0] || ''
+      const state = findValue(text, ['State / Union Territory', 'State/Union Territory', 'State'])
+      const pin = (findValue(text, ['PIN Code', 'Pincode', 'Postal Code', 'PIN']).match(/\b\d{6}\b/) || [])[0] || ''
       const emailValue = findValue(text, ['Email Address', 'Email'])
       const patch: Partial<Draft> = {}
       if (name && name.length < 100) patch.name = name
