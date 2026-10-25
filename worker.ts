@@ -215,17 +215,17 @@ export default {
     if (url.pathname === '/api/public-feedback' && request.method === 'POST') {
       let body: { name?: unknown; city?: unknown; category?: unknown; message?: unknown }
       try { body = await request.json() } catch { return json({ error: 'संदेश का प्रारूप सही नहीं है।' }, 400) }
-      const clean = (value: unknown, max: number) => String(value ?? '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]/g, '').trim().slice(0, max)
+      const clean = (value: unknown, max: number) => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, max)
       const name = clean(body.name, 80)
       const city = clean(body.city, 80)
       const message = clean(body.message, 1500)
       const category = String(body.category ?? '')
       if (name.length < 2 || message.length < 3) return json({ error: 'कृपया अपना नाम और कम-से-कम 3 अक्षरों का संदेश दर्ज करें।' }, 400)
       if (!['Support', 'Opposition', 'Suggestion', 'Other'].includes(category)) return json({ error: 'प्रतिक्रिया का प्रकार चुनें।' }, 400)
-      if (/https?:\\/\\/|www\\./i.test(message)) return json({ error: 'कृपया संदेश में बाहरी लिंक न डालें।' }, 400)
+      if (/https?:\/\/|www\./i.test(message)) return json({ error: 'कृपया संदेश में बाहरी लिंक न डालें।' }, 400)
 
       const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown'
-      const ipHash = await financeDigest(`public-feedback|2026|\${ip}`)
+      const ipHash = await financeDigest(`public-feedback|2026|${ip}`)
       await env.DB.prepare(`
         INSERT INTO public_feedback_rate_limits (ip_hash, window_started_at, request_count)
         VALUES (?, CURRENT_TIMESTAMP, 1)
