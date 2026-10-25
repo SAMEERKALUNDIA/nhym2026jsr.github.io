@@ -8,6 +8,7 @@ on:
       - "src/**"
       - "public/**"
       - "worker.ts"
+      - "migrations/0007_public_feedback.sql"
       - "wrangler.jsonc"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -69,6 +70,14 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build website assets
         run: pnpm run build
+      - name: Apply public-feedback schema to production D1
+        if: github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 1d5d70a7ee45b7c0c9b1f04aeb025924
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing production environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          pnpm dlx wrangler@4 d1 execute nhym2026-registration --remote --file=migrations/0007_public_feedback.sql --config wrangler.jsonc
       - name: Deploy production Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
