@@ -49,7 +49,7 @@ jobs:
 
           const participantLink = admin.indexOf("window.location.href = '/admin/participants'");
           const galleryLink = admin.indexOf("window.location.href = '/admin/gallery'");
-          const adminDashboardGate = admin.indexOf('{!isGalleryPage && !isParticipantPage && (');
+          const adminDashboardGate = admin.indexOf('{!isGalleryPage && !isParticipantPage && !isFeedbackPage && (');
           if (adminDashboardGate < 0 || participantLink < adminDashboardGate || galleryLink < adminDashboardGate) {
             console.error('FAIL Participant/Gallery navigation is not located within the Main Admin dashboard section.');
             process.exit(1);
