@@ -243,7 +243,7 @@ export default {
       return json({ feedback: { id, name, city, category, message, createdAt } }, 201)
     }
 
-    const publicFeedbackDelete = url.pathname.match(/^\\/api\\/public-feedback\\/([a-f0-9-]+)$/i)
+    const publicFeedbackDelete = url.pathname.match(/^\/api\/public-feedback\/([a-f0-9-]+)$/i)
     if (publicFeedbackDelete && request.method === 'DELETE') {
       if (!authorised(request, env)) return financeJson({ error: 'Admin access key सही नहीं है।' }, 401)
       const result = await env.DB.prepare('DELETE FROM public_feedback WHERE id = ?').bind(publicFeedbackDelete[1]).run()
