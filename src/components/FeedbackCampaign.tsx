@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { MessageCircle, Send, Trash2, Users } from 'lucide-react'
+import { MessageCircle, Send, Trash2, Users, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 type Feedback = {
@@ -13,10 +13,10 @@ type Feedback = {
 }
 
 const categories = [
-  { value: 'Support', label: 'मैं NHYM जमशेदपुर का समर्थन करता/करती हूँ और जमशेदपुर से Hosting Rights वापस लेने के Governing Body के निर्णय का विरोध करता/करती हूँ।' },
-  { value: 'Opposition', label: 'मैं NHYM जमशेदपुर का समर्थन नहीं करता/करती हूँ और जमशेदपुर से Hosting Rights वापस लेने के Governing Body के निर्णय का समर्थन करता/करती हूँ।' },
-  { value: 'Suggestion', label: 'मेरा सुझाव / समाधान' },
-  { value: 'Other', label: 'अन्य राय / टिप्पणी' },
+  { value: 'Support', label: 'मैं NHYM जमशेदपुर का समर्थन करता/करती हूँ और जमशेदपुर से Hosting Rights वापस लेने के Governing Body के निर्णय का विरोध करता/करती हूँ।', shortLabel: 'जमशेदपुर के समर्थन में' },
+  { value: 'Opposition', label: 'मैं NHYM जमशेदपुर का समर्थन नहीं करता/करती हूँ और जमशेदपुर से Hosting Rights वापस लेने के Governing Body के निर्णय का समर्थन करता/करती हूँ।', shortLabel: 'निर्णय के समर्थन में' },
+  { value: 'Suggestion', label: 'मेरा सुझाव / समाधान', shortLabel: 'सुझाव / समाधान' },
+  { value: 'Other', label: 'अन्य राय / टिप्पणी', shortLabel: 'अन्य राय / टिप्पणी' },
 ] as const
 
 function feedbackCategoryLabel(category: Feedback['category']) {
@@ -33,6 +33,7 @@ export default function FeedbackCampaign() {
   const [submitting, setSubmitting] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [expandedMessages, setExpandedMessages] = useState<string[]>([])
 
   async function loadFeedback() {
     try {
@@ -94,6 +95,15 @@ export default function FeedbackCampaign() {
     }
   }
 
+  function toggleMessage(id: string) {
+    setExpandedMessages(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
+  }
+
+  const categoryCounts = categories.map(option => ({
+    ...option,
+    count: items.filter(item => item.category === option.value).length,
+  }))
+
   return (
     <section id="public-feedback" className="border-y border-border bg-card px-gutter py-section">
       <div className="mx-auto grid max-w-content gap-10 lg:grid-cols-[0.9fr_1.1fr]">
@@ -114,8 +124,17 @@ export default function FeedbackCampaign() {
           <p className="mt-4 font-semibold">📍 जमशेदपुर · 📅 28–29 नवंबर 2026</p>
           <div className="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
             <Users className="size-4" aria-hidden="true" />
-            <span>{items.length} हाल की सार्वजनिक प्रतिक्रियाएँ</span>
+            <span>{items.length} सार्वजनिक प्रतिक्रियाएँ दिखाई जा रही हैं</span>
           </div>
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {categoryCounts.map(option => (
+              <div key={option.value} className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-border bg-background p-3">
+                <span className="min-w-0 break-words text-sm font-medium [overflow-wrap:anywhere]">{option.shortLabel}</span>
+                <span className="shrink-0 rounded-full bg-brand/10 px-3 py-1 text-sm font-bold text-brand" aria-label={`${option.shortLabel}: ${option.count} प्रतिक्रियाएँ`}>{option.count}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">गिनती नीचे दिखाई गई सार्वजनिक प्रतिक्रियाओं की है।</p>
         </div>
 
         <div className="space-y-8">
@@ -129,8 +148,8 @@ export default function FeedbackCampaign() {
               <label className="grid gap-1.5 text-sm font-medium">जिला / शहर
                 <input maxLength={80} value={city} onChange={e => setCity(e.target.value)} className="min-w-0 rounded-lg border border-input bg-background px-3 py-2.5 font-normal" placeholder="जैसे जमशेदपुर" />
               </label>
-              <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">प्रतिक्रिया का प्रकार
-                <select value={category} onChange={e => setCategory(e.target.value as Feedback['category'])} className="rounded-lg border border-input bg-background px-3 py-2.5 font-normal">
+              <label className="grid min-w-0 gap-1.5 text-sm font-medium sm:col-span-2">प्रतिक्रिया का प्रकार
+                <select value={category} onChange={e => setCategory(e.target.value as Feedback['category'])} className="w-full min-w-0 rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-normal">
                   {categories.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
@@ -147,24 +166,33 @@ export default function FeedbackCampaign() {
 
           <div>
             <h3 className="text-xl font-bold">💬 लोगों की प्रतिक्रियाएँ</h3>
-            <p className="mt-1 text-sm text-muted-foreground">प्रतिक्रियाएँ सीधे प्रकाशित होती हैं। नियमों का उल्लंघन करने वाले संदेश एडमिन हटा सकता है।</p>
+            <p className="mt-1 text-sm text-muted-foreground">लंबी प्रतिक्रियाएँ संक्षिप्त रूप में दिखाई जाएँगी। पूरा संदेश देखने के लिए “और पढ़ें” दबाएँ। नियमों का उल्लंघन करने वाले संदेश एडमिन हटा सकता है।</p>
             {loading ? <p className="mt-4 text-sm text-muted-foreground">प्रतिक्रियाएँ लोड हो रही हैं…</p> : items.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">अभी कोई प्रतिक्रिया नहीं है। सबसे पहले अपनी राय साझा करें।</p> : (
               <div className="mt-4 grid gap-3">
-                {items.map(item => (
-                  <article key={item.id} className="rounded-xl border border-border bg-background p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="break-words font-semibold">{item.name}{item.city ? <span className="font-normal text-muted-foreground"> · {item.city}</span> : null}</p>
-                        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-brand">{feedbackCategoryLabel(item.category)}</p>
+                {items.map(item => {
+                  const expanded = expandedMessages.includes(item.id)
+                  const isLong = item.message.length > 220
+                  return (
+                    <article key={item.id} className="min-w-0 rounded-xl border border-border bg-background p-4">
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words font-semibold [overflow-wrap:anywhere]">{item.name}{item.city ? <span className="font-normal text-muted-foreground"> · {item.city}</span> : null}</p>
+                          <p className="mt-1 break-words text-xs font-semibold text-brand [overflow-wrap:anywhere]">{feedbackCategoryLabel(item.category)}</p>
+                        </div>
+                        <button type="button" onClick={() => void deleteFeedback(item.id)} className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Admin: इस संदेश को हटाएँ" title="Admin: संदेश हटाएँ">
+                          <Trash2 className="size-4" aria-hidden="true" />
+                        </button>
                       </div>
-                      <button type="button" onClick={() => void deleteFeedback(item.id)} className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Admin: इस संदेश को हटाएँ" title="Admin: संदेश हटाएँ">
-                        <Trash2 className="size-4" aria-hidden="true" />
-                      </button>
-                    </div>
-                    <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed">{item.message}</p>
-                    <p className="mt-3 text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString('hi-IN')}</p>
-                  </article>
-                ))}
+                      <p className={`mt-3 break-words text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap ${isLong && !expanded ? 'line-clamp-3' : ''}`}>{item.message}</p>
+                      {isLong && (
+                        <button type="button" onClick={() => toggleMessage(item.id)} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-brand hover:underline">
+                          {expanded ? <>कम दिखाएँ <ChevronUp className="size-4" /></> : <>और पढ़ें <ChevronDown className="size-4" /></>}
+                        </button>
+                      )}
+                      <p className="mt-3 text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString('hi-IN')}</p>
+                    </article>
+                  )
+                })}
               </div>
             )}
           </div>
