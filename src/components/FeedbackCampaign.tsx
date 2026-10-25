@@ -13,13 +13,13 @@ type Feedback = {
 }
 
 const categories = [
-  { value: 'Support', label: 'मैं NHYM 2026 को निर्धारित तिथि पर जमशेदपुर में आयोजित करने के पक्ष में हूँ' },
+  { value: 'Support', label: 'मैं NHYM जमशेदपुर का समर्थन करता/करती हूँ और जमशेदपुर से Hosting Rights वापस लेने के Governing Body के निर्णय का विरोध करता/करती हूँ।' },
+  { value: 'Opposition', label: 'मैं NHYM जमशेदपुर का समर्थन नहीं करता/करती हूँ और जमशेदपुर से Hosting Rights वापस लेने के Governing Body के निर्णय का समर्थन करता/करती हूँ।' },
   { value: 'Suggestion', label: 'मेरा सुझाव / समाधान' },
   { value: 'Other', label: 'अन्य राय / टिप्पणी' },
 ] as const
 
 function feedbackCategoryLabel(category: Feedback['category']) {
-  if (category === 'Opposition') return 'पुरानी प्रतिक्रिया: Hosting Rights वापस लेने के निर्णय का विरोध'
   return categories.find(option => option.value === category)?.label ?? 'अन्य राय / टिप्पणी'
 }
 
