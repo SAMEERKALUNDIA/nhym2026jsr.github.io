@@ -143,6 +143,7 @@ export default function Admin() {
   const adminPath = window.location.pathname
   const isGalleryPage = adminPath === '/admin/gallery'
   const isParticipantPage = adminPath === '/admin/participants'
+  const isFeedbackPage = adminPath === '/admin/feedback'
 
   const [token, setToken] = useState(
     () => sessionStorage.getItem('nhym_admin_token') || ''
@@ -177,6 +178,10 @@ const [, setLoading] = useState(false)
 const [authenticated, setAuthenticated] = useState(false)
 const [checkingSession, setCheckingSession] = useState(true)
   const [rows, setRows] = useState<Row[]>([])
+  const [feedbackItems, setFeedbackItems] = useState<Array<{id:string;name:string;city:string;category:string;message:string;createdAt:string}>>([])
+  const [selectedFeedbackIds, setSelectedFeedbackIds] = useState<string[]>([])
+  const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [feedbackDeleting, setFeedbackDeleting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [updatingId, setUpdatingId] = useState<number | null>(null)
@@ -189,6 +194,37 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [adminFinanceNotice, setAdminFinanceNotice] = useState('')
   const [resetFinanceUserId, setResetFinanceUserId] = useState('')
   const [resetFinancePassword, setResetFinancePassword] = useState('')
+
+  async function loadAdminFeedback() {
+    setFeedbackLoading(true); setError('')
+    try {
+      const response = await fetch('/api/public-feedback', { cache: 'no-store' })
+      const data = await response.json() as { feedback?: Array<{id:string;name:string;city:string;category:string;message:string;createdAt:string}>; error?: string }
+      if (!response.ok) throw new Error(data.error || 'प्रतिक्रियाएँ लोड नहीं हो सकीं।')
+      setFeedbackItems(Array.isArray(data.feedback) ? data.feedback : [])
+      setSelectedFeedbackIds([])
+    } catch (e) { setError(e instanceof Error ? e.message : 'प्रतिक्रियाएँ लोड नहीं हो सकीं।') }
+    finally { setFeedbackLoading(false) }
+  }
+
+  async function deleteSelectedFeedback() {
+    if (!selectedFeedbackIds.length) return
+    if (!window.confirm(`क्या आप ${selectedFeedbackIds.length} चुनी गई प्रतिक्रिया(ओं) को स्थायी रूप से हटाना चाहते हैं?`)) return
+    setFeedbackDeleting(true); setError(''); setSuccess('')
+    try {
+      for (const id of selectedFeedbackIds) {
+        const response = await fetch(`/api/public-feedback/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
+        const data = await response.json() as { error?: string }
+        if (!response.ok) throw new Error(data.error || 'एक या अधिक प्रतिक्रियाएँ हटाई नहीं जा सकीं।')
+      }
+      setFeedbackItems(current => current.filter(item => !selectedFeedbackIds.includes(item.id)))
+      setSelectedFeedbackIds([])
+      setSuccess('चुनी गई प्रतिक्रिया(एँ) सफलतापूर्वक हटा दी गई हैं।')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'प्रतिक्रियाएँ हटाई नहीं जा सकीं।')
+      await loadAdminFeedback()
+    } finally { setFeedbackDeleting(false) }
+  }
 
   async function load(authToken = token) {
   if (!authToken) return false
@@ -551,6 +587,8 @@ const deleteSelectedGalleryPhotos = async () => {
 useEffect(() => {
   if (!authenticated || !token) return
 
+  if (isFeedbackPage) { void loadAdminFeedback(); return }
+
   if (isGalleryPage) {
     void loadGalleryPhotos()
     void loadGalleryStorage()
@@ -560,7 +598,7 @@ useEffect(() => {
   if (!isParticipantPage) {
     void loadGalleryStorage()
   }
-}, [authenticated, token, isGalleryPage, isParticipantPage])
+}, [authenticated, token, isGalleryPage, isParticipantPage, isFeedbackPage])
 
 useEffect(() => {
   const storedToken =
@@ -2026,7 +2064,7 @@ if (!authenticated) {
         <div className="flex flex-wrap items-start justify-between gap-4">
   <div>
     <h1 className="text-4xl">
-      {isGalleryPage
+      {isFeedbackPage ? 'Feedback Management' : isGalleryPage
         ? 'Gallery Management'
         : isParticipantPage
           ? 'Participant Management'
@@ -2034,7 +2072,7 @@ if (!authenticated) {
     </h1>
 
     <p className="mt-2 text-muted-foreground">
-      {isGalleryPage
+      {isFeedbackPage ? 'सार्वजनिक प्रतिक्रियाएँ देखें और एक या अनेक प्रतिक्रियाएँ हटाएँ।' : isGalleryPage
         ? 'Upload and manage photos for the NHYM website gallery.'
         : isParticipantPage
           ? 'Manage registrations, verify payments and approve participants.'
@@ -2062,7 +2100,7 @@ if (!authenticated) {
           </div>
         )}
 
-{!isGalleryPage && !isParticipantPage && (
+{!isGalleryPage && !isParticipantPage && !isFeedbackPage && (
   <section className="mt-8">
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div className="rounded-xl border bg-card p-5">
@@ -2120,7 +2158,7 @@ if (!authenticated) {
       </div>
     </div>
 
-    <div className="mt-8 grid gap-4 md:grid-cols-3">
+    <div className="mt-8 grid gap-4 md:grid-cols-4">
       <button
         type="button"
         onClick={() => { window.location.href = '/admin/participants' }}
@@ -2141,6 +2179,11 @@ if (!authenticated) {
         <p className="mt-2 text-sm text-muted-foreground">
           Upload, review and delete NHYM gallery photos and monitor storage usage.
         </p>
+      </button>
+
+      <button type="button" onClick={() => { window.location.href = '/admin/feedback' }} className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40">
+        <div className="text-xl font-semibold">Manage Feedback →</div>
+        <p className="mt-2 text-sm text-muted-foreground">सार्वजनिक प्रतिक्रियाएँ देखें और एक या कई प्रतिक्रियाएँ चुनकर हटाएँ।</p>
       </button>
 
       <button
@@ -2184,7 +2227,27 @@ if (!authenticated) {
   </section>
 )}
 
-{isGalleryPage && (
+{isFeedbackPage && (
+  <section className="mt-8 rounded-xl border bg-card p-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div><h2 className="text-2xl font-semibold">सार्वजनिक प्रतिक्रियाएँ</h2><p className="mt-1 text-sm text-muted-foreground">कुल: {feedbackItems.length} · चुनी गई: {selectedFeedbackIds.length}</p></div>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" onClick={() => void loadAdminFeedback()} disabled={feedbackLoading || feedbackDeleting}>Refresh</Button>
+        <Button type="button" variant="outline" onClick={() => setSelectedFeedbackIds(selectedFeedbackIds.length === feedbackItems.length ? [] : feedbackItems.map(item => item.id))} disabled={!feedbackItems.length || feedbackDeleting}>{selectedFeedbackIds.length === feedbackItems.length ? 'सबका चयन हटाएँ' : 'सभी चुनें'}</Button>
+        <Button type="button" onClick={() => void deleteSelectedFeedback()} disabled={!selectedFeedbackIds.length || feedbackDeleting}>{feedbackDeleting ? 'हटाया जा रहा है…' : `चुनी प्रतिक्रियाएँ हटाएँ (${selectedFeedbackIds.length})`}</Button>
+      </div>
+    </div>
+    {feedbackLoading ? <p className="mt-6 text-sm text-muted-foreground">प्रतिक्रियाएँ लोड हो रही हैं…</p> : feedbackItems.length === 0 ? <p className="mt-6 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">अभी कोई सार्वजनिक प्रतिक्रिया उपलब्ध नहीं है।</p> : <div className="mt-5 space-y-3">
+      {feedbackItems.map(item => <label key={item.id} className="flex min-w-0 items-start gap-3 rounded-lg border p-4">
+        <input type="checkbox" className="mt-1 size-4 shrink-0" checked={selectedFeedbackIds.includes(item.id)} onChange={event => setSelectedFeedbackIds(current => event.target.checked ? [...current, item.id] : current.filter(id => id !== item.id))} />
+        <span className="min-w-0 flex-1"><span className="block break-words font-semibold">{item.name}{item.city ? ` · ${item.city}` : ''}</span><span className="mt-1 block break-words text-xs font-semibold text-brand">{item.category}</span><span className="mt-2 block whitespace-pre-wrap break-words text-sm">{item.message}</span><span className="mt-2 block text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString('hi-IN')}</span></span>
+      </label>)}
+    </div>}
+    <Button type="button" variant="outline" className="mt-5" onClick={() => { window.location.href = '/admin' }}>← Admin Dashboard</Button>
+  </section>
+)}
+
+        {isGalleryPage && (
   /* GALLERY-MANAGEMENT */
 <section className="mt-8 rounded-xl border bg-card p-6">
   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

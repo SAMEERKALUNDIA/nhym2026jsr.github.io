@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { MessageCircle, Send, Trash2, Users, ChevronDown, ChevronUp } from 'lucide-react'
+import { MessageCircle, Send, Users, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 type Feedback = {
@@ -77,24 +77,6 @@ export default function FeedbackCampaign() {
     }
   }
 
-  async function deleteFeedback(id: string) {
-    const adminToken = window.prompt('इस संदेश को हटाने के लिए Admin access key दर्ज करें:')
-    if (!adminToken) return
-    if (!window.confirm('क्या आप इस सार्वजनिक प्रतिक्रिया को हटाना चाहते हैं?')) return
-    setError('')
-    try {
-      const response = await fetch(`/api/public-feedback/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: { authorization: `Bearer ${adminToken}` },
-      })
-      const data = await response.json() as { error?: string }
-      if (!response.ok) throw new Error(data.error || 'संदेश हटाया नहीं जा सका।')
-      setItems(current => current.filter(item => item.id !== id))
-      setNotice('संदेश हटा दिया गया है।')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'संदेश हटाया नहीं जा सका।')
-    }
-  }
 
   function toggleMessage(id: string) {
     setExpandedMessages(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
@@ -170,7 +152,7 @@ export default function FeedbackCampaign() {
 
           <div>
             <h3 className="text-xl font-bold">💬 लोगों की प्रतिक्रियाएँ</h3>
-            <p className="mt-1 text-sm text-muted-foreground">लंबी प्रतिक्रियाएँ संक्षिप्त रूप में दिखाई जाएँगी। पूरा संदेश देखने के लिए “और पढ़ें” दबाएँ। नियमों का उल्लंघन करने वाले संदेश एडमिन हटा सकता है।</p>
+            <p className="mt-1 text-sm text-muted-foreground">लंबी प्रतिक्रियाएँ संक्षिप्त रूप में दिखाई जाएँगी। पूरा संदेश देखने के लिए “और पढ़ें” दबाएँ। नियमों का उल्लंघन करने वाले संदेश एडमिन पैनल से हटाए जा सकते हैं।</p>
             {loading ? <p className="mt-4 text-sm text-muted-foreground">प्रतिक्रियाएँ लोड हो रही हैं…</p> : items.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">अभी कोई प्रतिक्रिया नहीं है। सबसे पहले अपनी राय साझा करें।</p> : (
               <div className="mt-4 grid gap-3">
                 {visibleItems.map(item => {
@@ -183,9 +165,6 @@ export default function FeedbackCampaign() {
                           <p className="break-words font-semibold [overflow-wrap:anywhere]">{item.name}{item.city ? <span className="font-normal text-muted-foreground"> · {item.city}</span> : null}</p>
                           <p className="mt-1 break-words text-xs font-semibold text-brand [overflow-wrap:anywhere]">{feedbackCategoryLabel(item.category)}</p>
                         </div>
-                        <button type="button" onClick={() => void deleteFeedback(item.id)} className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Admin: इस संदेश को हटाएँ" title="Admin: संदेश हटाएँ">
-                          <Trash2 className="size-4" aria-hidden="true" />
-                        </button>
                       </div>
                       <p className={`mt-3 break-words text-sm leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap ${isLong && !expanded ? 'line-clamp-3' : ''}`}>{item.message}</p>
                       {isLong && (
