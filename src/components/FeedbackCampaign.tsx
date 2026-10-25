@@ -13,10 +13,10 @@ type Feedback = {
 }
 
 const categories = [
-  { value: 'Support', label: 'समर्थन' },
-  { value: 'Opposition', label: 'विरोध' },
-  { value: 'Suggestion', label: 'सुझाव' },
-  { value: 'Other', label: 'अन्य राय' },
+  { value: 'Support', label: 'मैं NHYM 2026 के आयोजन के समर्थन में हूँ' },
+  { value: 'Opposition', label: 'मैं Hosting Rights वापस लेने के निर्णय का विरोध करता/करती हूँ' },
+  { value: 'Suggestion', label: 'मेरा सुझाव / समाधान' },
+  { value: 'Other', label: 'अन्य राय / टिप्पणी' },
 ] as const
 
 export default function FeedbackCampaign() {
