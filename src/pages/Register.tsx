@@ -398,8 +398,15 @@ if (!row.dob.trim()) {
         return { ...row, error: undefined }
       }),
     )
-    if (!EMAIL.test(email.trim())) { ok = false; problem = 'Enter a valid email address.' }
-    if (!referenceOk(paymentReference)) { ok = false; problem = 'Enter the UPI transaction ID, bank reference or receipt number for this registration.' }
+    if (!EMAIL.test(email.trim())) {
+      ok = false
+      if (!email.trim()) problem = 'Email address is required so the approval message can reach you.'
+      else problem = 'Enter a valid email address so the approval message can reach you.'
+    }
+    if (!referenceOk(paymentReference)) {
+      ok = false
+      if (!problem) problem = 'Enter the UPI transaction ID, bank reference or receipt number for this registration.'
+    }
     if (ok) setFormError('')
     else if (problem) setFormError(problem)
     else setFormError('A few entries still need attention. They are marked below.')
@@ -1159,13 +1166,15 @@ if (!row.dob.trim()) {
                         approval message here once it has verified your payment.
                       </p>
                       <div className="mt-4 max-w-md">
-                        <Label htmlFor="contact-email">Email address</Label>
+                        <Label htmlFor="contact-email">Email address <span aria-hidden="true">*</span></Label>
                         <Input
                           id="contact-email"
                           type="email"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           autoComplete="email"
+                          required
+                          aria-required="true"
                           aria-invalid={formError !== '' && !EMAIL.test(email.trim())}
                           placeholder="you@example.com"
                           className="mt-2 h-11"
