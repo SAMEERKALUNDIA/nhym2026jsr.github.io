@@ -63,14 +63,14 @@ type YesNoOptions = 'yesno' | 'yesnomaybe'
 const ACTIVITIES = [
   'Discussion on the Fifth Schedule of the Indian Constitution',
   'Discussion on the PESA Act (Panchayats (Extension to Scheduled Areas) Act)',
-  'Constitutional Recognition of the Ho Language under the Eighth Schedule',
   'Higher Education and Employment Opportunities',
   'Skill Development, Jobs, Business and Entrepreneurship',
+  'Constitutional Recognition of the Ho Language under the Eighth Schedule',
   'Declining Women’s Participation in Social Activities and Women’s Empowerment',
   'Social Inclusion and Participation of Transgender Persons',
   'Career Counselling and Guidance',
   'Child Marriage and Inter-caste Marriage',
-  'Strengthening Social Relationships and Community Bonds',
+  'Awareness of Physical and Mental Health & Healthy Lifestyle',
 ]
 
 type Draft = {
