@@ -152,7 +152,7 @@ export default function FeedbackCampaign() {
 
           <div>
             <h3 className="text-xl font-bold">💬 लोगों की प्रतिक्रियाएँ</h3>
-            <p className="mt-1 text-sm text-muted-foreground">लंबी प्रतिक्रियाएँ संक्षिप्त रूप में दिखाई जाएँगी। पूरा संदेश देखने के लिए “और पढ़ें” दबाएँ। नियमों का उल्लंघन करने वाले संदेश एडमिन पैनल से हटाए जा सकते हैं।</p>
+            <p className="mt-1 text-sm text-muted-foreground">लंबी प्रतिक्रियाएँ संक्षिप्त रूप में दिखाई जाएँगी। पूरा संदेश देखने के लिए “और पढ़ें” दबाएँ। नियमों का उल्लंघन करने वाले संदेश एडमिन द्वारा हटाए जा सकते हैं।</p>
             {loading ? <p className="mt-4 text-sm text-muted-foreground">प्रतिक्रियाएँ लोड हो रही हैं…</p> : items.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">अभी कोई प्रतिक्रिया नहीं है। सबसे पहले अपनी राय साझा करें।</p> : (
               <div className="mt-4 grid gap-3">
                 {visibleItems.map(item => {
