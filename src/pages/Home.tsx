@@ -8,6 +8,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 
 import { Brand } from '@/components/Brand'
+import FeedbackCampaign from '@/components/FeedbackCampaign'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -309,6 +310,8 @@ export default function Home() {
             </figure>
           </div>
         </section>
+
+        <FeedbackCampaign />
 
         {/* ---- Who is here and why: an editorial lede with a smaller picture */}
         <section
