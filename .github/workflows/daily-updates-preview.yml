@@ -12,6 +12,7 @@ on:
       - "migrations/0004_gallery_storage_compat.sql"
       - "migrations/0005_finance_payment_reference_index_normalization.sql"
       - "migrations/0006_homepage_visitors.sql"
+      - "migrations/0007_public_feedback.sql"
       - "wrangler.daily-updates-preview.jsonc"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -81,7 +82,7 @@ jobs:
           for (const secret of ['ADMIN_TOKEN', 'NHYM_EMAIL_SECRET']) {
             if (!production.secrets?.required?.includes(secret) || !preview.secrets?.required?.includes(secret)) fail('Required secret declaration missing: ' + secret)
           }
-          for (const file of ['migrations/0003_daily_updates.sql', 'migrations/0004_gallery_storage_compat.sql', 'migrations/0005_finance_payment_reference_index_normalization.sql', 'migrations/0006_homepage_visitors.sql']) {
+          for (const file of ['migrations/0003_daily_updates.sql', 'migrations/0004_gallery_storage_compat.sql', 'migrations/0005_finance_payment_reference_index_normalization.sql', 'migrations/0006_homepage_visitors.sql', 'migrations/0007_public_feedback.sql']) {
             if (!existsSync(file)) fail('Required migration file missing: ' + file)
           }
           const migration = readFileSync('migrations/0003_daily_updates.sql', 'utf8')
@@ -130,6 +131,15 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
           pnpm dlx wrangler@4 d1 execute nhym2026-finance-preview --remote --file=migrations/0006_homepage_visitors.sql --config wrangler.daily-updates-preview.jsonc
 
+      - name: Apply public-feedback schema to isolated Preview D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          pnpm dlx wrangler@4 d1 execute nhym2026-finance-preview --remote --file=migrations/0007_public_feedback.sql --config wrangler.daily-updates-preview.jsonc
+
       - name: Wait for preview and smoke-test access controls
         env:
           PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
@@ -152,6 +162,8 @@ jobs:
             ['public Daily Updates page', '/daily-updates', 200, 'GET'],
             ['public published-update API', '/api/daily-updates', 200, 'GET'],
             ['public homepage visitor counter', '/api/visitor-count', 200, 'GET'],
+            ['public feedback list', '/api/public-feedback', 200, 'GET'],
+            ['public feedback deletion requires admin token', '/api/public-feedback/00000000-0000-4000-8000-000000000001', 401, 'DELETE'],
             ['admin update list requires admin token', '/api/admin/daily-updates', 401, 'GET'],
             ['member identity requires member session', '/api/daily-updates/me', 401, 'GET'],
             ['member submission requires member session', '/api/daily-updates/submissions', 401, 'POST'],
