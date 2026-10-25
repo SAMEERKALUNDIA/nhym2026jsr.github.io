@@ -13,11 +13,15 @@ type Feedback = {
 }
 
 const categories = [
-  { value: 'Support', label: 'मैं NHYM 2026 के आयोजन के समर्थन में हूँ' },
-  { value: 'Opposition', label: 'मैं Hosting Rights वापस लेने के निर्णय का विरोध करता/करती हूँ' },
+  { value: 'Support', label: 'मैं NHYM 2026 को निर्धारित तिथि पर जमशेदपुर में आयोजित करने के पक्ष में हूँ' },
   { value: 'Suggestion', label: 'मेरा सुझाव / समाधान' },
   { value: 'Other', label: 'अन्य राय / टिप्पणी' },
 ] as const
+
+function feedbackCategoryLabel(category: Feedback['category']) {
+  if (category === 'Opposition') return 'पुरानी प्रतिक्रिया: Hosting Rights वापस लेने के निर्णय का विरोध'
+  return categories.find(option => option.value === category)?.label ?? 'अन्य राय / टिप्पणी'
+}
 
 export default function FeedbackCampaign() {
   const [items, setItems] = useState<Feedback[]>([])
@@ -151,7 +155,7 @@ export default function FeedbackCampaign() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="break-words font-semibold">{item.name}{item.city ? <span className="font-normal text-muted-foreground"> · {item.city}</span> : null}</p>
-                        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-brand">{categories.find(option => option.value === item.category)?.label ?? 'अन्य राय'}</p>
+                        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-brand">{feedbackCategoryLabel(item.category)}</p>
                       </div>
                       <button type="button" onClick={() => void deleteFeedback(item.id)} className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Admin: इस संदेश को हटाएँ" title="Admin: संदेश हटाएँ">
                         <Trash2 className="size-4" aria-hidden="true" />
