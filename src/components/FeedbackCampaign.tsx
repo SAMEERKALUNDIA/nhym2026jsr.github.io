@@ -34,6 +34,7 @@ export default function FeedbackCampaign() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [expandedMessages, setExpandedMessages] = useState<string[]>([])
+  const [showAllFeedback, setShowAllFeedback] = useState(false)
 
   async function loadFeedback() {
     try {
@@ -99,6 +100,9 @@ export default function FeedbackCampaign() {
     setExpandedMessages(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
   }
 
+  const visibleItems = showAllFeedback ? items : items.slice(0, 3)
+  const hiddenFeedbackCount = Math.max(0, items.length - 3)
+
   const categoryCounts = categories.map(option => ({
     ...option,
     count: items.filter(item => item.category === option.value).length,
@@ -124,7 +128,7 @@ export default function FeedbackCampaign() {
           <p className="mt-4 font-semibold">📍 जमशेदपुर · 📅 28–29 नवंबर 2026</p>
           <div className="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
             <Users className="size-4" aria-hidden="true" />
-            <span>{items.length} सार्वजनिक प्रतिक्रियाएँ दिखाई जा रही हैं</span>
+            <span>{items.length} सार्वजनिक प्रतिक्रियाएँ</span>
           </div>
           <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {categoryCounts.map(option => (
@@ -169,7 +173,7 @@ export default function FeedbackCampaign() {
             <p className="mt-1 text-sm text-muted-foreground">लंबी प्रतिक्रियाएँ संक्षिप्त रूप में दिखाई जाएँगी। पूरा संदेश देखने के लिए “और पढ़ें” दबाएँ। नियमों का उल्लंघन करने वाले संदेश एडमिन हटा सकता है।</p>
             {loading ? <p className="mt-4 text-sm text-muted-foreground">प्रतिक्रियाएँ लोड हो रही हैं…</p> : items.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">अभी कोई प्रतिक्रिया नहीं है। सबसे पहले अपनी राय साझा करें।</p> : (
               <div className="mt-4 grid gap-3">
-                {items.map(item => {
+                {visibleItems.map(item => {
                   const expanded = expandedMessages.includes(item.id)
                   const isLong = item.message.length > 220
                   return (
@@ -194,6 +198,18 @@ export default function FeedbackCampaign() {
                   )
                 })}
               </div>
+            )}
+            {!loading && items.length > 3 && (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4 w-full sm:w-auto"
+                onClick={() => setShowAllFeedback(current => !current)}
+                aria-expanded={showAllFeedback}
+              >
+                {showAllFeedback ? 'केवल नवीनतम 3 प्रतिक्रियाएँ दिखाएँ' : `बाकी ${hiddenFeedbackCount} प्रतिक्रियाएँ देखें`}
+                {showAllFeedback ? <ChevronUp className="ml-2 size-4" /> : <ChevronDown className="ml-2 size-4" />}
+              </Button>
             )}
           </div>
         </div>
