@@ -95,7 +95,7 @@ export default function FeedbackCampaign() {
       <div className="mx-auto grid max-w-content gap-10 lg:grid-cols-[0.9fr_1.1fr]">
         <div>
           <p className="font-label text-xs font-bold tracking-[0.16em] text-brand uppercase">NHYM 2026 · SIRJON</p>
-          <h2 className="mt-3 text-3xl font-bold sm:text-4xl">📢 महत्वपूर्ण सूचना</h2>
+          <h2 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl">📢 महत्वपूर्ण सूचना</h2>
           <h3 className="mt-4 text-xl font-bold text-primary">NHYM 2026 कार्यक्रम रद्द नहीं हुआ है!</h3>
           <p className="mt-3 text-muted-foreground">
             Governing Body द्वारा Hosting Rights वापस लिए जाने के बावजूद, NHYM 2026 कार्यक्रम अपनी निर्धारित तिथि
