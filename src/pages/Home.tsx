@@ -63,7 +63,22 @@ const PROGRAMME = [
 export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [visitorCount, setVisitorCount] = useState<number | null>(null)
+  const [homepageSections, setHomepageSections] = useState({ importantNotice: true, publicFeedback: true })
   const visitorRequestStarted = useRef(false)
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/homepage-sections', { cache: 'no-store' })
+      .then(response => {
+        if (!response.ok) throw new Error('Homepage settings unavailable')
+        return response.json() as Promise<{ importantNotice?: boolean; publicFeedback?: boolean }>
+      })
+      .then(data => {
+        if (active) setHomepageSections({ importantNotice: data.importantNotice !== false, publicFeedback: data.publicFeedback !== false })
+      })
+      .catch(() => { /* Fail open so public information remains visible if settings cannot load. */ })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     if (visitorRequestStarted.current) return
@@ -311,7 +326,8 @@ export default function Home() {
           </div>
         </section>
 
-        <FeedbackCampaign />
+        {homepageSections.importantNotice && <section id="important-notice"><FeedbackCampaign mode="notice" /></section>}
+        {homepageSections.publicFeedback && <FeedbackCampaign mode="feedback" />}
 
         {/* ---- Who is here and why: an editorial lede with a smaller picture */}
         <section
