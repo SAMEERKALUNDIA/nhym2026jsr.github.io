@@ -1,5 +1,5 @@
 import { DeveloperCredit } from '@/components/DeveloperCredit'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Check,
   IndianRupee,
@@ -264,6 +264,7 @@ function labelOf(row: Draft) {
 }
 
 export default function Register() {
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null)
   const [rows, setRows] = useState<Draft[]>([blank(1)])
   const [agreed, setAgreed] = useState<Record<DeclarationId, boolean>>(NO_DECLARATIONS)
   const [submitted, setSubmitted] = useState(false)
@@ -277,6 +278,18 @@ export default function Register() {
   const [sending, setSending] = useState(false)
   const [ocrBusy, setOcrBusy] = useState(false)
   const [ocrMessage, setOcrMessage] = useState('')
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/registration-status', { cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json() as { open?: boolean }
+        if (!response.ok || typeof data.open !== 'boolean') throw new Error('Status unavailable')
+        if (active) setRegistrationOpen(data.open)
+      })
+      .catch(() => { if (active) setRegistrationOpen(true) })
+    return () => { active = false }
+  }, [])
 
   /* The declarations are one gate for the whole submission, so they are checked
      once and the ones still unticked are named back. */
@@ -661,6 +674,32 @@ if (!row.dob.trim()) {
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Registration could not be saved. Please try again.')
     } finally { setSending(false) }
+  }
+
+  if (registrationOpen === false) {
+    return (
+      <div className="min-h-dvh bg-background">
+        <header className="border-b px-gutter py-6">
+          <div className="mx-auto flex max-w-content items-center justify-between gap-4">
+            <Brand />
+            <Button asChild variant="outline"><a href="/">होम पेज</a></Button>
+          </div>
+        </header>
+        <main className="mx-auto flex max-w-content justify-center px-gutter py-16">
+          <section className="w-full max-w-2xl rounded-2xl border bg-card p-8 text-center shadow-sm">
+            <div className="text-4xl" aria-hidden="true">🔒</div>
+            <h1 className="mt-4 text-3xl font-semibold">Registration Closed</h1>
+            <p className="mt-4 text-muted-foreground">NHYM 2026 के लिए नया registration बंद हो चुका है। पहले से जमा किए गए registration के संबंध में सहायता चाहिए, तो कृपया आयोजन समिति से संपर्क करें।</p>
+            <Button asChild className="mt-6"><a href="/">होम पेज पर वापस जाएँ</a></Button>
+          </section>
+        </main>
+        <DeveloperCredit />
+      </div>
+    )
+  }
+
+  if (registrationOpen === null) {
+    return <div className="min-h-dvh bg-background flex items-center justify-center px-6"><p className="text-muted-foreground">Registration स्थिति जाँची जा रही है…</p></div>
   }
 
   return (
