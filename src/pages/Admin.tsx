@@ -183,6 +183,9 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [selectedFeedbackIds, setSelectedFeedbackIds] = useState<string[]>([])
   const [feedbackLoading, setFeedbackLoading] = useState(false)
   const [homeSections, setHomeSections] = useState({ importantNotice: true, publicFeedback: true })
+  const [registrationOpen, setRegistrationOpen] = useState(true)
+  const [registrationControlLoading, setRegistrationControlLoading] = useState(false)
+  const [registrationControlSaving, setRegistrationControlSaving] = useState(false)
   const [homeSectionsLoading, setHomeSectionsLoading] = useState(false)
   const [homeSectionsSaving, setHomeSectionsSaving] = useState(false)
   const [feedbackDeleting, setFeedbackDeleting] = useState(false)
@@ -198,6 +201,40 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [adminFinanceNotice, setAdminFinanceNotice] = useState('')
   const [resetFinanceUserId, setResetFinanceUserId] = useState('')
   const [resetFinancePassword, setResetFinancePassword] = useState('')
+
+  async function loadRegistrationStatus() {
+    setRegistrationControlLoading(true)
+    setError('')
+    try {
+      const response = await fetch('/api/registration-status', { cache: 'no-store' })
+      const data = await response.json() as { open?: boolean; error?: string }
+      if (!response.ok || typeof data.open !== 'boolean') throw new Error(data.error || 'Registration status लोड नहीं हो सका।')
+      setRegistrationOpen(data.open)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Registration status लोड नहीं हो सका।')
+    } finally { setRegistrationControlLoading(false) }
+  }
+
+  async function saveRegistrationStatus(nextOpen: boolean) {
+    setRegistrationControlSaving(true)
+    setError('')
+    setSuccess('')
+    try {
+      const response = await fetch('/api/admin/registration-status', {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ open: nextOpen }),
+      })
+      const data = await response.json() as { open?: boolean; error?: string }
+      if (!response.ok || typeof data.open !== 'boolean') throw new Error(data.error || 'Registration status सेव नहीं हो सका।')
+      setRegistrationOpen(data.open)
+      setSuccess(data.open
+        ? 'Registration दोबारा चालू कर दिया गया है। अब नए प्रतिभागी फॉर्म भर सकते हैं।'
+        : 'Registration बंद कर दिया गया है। पुराने रिकॉर्ड और approval प्रक्रिया सुरक्षित हैं।')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Registration status सेव नहीं हो सका।')
+    } finally { setRegistrationControlSaving(false) }
+  }
 
   async function loadHomepageSections() {
     setHomeSectionsLoading(true)
@@ -622,6 +659,7 @@ const deleteSelectedGalleryPhotos = async () => {
 useEffect(() => {
   if (!authenticated || !token) return
 
+  if (isParticipantPage) { void loadRegistrationStatus() }
   if (isFeedbackPage) { void loadAdminFeedback(); return }
   if (isHomeSectionsPage) { void loadHomepageSections(); return }
 
@@ -2655,6 +2693,24 @@ if (!authenticated) {
 )}
         {isParticipantPage && (
           <>
+            <section className="mt-8 rounded-xl border bg-card p-5 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold">Registration Control</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">कार्यक्रम से कुछ दिन पहले नए रजिस्ट्रेशन बंद करें। पुराने रिकॉर्ड, भुगतान और approval पर कोई असर नहीं पड़ेगा।</p>
+                  <p className={`mt-3 text-sm font-semibold ${registrationOpen ? 'text-green-700' : 'text-destructive'}`}>
+                    वर्तमान स्थिति: {registrationControlLoading ? 'जाँच हो रही है…' : registrationOpen ? '🟢 Registration Open' : '🔴 Registration Closed'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" disabled={registrationControlLoading || registrationControlSaving || registrationOpen} onClick={() => void saveRegistrationStatus(true)}>Registration चालू करें</Button>
+                  <Button type="button" variant="destructive" disabled={registrationControlLoading || registrationControlSaving || !registrationOpen} onClick={() => {
+                    if (window.confirm('क्या आप नया registration बंद करना चाहते हैं? पहले से दर्ज सभी रिकॉर्ड सुरक्षित रहेंगे।')) void saveRegistrationStatus(false)
+                  }}>Registration बंद करें</Button>
+                  <Button type="button" variant="outline" disabled={registrationControlLoading || registrationControlSaving} onClick={() => void loadRegistrationStatus()}>रीफ़्रेश</Button>
+                </div>
+              </div>
+            </section>
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
               <div className="rounded-lg border bg-card p-5">
