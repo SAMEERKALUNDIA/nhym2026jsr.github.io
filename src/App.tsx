@@ -56,6 +56,7 @@ export default function App() {
         <Route path="admin/participants" element={<Admin />} />
         <Route path="admin/gallery" element={<Admin />} />
         <Route path="admin/feedback" element={<Admin />} />
+        <Route path="admin/homepage-sections" element={<Admin />} />
         <Route path="admin/finance" element={<Finance />} />
 
         {/* Public gallery */}

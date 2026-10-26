@@ -23,7 +23,7 @@ function feedbackCategoryLabel(category: Feedback['category']) {
   return categories.find(option => option.value === category)?.label ?? 'अन्य राय / टिप्पणी'
 }
 
-export default function FeedbackCampaign() {
+export default function FeedbackCampaign({ mode = 'all' }: { mode?: 'all' | 'notice' | 'feedback' }) {
   const [items, setItems] = useState<Feedback[]>([])
   const [name, setName] = useState('')
   const [city, setCity] = useState('')
@@ -92,8 +92,8 @@ export default function FeedbackCampaign() {
 
   return (
     <section id="public-feedback" className="border-y border-border bg-card px-gutter py-section">
-      <div className="mx-auto grid max-w-content gap-10 lg:grid-cols-[0.9fr_1.1fr]">
-        <div>
+      <div className={`mx-auto grid max-w-content gap-10 ${mode === 'all' ? 'lg:grid-cols-[0.9fr_1.1fr]' : 'lg:grid-cols-1'}`}>
+        <div className={mode === 'feedback' ? 'hidden' : ''}>
           <p className="font-label text-xs font-bold tracking-[0.16em] text-brand uppercase">NHYM 2026 · SIRJON</p>
           <h2 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl">📢 महत्वपूर्ण सूचना</h2>
           <h3 className="mt-4 text-xl font-bold text-primary">NHYM 2026 कार्यक्रम रद्द नहीं हुआ है!</h3>
@@ -123,7 +123,7 @@ export default function FeedbackCampaign() {
           <p className="mt-2 text-xs text-muted-foreground">गिनती नीचे दिखाई गई सार्वजनिक प्रतिक्रियाओं की है।</p>
         </div>
 
-        <div className="space-y-8">
+        <div className={`space-y-8 ${mode === 'notice' ? 'hidden' : ''}`}>
           <form onSubmit={submitFeedback} className="rounded-2xl border border-border bg-background p-5 shadow-sm sm:p-6">
             <h3 className="flex items-center gap-2 text-xl font-bold"><MessageCircle className="size-5" /> अपनी प्रतिक्रिया दें</h3>
             <p className="mt-2 text-sm text-muted-foreground">आपका संदेश सबमिट होते ही सार्वजनिक रूप से दिखाई देगा। ईमेल या मोबाइल नंबर न लिखें।</p>
