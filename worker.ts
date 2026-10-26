@@ -198,6 +198,41 @@ export default {
     }
 
 
+    // HOMEPAGE SECTION VISIBILITY — public read; Main Admin-only updates.
+    if (url.pathname === '/api/homepage-sections' && request.method === 'GET') {
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS homepage_section_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        important_notice INTEGER NOT NULL DEFAULT 1,
+        public_feedback INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`).run()
+      await env.DB.prepare('INSERT OR IGNORE INTO homepage_section_settings (id, important_notice, public_feedback) VALUES (1, 1, 1)').run()
+      const settings = await env.DB.prepare('SELECT important_notice, public_feedback FROM homepage_section_settings WHERE id = 1').first<{ important_notice: number; public_feedback: number }>()
+      return json({ importantNotice: Number(settings?.important_notice ?? 1) === 1, publicFeedback: Number(settings?.public_feedback ?? 1) === 1 }, 200)
+    }
+
+    if (url.pathname === '/api/admin/homepage-sections' && request.method === 'PUT') {
+      if (!authorised(request, env)) return json({ error: 'Admin access key सही नहीं है।' }, 401)
+      let body: { importantNotice?: unknown; publicFeedback?: unknown }
+      try { body = await request.json() } catch { return json({ error: 'सेटिंग का प्रारूप सही नहीं है।' }, 400) }
+      if (typeof body.importantNotice !== 'boolean' || typeof body.publicFeedback !== 'boolean') {
+        return json({ error: 'दोनों सेक्शन की स्थिति चुनें।' }, 400)
+      }
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS homepage_section_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        important_notice INTEGER NOT NULL DEFAULT 1,
+        public_feedback INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`).run()
+      await env.DB.prepare(`
+        INSERT INTO homepage_section_settings (id, important_notice, public_feedback, updated_at)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET important_notice = excluded.important_notice,
+          public_feedback = excluded.public_feedback, updated_at = excluded.updated_at
+      `).bind(body.importantNotice ? 1 : 0, body.publicFeedback ? 1 : 0, new Date().toISOString()).run()
+      return json({ ok: true, importantNotice: body.importantNotice, publicFeedback: body.publicFeedback }, 200)
+    }
+
     // PUBLIC FEEDBACK — public list and immediate publication.
     if (url.pathname === '/api/public-feedback' && request.method === 'GET') {
       const result = await env.DB.prepare(`
