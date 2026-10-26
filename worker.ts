@@ -839,7 +839,46 @@ if (
   })
 }
 
+    // REGISTRATION OPEN/CLOSED CONTROL — persisted in D1; admin-only writes.
+    if (url.pathname === '/api/registration-status' && request.method === 'GET') {
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS registration_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        is_open INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`).run()
+      await env.DB.prepare('INSERT OR IGNORE INTO registration_settings (id, is_open) VALUES (1, 1)').run()
+      const setting = await env.DB.prepare('SELECT is_open FROM registration_settings WHERE id = 1').first<{ is_open: number }>()
+      return json({ open: Number(setting?.is_open ?? 1) === 1 }, 200)
+    }
+
+    if (url.pathname === '/api/admin/registration-status' && request.method === 'PUT') {
+      if (!authorised(request, env)) return json({ error: 'Admin access key सही नहीं है।' }, 401)
+      let body: { open?: unknown }
+      try { body = await request.json() } catch { return json({ error: 'स्थिति का प्रारूप सही नहीं है।' }, 400) }
+      if (typeof body.open !== 'boolean') return json({ error: 'open true या false होना चाहिए।' }, 400)
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS registration_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        is_open INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`).run()
+      await env.DB.prepare(`
+        INSERT INTO registration_settings (id, is_open, updated_at) VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET is_open = excluded.is_open, updated_at = excluded.updated_at
+      `).bind(body.open ? 1 : 0, new Date().toISOString()).run()
+      return json({ open: body.open }, 200)
+    }
+
     if (url.pathname === '/api/registrations' && request.method === 'POST') {
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS registration_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        is_open INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`).run()
+      await env.DB.prepare('INSERT OR IGNORE INTO registration_settings (id, is_open) VALUES (1, 1)').run()
+      const registrationSetting = await env.DB.prepare('SELECT is_open FROM registration_settings WHERE id = 1').first<{ is_open: number }>()
+      if (Number(registrationSetting?.is_open ?? 1) !== 1) {
+        return json({ error: 'NHYM 2026 के लिए registration बंद हो चुका है। कृपया आयोजन समिति से संपर्क करें।' }, 403)
+      }
       let body: RegistrationPayload
       try { body = await request.json() as RegistrationPayload } catch { return json({ error: 'Invalid request.' }, 400) }
       body = uppercaseRegistrationValues(body) as RegistrationPayload
