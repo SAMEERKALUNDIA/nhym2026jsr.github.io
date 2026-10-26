@@ -144,6 +144,7 @@ export default function Admin() {
   const isGalleryPage = adminPath === '/admin/gallery'
   const isParticipantPage = adminPath === '/admin/participants'
   const isFeedbackPage = adminPath === '/admin/feedback'
+  const isHomeSectionsPage = adminPath === '/admin/homepage-sections'
 
   const [token, setToken] = useState(
     () => sessionStorage.getItem('nhym_admin_token') || ''
@@ -181,6 +182,9 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [feedbackItems, setFeedbackItems] = useState<Array<{id:string;name:string;city:string;category:string;message:string;createdAt:string}>>([])
   const [selectedFeedbackIds, setSelectedFeedbackIds] = useState<string[]>([])
   const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [homeSections, setHomeSections] = useState({ importantNotice: true, publicFeedback: true })
+  const [homeSectionsLoading, setHomeSectionsLoading] = useState(false)
+  const [homeSectionsSaving, setHomeSectionsSaving] = useState(false)
   const [feedbackDeleting, setFeedbackDeleting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -194,6 +198,37 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [adminFinanceNotice, setAdminFinanceNotice] = useState('')
   const [resetFinanceUserId, setResetFinanceUserId] = useState('')
   const [resetFinancePassword, setResetFinancePassword] = useState('')
+
+  async function loadHomepageSections() {
+    setHomeSectionsLoading(true)
+    setError('')
+    try {
+      const response = await fetch('/api/homepage-sections', { cache: 'no-store' })
+      const data = await response.json() as { importantNotice?: boolean; publicFeedback?: boolean; error?: string }
+      if (!response.ok) throw new Error(data.error || 'Homepage settings लोड नहीं हो सकीं।')
+      setHomeSections({ importantNotice: data.importantNotice !== false, publicFeedback: data.publicFeedback !== false })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Homepage settings लोड नहीं हो सकीं।')
+    } finally { setHomeSectionsLoading(false) }
+  }
+
+  async function saveHomepageSections() {
+    setHomeSectionsSaving(true)
+    setError('')
+    setSuccess('')
+    try {
+      const response = await fetch('/api/admin/homepage-sections', {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(homeSections),
+      })
+      const data = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(data.error || 'Homepage settings सेव नहीं हो सकीं।')
+      setSuccess('Homepage section settings सफलतापूर्वक सेव हो गई हैं।')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Homepage settings सेव नहीं हो सकीं।')
+    } finally { setHomeSectionsSaving(false) }
+  }
 
   async function loadAdminFeedback() {
     setFeedbackLoading(true); setError('')
@@ -588,6 +623,7 @@ useEffect(() => {
   if (!authenticated || !token) return
 
   if (isFeedbackPage) { void loadAdminFeedback(); return }
+  if (isHomeSectionsPage) { void loadHomepageSections(); return }
 
   if (isGalleryPage) {
     void loadGalleryPhotos()
@@ -598,7 +634,7 @@ useEffect(() => {
   if (!isParticipantPage) {
     void loadGalleryStorage()
   }
-}, [authenticated, token, isGalleryPage, isParticipantPage, isFeedbackPage])
+}, [authenticated, token, isGalleryPage, isParticipantPage, isFeedbackPage, isHomeSectionsPage])
 
 useEffect(() => {
   const storedToken =
@@ -2064,7 +2100,7 @@ if (!authenticated) {
         <div className="flex flex-wrap items-start justify-between gap-4">
   <div>
     <h1 className="text-4xl">
-      {isFeedbackPage ? 'Feedback Management' : isGalleryPage
+      {isHomeSectionsPage ? 'Homepage Section Visibility' : isFeedbackPage ? 'Feedback Management' : isGalleryPage
         ? 'Gallery Management'
         : isParticipantPage
           ? 'Participant Management'
@@ -2072,7 +2108,7 @@ if (!authenticated) {
     </h1>
 
     <p className="mt-2 text-muted-foreground">
-      {isFeedbackPage ? 'सार्वजनिक प्रतिक्रियाएँ देखें और एक या अनेक प्रतिक्रियाएँ हटाएँ।' : isGalleryPage
+      {isHomeSectionsPage ? 'होम पेज पर महत्वपूर्ण सूचना और लोगों की प्रतिक्रियाएँ दिखाने या छिपाने का नियंत्रण।' : isFeedbackPage ? 'सार्वजनिक प्रतिक्रियाएँ देखें और एक या अनेक प्रतिक्रियाएँ हटाएँ।' : isGalleryPage
         ? 'Upload and manage photos for the NHYM website gallery.'
         : isParticipantPage
           ? 'Manage registrations, verify payments and approve participants.'
@@ -2100,7 +2136,7 @@ if (!authenticated) {
           </div>
         )}
 
-{!isGalleryPage && !isParticipantPage && !isFeedbackPage && (
+{!isGalleryPage && !isParticipantPage && !isFeedbackPage && !isHomeSectionsPage && (
   <section className="mt-8">
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div className="rounded-xl border bg-card p-5">
@@ -2181,6 +2217,11 @@ if (!authenticated) {
         </p>
       </button>
 
+      <button type="button" onClick={() => { window.location.href = '/admin/homepage-sections' }} className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40">
+        <div className="text-xl font-semibold">Homepage Section Visibility →</div>
+        <p className="mt-2 text-sm text-muted-foreground">महत्वपूर्ण सूचना और लोगों की प्रतिक्रियाओं को होम पेज पर दिखाएँ या छिपाएँ।</p>
+      </button>
+
       <button type="button" onClick={() => { window.location.href = '/admin/feedback' }} className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40">
         <div className="text-xl font-semibold">Manage Feedback →</div>
         <p className="mt-2 text-sm text-muted-foreground">सार्वजनिक प्रतिक्रियाएँ देखें और एक या कई प्रतिक्रियाएँ चुनकर हटाएँ।</p>
@@ -2224,6 +2265,30 @@ if (!authenticated) {
       </div>}
       <p className="mt-3 text-xs text-muted-foreground">The old password cannot be viewed. After reset, all sessions for that account are revoked. Use a unique temporary password and share it privately with the account holder.</p>
     </section>
+  </section>
+)}
+
+{isHomeSectionsPage && (
+  <section className="mt-8 rounded-xl border bg-card p-5 sm:p-6">
+    <h2 className="text-2xl font-semibold">होम पेज सेक्शन नियंत्रण</h2>
+    <p className="mt-2 text-sm text-muted-foreground">किसी सेक्शन को बंद करने से वह केवल सार्वजनिक होम पेज से छिपेगा। उसका मूल डेटा सुरक्षित रहेगा और आप उसे बाद में फिर से दिखा सकते हैं।</p>
+    {homeSectionsLoading ? <p className="mt-5 text-sm text-muted-foreground">सेटिंग लोड हो रही हैं…</p> : (
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-4">
+          <input type="checkbox" className="mt-1 size-5" checked={homeSections.importantNotice} onChange={e => setHomeSections(current => ({ ...current, importantNotice: e.target.checked }))} />
+          <span><span className="block font-semibold">📢 महत्वपूर्ण सूचना</span><span className="mt-1 block text-sm text-muted-foreground">होम पेज पर महत्वपूर्ण सूचना वाला पूरा सेक्शन दिखाएँ।</span><span className="mt-2 block text-sm font-medium">{homeSections.importantNotice ? 'स्थिति: दिखाई देगा' : 'स्थिति: छिपा रहेगा'}</span></span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-4">
+          <input type="checkbox" className="mt-1 size-5" checked={homeSections.publicFeedback} onChange={e => setHomeSections(current => ({ ...current, publicFeedback: e.target.checked }))} />
+          <span><span className="block font-semibold">💬 लोगों की प्रतिक्रियाएँ</span><span className="mt-1 block text-sm text-muted-foreground">होम पेज पर प्रतिक्रिया फॉर्म और प्रकाशित प्रतिक्रियाएँ दिखाएँ।</span><span className="mt-2 block text-sm font-medium">{homeSections.publicFeedback ? 'स्थिति: दिखाई देगा' : 'स्थिति: छिपा रहेगा'}</span></span>
+        </label>
+      </div>
+    )}
+    <div className="mt-5 flex flex-wrap gap-3">
+      <Button type="button" onClick={() => void saveHomepageSections()} disabled={homeSectionsLoading || homeSectionsSaving}>{homeSectionsSaving ? 'सेव हो रहा है…' : 'सेटिंग सेव करें'}</Button>
+      <Button type="button" variant="outline" onClick={() => void loadHomepageSections()} disabled={homeSectionsLoading || homeSectionsSaving}>रीफ़्रेश</Button>
+      <Button type="button" variant="outline" onClick={() => { window.location.href = '/admin' }}>← Admin Dashboard</Button>
+    </div>
   </section>
 )}
 
