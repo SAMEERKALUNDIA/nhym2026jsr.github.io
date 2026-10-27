@@ -15,6 +15,7 @@ type RegistrationPayload = {
   paymentMode: string
   paymentReference: string
   declarations: Record<string, boolean>
+  privacyConsent?: boolean
   participants: Array<Record<string, unknown> & { name?: string; category?: string; fee?: number }>
 }
 
@@ -248,7 +249,7 @@ export default {
     }
 
     if (url.pathname === '/api/public-feedback' && request.method === 'POST') {
-      let body: { name?: unknown; city?: unknown; category?: unknown; message?: unknown }
+      let body: { name?: unknown; city?: unknown; category?: unknown; message?: unknown; publicConsent?: unknown }
       try { body = await request.json() } catch { return json({ error: 'संदेश का प्रारूप सही नहीं है।' }, 400) }
       const clean = (value: unknown, max: number) => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, max)
       const name = clean(body.name, 80)
@@ -256,6 +257,7 @@ export default {
       const message = clean(body.message, 1500)
       const category = String(body.category ?? '')
       if (name.length < 2 || message.length < 3) return json({ error: 'कृपया अपना नाम और कम-से-कम 3 अक्षरों का संदेश दर्ज करें।' }, 400)
+      if (body.publicConsent !== true) return json({ error: 'सार्वजनिक प्रकाशन की सहमति आवश्यक है।' }, 400)
       if (!['Support', 'Opposition', 'Suggestion', 'Other'].includes(category)) return json({ error: 'प्रतिक्रिया का प्रकार चुनें।' }, 400)
       if (/https?:\/\/|www\./i.test(message)) return json({ error: 'कृपया संदेश में बाहरी लिंक न डालें।' }, 400)
 
@@ -886,11 +888,21 @@ if (
       if (!Array.isArray(body.participants) || body.participants.length < 1 || body.participants.length > 100) return json({ error: 'Add between 1 and 100 participants per registration.' }, 400)
       if (!['UPI', 'BANK', 'CASH', 'OTHER'].includes(body.paymentMode) || !body.paymentReference || body.paymentReference.trim().length < 2 || body.paymentReference.length > 200) return json({ error: 'A valid payment method and transaction/reference number are required.' }, 400)
       if (!body.declarations || !['INFO', 'PAYMENT', 'FINAL'].every((key) => body.declarations[key.toLowerCase()] === true)) return json({ error: 'All declarations are required.' }, 400)
+      if (body.privacyConsent !== true) return json({ error: 'Please acknowledge the Privacy Notice before submitting.' }, 400)
 
       // Recalculate each fee from the server's approved fee schedule. Never trust
       // the amount or fee values supplied by the browser.
       const expectedFees: number[] = []
       for (const participant of body.participants) {
+        const dob = String(participant.dob ?? '')
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(dob)) return json({ error: 'A valid date of birth is required for each participant.' }, 400)
+        const birthDate = new Date(dob + 'T00:00:00Z')
+        if (Number.isNaN(birthDate.getTime()) || birthDate.toISOString().slice(0, 10) !== dob) return json({ error: 'A valid date of birth is required for each participant.' }, 400)
+        const today = new Date()
+        let age = today.getUTCFullYear() - birthDate.getUTCFullYear()
+        const monthDifference = today.getUTCMonth() - birthDate.getUTCMonth()
+        if (monthDifference < 0 || (monthDifference === 0 && today.getUTCDate() < birthDate.getUTCDate())) age--
+        if (age < 18) return json({ error: 'Registration is available only to participants aged 18 or older.' }, 400)
         const category = String(participant.category ?? '')
         let expectedFee: number
         if (category === 'STUDENT') expectedFee = 500
@@ -937,7 +949,7 @@ if (
         result = await env.DB.prepare(`INSERT INTO registrations
           (email, total_amount, payment_mode, payment_reference, status, declarations_json, created_at)
           VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`)
-          .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, normalizedReference, JSON.stringify(body.declarations), createdAt)
+          .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, normalizedReference, JSON.stringify({ ...body.declarations, privacyConsent: true, privacyNoticeVersion: '2026-10-27', privacyAcknowledgedAt: createdAt }), createdAt)
           .run()
       } catch (error) {
         // The unique index is the final guard against simultaneous duplicate submissions.
