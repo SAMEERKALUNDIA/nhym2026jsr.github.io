@@ -314,6 +314,9 @@ export default {
         return json({ error: 'सार्वजनिक प्रतिक्रिया में ईमेल या मोबाइल नंबर न लिखें। कृपया निजी संपर्क जानकारी हटाकर दोबारा भेजें।' }, 400)
       }
 
+      // Remove expired feedback rate-limit digests opportunistically. This table contains
+      // only hashes and is used for the one-hour anti-spam window, not long-term analytics.
+      await env.DB.prepare("DELETE FROM public_feedback_rate_limits WHERE datetime(window_started_at) <= datetime('now', '-24 hours')").run()
       const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown'
       const ipHash = await financeDigest(`public-feedback|2026|${ip}`)
       await env.DB.prepare(`
