@@ -265,6 +265,7 @@ function labelOf(row: Draft) {
 
 export default function Register() {
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null)
+  const [registrationStatusError, setRegistrationStatusError] = useState(false)
   const [rows, setRows] = useState<Draft[]>([blank(1)])
   const [agreed, setAgreed] = useState<Record<DeclarationId, boolean>>(NO_DECLARATIONS)
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
@@ -288,7 +289,7 @@ export default function Register() {
         if (!response.ok || typeof data.open !== 'boolean') throw new Error('Status unavailable')
         if (active) setRegistrationOpen(data.open)
       })
-      .catch(() => { if (active) setRegistrationOpen(true) })
+      .catch(() => { if (active) setRegistrationStatusError(true) })
     return () => { active = false }
   }, [])
 
@@ -710,7 +711,7 @@ if (!row.dob.trim()) {
   }
 
   if (registrationOpen === null) {
-    return <div className="min-h-dvh bg-background flex items-center justify-center px-6"><p className="text-muted-foreground">Registration स्थिति जाँची जा रही है…</p></div>
+    return <div className="min-h-dvh bg-background flex items-center justify-center px-6"><section className="max-w-xl rounded-2xl border bg-card p-8 text-center shadow-sm"><p className="text-muted-foreground">{registrationStatusError ? 'Registration की स्थिति अभी जाँची नहीं जा सकी। सुरक्षा के लिए नया registration तब तक उपलब्ध नहीं होगा जब तक स्थिति की पुष्टि न हो जाए। कृपया कुछ देर बाद पुनः प्रयास करें या NHYM LOC से संपर्क करें।' : 'Registration स्थिति जाँची जा रही है…'}</p>{registrationStatusError && <Button className="mt-5" onClick={() => window.location.reload()}>पुनः प्रयास करें</Button>}</section></div>
   }
 
   return (
