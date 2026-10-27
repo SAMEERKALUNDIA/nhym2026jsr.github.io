@@ -895,13 +895,16 @@ if (
       const expectedFees: number[] = []
       for (const participant of body.participants) {
         const dob = String(participant.dob ?? '')
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(dob)) return json({ error: 'A valid date of birth is required for each participant.' }, 400)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return json({ error: 'A valid date of birth is required for each participant.' }, 400)
         const birthDate = new Date(dob + 'T00:00:00Z')
         if (Number.isNaN(birthDate.getTime()) || birthDate.toISOString().slice(0, 10) !== dob) return json({ error: 'A valid date of birth is required for each participant.' }, 400)
-        const today = new Date()
-        let age = today.getUTCFullYear() - birthDate.getUTCFullYear()
-        const monthDifference = today.getUTCMonth() - birthDate.getUTCMonth()
-        if (monthDifference < 0 || (monthDifference === 0 && today.getUTCDate() < birthDate.getUTCDate())) age--
+        const indiaDateParts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+        const currentYear = Number(indiaDateParts.find((part) => part.type === 'year')?.value)
+        const currentMonth = Number(indiaDateParts.find((part) => part.type === 'month')?.value)
+        const currentDay = Number(indiaDateParts.find((part) => part.type === 'day')?.value)
+        let age = currentYear - birthDate.getUTCFullYear()
+        const monthDifference = currentMonth - (birthDate.getUTCMonth() + 1)
+        if (monthDifference < 0 || (monthDifference === 0 && currentDay < birthDate.getUTCDate())) age--
         if (age < 18) return json({ error: 'Registration is available only to participants aged 18 or older.' }, 400)
         const category = String(participant.category ?? '')
         let expectedFee: number
