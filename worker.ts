@@ -22,6 +22,47 @@ type RegistrationPayload = {
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } })
 
+// Read JSON with a streaming byte cap so public API requests cannot force an
+// unbounded request-body allocation. Callers should use the endpoint-specific cap.
+async function readJsonLimited<T>(request: Request, maxBytes: number): Promise<
+  { ok: true; value: T } | { ok: false; status: 400 | 413 }
+> {
+  const declaredLength = Number(request.headers.get('content-length') ?? 0)
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    try { await request.body?.cancel() } catch {}
+    return { ok: false, status: 413 }
+  }
+  if (!request.body) return { ok: false, status: 400 }
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        try { await reader.cancel() } catch {}
+        return { ok: false, status: 413 }
+      }
+      chunks.push(value)
+    }
+  } catch {
+    return { ok: false, status: 400 }
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  try {
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(bytes)) as T }
+  } catch {
+    return { ok: false, status: 400 }
+  }
+}
+
 // Finance responses contain private accounting/user data and must not be cached.
 const financeJson = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'private, no-store' } })
@@ -881,8 +922,11 @@ if (
       if (Number(registrationSetting?.is_open ?? 1) !== 1) {
         return json({ error: 'NHYM 2026 के लिए registration बंद हो चुका है। कृपया आयोजन समिति से संपर्क करें।' }, 403)
       }
-      let body: RegistrationPayload
-      try { body = await request.json() as RegistrationPayload } catch { return json({ error: 'Invalid request.' }, 400) }
+      const parsedBody = await readJsonLimited<RegistrationPayload>(request, 1024 * 1024)
+      if (!parsedBody.ok) {
+        return json({ error: parsedBody.status === 413 ? 'Registration request is too large. Please reduce the submitted data and try again.' : 'Invalid request.' }, parsedBody.status)
+      }
+      let body: RegistrationPayload = parsedBody.value
       body = uppercaseRegistrationValues(body) as RegistrationPayload
       if (!body.email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(body.email.trim())) return json({ error: 'A valid email address is required.' }, 400)
       if (!Array.isArray(body.participants) || body.participants.length < 1 || body.participants.length > 100) return json({ error: 'Add between 1 and 100 participants per registration.' }, 400)
