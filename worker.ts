@@ -305,6 +305,15 @@ export default {
       if (!['Support', 'Opposition', 'Suggestion', 'Other'].includes(category)) return json({ error: 'प्रतिक्रिया का प्रकार चुनें।' }, 400)
       if (/https?:\/\/|www\./i.test(message)) return json({ error: 'कृपया संदेश में बाहरी लिंक न डालें।' }, 400)
 
+      // Feedback is published immediately, so reject obvious contact details in every public text field.
+      // This is a guardrail, not a guarantee that every form of personal information is detected.
+      const publicText = `${name} ${city} ${message}`
+      const containsEmail = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(publicText)
+      const containsIndianMobile = /(?:\+?91[\s-]?)?[6-9]\d(?:[\s-]?\d){8}/.test(publicText)
+      if (containsEmail || containsIndianMobile) {
+        return json({ error: 'सार्वजनिक प्रतिक्रिया में ईमेल या मोबाइल नंबर न लिखें। कृपया निजी संपर्क जानकारी हटाकर दोबारा भेजें।' }, 400)
+      }
+
       const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown'
       const ipHash = await financeDigest(`public-feedback|2026|${ip}`)
       await env.DB.prepare(`
