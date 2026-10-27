@@ -49,7 +49,7 @@ jobs:
           };
           const results = [];
           async function request(path, token, method = 'GET', body) {
-            const response = await fetch(base + path, {
+            const options = {
               method,
               headers: {
                 ...(token ? { authorization: `Bearer ${token}` } : {}),
@@ -58,7 +58,20 @@ jobs:
               },
               body: body ? JSON.stringify(body) : undefined,
               cache: 'no-store',
-            });
+            };
+            let response;
+            // Retry only read-only GET requests after transient network resets.
+            // Never replay writes: the server may already have processed them.
+            for (let attempt = 1; ; attempt++) {
+              try {
+                response = await fetch(base + path, options);
+                break;
+              } catch (error) {
+                if (method.toUpperCase() !== 'GET' || attempt >= 3) throw error;
+                console.warn(`Transient GET failure; retrying ${path} (${attempt}/2): ${error instanceof Error ? error.message : String(error)}`);
+                await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+              }
+            }
             const text = await response.text();
             let json = null;
             try { json = JSON.parse(text); } catch {}
