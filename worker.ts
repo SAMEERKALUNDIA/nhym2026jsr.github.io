@@ -1047,19 +1047,11 @@ if (
       url.pathname === '/api/participant/lookup' &&
       request.method === 'POST'
     ) {
-      let body: {
-        registrationId?: string
-        email?: string
+      const parsedLookup = await readJsonLimited<{ registrationId?: string; email?: string }>(request, 8 * 1024)
+      if (!parsedLookup.ok) {
+        return json({ error: parsedLookup.status === 413 ? 'Request too large.' : 'Invalid request.' }, parsedLookup.status)
       }
-
-      try {
-        body = await request.json() as {
-          registrationId?: string
-          email?: string
-        }
-      } catch {
-        return json({ error: 'Invalid request.' }, 400)
-      }
+      const body = parsedLookup.value
 
       const registrationId =
         String(body.registrationId ?? '')
