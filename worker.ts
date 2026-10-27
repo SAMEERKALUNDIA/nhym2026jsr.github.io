@@ -290,8 +290,11 @@ export default {
     }
 
     if (url.pathname === '/api/public-feedback' && request.method === 'POST') {
-      let body: { name?: unknown; city?: unknown; category?: unknown; message?: unknown; publicConsent?: unknown }
-      try { body = await request.json() } catch { return json({ error: 'संदेश का प्रारूप सही नहीं है।' }, 400) }
+      const parsedFeedback = await readJsonLimited<{ name?: unknown; city?: unknown; category?: unknown; message?: unknown; publicConsent?: unknown }>(request, 64 * 1024)
+      if (!parsedFeedback.ok) {
+        return json({ error: parsedFeedback.status === 413 ? 'संदेश बहुत बड़ा है। कृपया छोटा संदेश भेजें।' : 'संदेश का प्रारूप सही नहीं है।' }, parsedFeedback.status)
+      }
+      const body = parsedFeedback.value
       const clean = (value: unknown, max: number) => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, max)
       const name = clean(body.name, 80)
       const city = clean(body.city, 80)
@@ -1009,13 +1012,32 @@ if (
 
       const id = Number(result.meta.last_row_id)
       const registrationId = `NHYM26-${String(id).padStart(6, '0')}`
-      await env.DB.prepare('UPDATE registrations SET registration_id = ? WHERE id = ?').bind(registrationId, id).run()
+      try {
+        await env.DB.prepare('UPDATE registrations SET registration_id = ? WHERE id = ?').bind(registrationId, id).run()
 
-      const statements = body.participants.map((p, i) => env.DB.prepare(`INSERT INTO participants
-        (registration_id, participant_no, name, dob, gender, address, district, state, pin, age, category, fee, activities_json, cultural, sports, from_outside, accommodation, note, details_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(id, i + 1, String(p.name ?? '').trim().toUpperCase(), String(p.dob ?? ''), String(p.gender ?? ''), String(p.address ?? ''), String(p.district ?? ''), String(p.state ?? ''), String(p.pin ?? ''), String(p.age ?? ''), String(p.category ?? ''), Math.round(Number(p.fee) || 0), JSON.stringify(p.activities ?? []), String(p.cultural ?? ''), String(p.sports ?? ''), String(p.fromOutside ?? ''), String(p.accommodation ?? ''), String(p.note ?? ''), JSON.stringify({ ...p, name: String(p.name ?? '').trim().toUpperCase() })))
-      if (statements.length) await env.DB.batch(statements)
+        const statements = body.participants.map((p, i) => env.DB.prepare(`INSERT INTO participants
+          (registration_id, participant_no, name, dob, gender, address, district, state, pin, age, category, fee, activities_json, cultural, sports, from_outside, accommodation, note, details_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(id, i + 1, String(p.name ?? '').trim().toUpperCase(), String(p.dob ?? ''), String(p.gender ?? ''), String(p.address ?? ''), String(p.district ?? ''), String(p.state ?? ''), String(p.pin ?? ''), String(p.age ?? ''), String(p.category ?? ''), Math.round(Number(p.fee) || 0), JSON.stringify(p.activities ?? []), String(p.cultural ?? ''), String(p.sports ?? ''), String(p.fromOutside ?? ''), String(p.accommodation ?? ''), String(p.note ?? ''), JSON.stringify({ ...p, name: String(p.name ?? '').trim().toUpperCase() })))
+        if (statements.length) await env.DB.batch(statements)
+      } catch (error) {
+        // D1 cannot wrap the initial ID-generating insert and subsequent participant
+        // batch in one transaction here. Best-effort cleanup prevents an orphaned
+        // pending registration if the follow-up write fails.
+        try {
+          await env.DB.batch([
+            env.DB.prepare('DELETE FROM participants WHERE registration_id = ?').bind(id),
+            env.DB.prepare('DELETE FROM registrations WHERE id = ?').bind(id),
+          ])
+        } catch (cleanupError) {
+          console.error('Registration follow-up write and cleanup failed', {
+            registrationRowId: id,
+            error: error instanceof Error ? error.message : String(error),
+            cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+          })
+        }
+        throw error
+      }
       return json({ ok: true, registrationId, status: 'PENDING' }, 201)
     }
 
