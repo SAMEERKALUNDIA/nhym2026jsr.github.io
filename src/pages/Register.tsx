@@ -267,6 +267,7 @@ export default function Register() {
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null)
   const [rows, setRows] = useState<Draft[]>([blank(1)])
   const [agreed, setAgreed] = useState<Record<DeclarationId, boolean>>(NO_DECLARATIONS)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [formError, setFormError] = useState('')
   /* The address the approval message is sent to. It belongs to the submission
@@ -319,6 +320,10 @@ export default function Register() {
     let ok = true
     let problem = ''
     const stillToTick = DECLARATIONS.filter((declaration) => !agreed[declaration.id])
+    if (!privacyAccepted) {
+      ok = false
+      problem = 'Please read the Privacy Policy and acknowledge the notice before submitting.'
+    }
     if (stillToTick.length > 0) {
       ok = false
       problem = `Tick ${stillToTick
@@ -335,6 +340,11 @@ if (!row.dob.trim()) {
   ok = false
   return { ...row, error: 'Select the date of birth.' }
 }
+        const ageFromDob = calculateAge(row.dob)
+        if (ageFromDob === '' || Number(ageFromDob) < 18) {
+          ok = false
+          return { ...row, error: 'Registration is available only to participants aged 18 or older.' }
+        }
         if (row.gender === '') {
           ok = false
           return { ...row, error: 'Choose Male, Female, or Transgender.' }
@@ -664,6 +674,7 @@ if (!row.dob.trim()) {
         body: JSON.stringify({
           email: email.trim(), total, paymentMode, paymentReference: paymentReference.trim().replace(/\s+/g, '').toUpperCase(), agreed,
           declarations: agreed,
+          privacyConsent: privacyAccepted,
           participants: rows.map((row) => ({ ...row, fee: feeOf(row) ?? 0 })),
         }),
       })
@@ -1285,6 +1296,13 @@ if (!row.dob.trim()) {
                           </li>
                         ))}
                       </ul>
+                      <div className="mt-5 rounded-lg border border-border bg-background p-4">
+                        <p className="text-sm text-muted-foreground">The LOC uses this information to manage registration, eligibility, event arrangements, payment verification and registration communications. Please read the <a className="font-medium underline underline-offset-4" href="/privacy" target="_blank" rel="noreferrer">Privacy Policy / गोपनीयता नीति</a> for details about use, retention, requests and complaints.</p>
+                        <label className="mt-3 flex items-start gap-3 text-sm">
+                          <input type="checkbox" checked={privacyAccepted} onChange={(e) => setPrivacyAccepted(e.target.checked)} className="mt-1 size-5 shrink-0 accent-[var(--brand)]" required aria-required="true" />
+                          <span>I have read the Privacy Notice and understand how my and the listed participants’ information will be used for NHYM 2026 registration and event administration. I confirm all participants listed are aged 18 or older.</span>
+                        </label>
+                      </div>
                     </fieldset>
 
                     {formError && (
