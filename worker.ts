@@ -409,7 +409,8 @@ export default {
         ip_hash TEXT NOT NULL DEFAULT '',
         request_trace TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL
-      )`).run()    }
+      )`).run()
+    }
 
     if (url.pathname === '/api/privacy-requests' && request.method === 'POST') {
       const parsed = await readJsonLimited<{
