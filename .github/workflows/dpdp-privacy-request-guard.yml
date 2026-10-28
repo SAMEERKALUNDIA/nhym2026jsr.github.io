@@ -36,6 +36,8 @@ jobs:
             ['Identity verification changes are audited', "'IDENTITY_VERIFICATION_CHANGED'"],
             ['Request status and notes are audited', "'STATUS_CHANGED'"],
             ['Sensitive registration-data reads are logged', "'REGISTRATION_REPORT_DATA_READ'"],
+            ['Successful Participant Portal lookups are audited', "'PARTICIPANT_SELF_SERVICE_LOOKUP'"],
+            ['Unmatched Participant Portal lookups are audited', "'PARTICIPANT_LOOKUP_NO_MATCH'"],
             ['Sensitive access audit endpoint requires Admin token', "url.pathname === '/api/admin/privacy-access-audit'"],
             ['Access audit stores only hashed IP', 'privacy-access|2026|'],
             ['Finance preview and Finance APIs remain separate', "if (!authorised(request, env))"],
