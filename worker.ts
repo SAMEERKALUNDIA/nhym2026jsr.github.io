@@ -1363,6 +1363,16 @@ if (
             AND datetime(window_started_at) > datetime('now', '-15 minutes')
             AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))
         `).bind(lookupAttemptKey).run()
+        await ensurePrivacyRequestTables()
+        await env.DB.prepare(`
+          INSERT INTO privacy_access_audit (id, actor, action, endpoint, outcome, ip_hash, request_trace, created_at)
+          VALUES (?, 'participant-portal', 'PARTICIPANT_LOOKUP_NO_MATCH', '/api/participant/lookup', 'NO_MATCH', ?, ?, ?)
+        `).bind(
+          crypto.randomUUID(),
+          await financeDigest(`privacy-access|2026|${lookupIp}`),
+          (request.headers.get('cf-ray') ?? '').slice(0, 100),
+          new Date().toISOString()
+        ).run()
         return json(
           {
             error:
@@ -1397,6 +1407,18 @@ if (
       `)
         .bind(registration.id)
         .all()
+
+      // Audit self-service access without storing the registration ID, email, or raw IP.
+      await ensurePrivacyRequestTables()
+      await env.DB.prepare(`
+        INSERT INTO privacy_access_audit (id, actor, action, endpoint, outcome, ip_hash, request_trace, created_at)
+        VALUES (?, 'participant-portal', 'PARTICIPANT_SELF_SERVICE_LOOKUP', '/api/participant/lookup', 'SUCCESS', ?, ?, ?)
+      `).bind(
+        crypto.randomUUID(),
+        await financeDigest(`privacy-access|2026|${lookupIp}`),
+        (request.headers.get('cf-ray') ?? '').slice(0, 100),
+        new Date().toISOString()
+      ).run()
 
       return json({
         ok: true,
