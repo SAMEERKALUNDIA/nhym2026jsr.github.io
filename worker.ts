@@ -502,8 +502,11 @@ export default {
       const current = await env.DB.prepare('SELECT status, request_type, verification_status, verification_method FROM privacy_requests WHERE id = ?')
         .bind(id).first<{ status: string; request_type: string; verification_status: string; verification_method: string }>()
       if (!current) return financeJson({ error: 'Privacy request not found.' }, 404)
+      if (nextStatus === 'COMPLETED' && current.verification_status !== 'VERIFIED') {
+        return financeJson({ error: 'Save identity verification as VERIFIED in a separate review step before completing this request.' }, 409)
+      }
       if (nextStatus === 'COMPLETED' && verificationStatus !== 'VERIFIED') {
-        return financeJson({ error: 'Identity must be verified before a privacy request can be marked completed.' }, 409)
+        return financeJson({ error: 'Identity must remain VERIFIED before a privacy request can be marked completed.' }, 409)
       }
       if (nextStatus === 'COMPLETED' && current.request_type === 'DELETE' && !/retention|deleted|deletion|removed|removal|kept|retained/i.test(resolutionNote)) {
         return financeJson({ error: 'For deletion requests, record whether data was deleted or retained under a documented retention exception.' }, 400)
