@@ -45,7 +45,22 @@ Keep a restricted-access log for requests received at the published contact addr
 
 Verify the requester proportionately before disclosing or changing personal data. Do not promise deletion where a lawful retention duty or active dispute requires a record to be kept. Explain the decision and any applicable limitation to the requester.
 
-### 3. Data inventory and retention review
+### 3. Privacy-request workflow and completion controls
+
+The public form records a request as `RECEIVED`; it does not itself disclose, correct, withdraw, or delete participant data. The restricted Admin workspace should be used for the following controlled sequence:
+
+1. **Receive:** retain the case reference, request type, contact email, optional registration ID, received time, and only the minimum details needed.
+2. **Triage:** move the request to `IN_REVIEW`. If the request concerns an individual record, change status to `NEEDS_VERIFICATION` while identity is being checked.
+3. **Verify identity:** use a proportionate method such as matching registration details, calling a previously known contact, or in-person verification. Do not ask the requester to email identity-document images or record document numbers in the case log. Record only the method, outcome, verifier label, and timestamp.
+4. **Assess scope and retention:** locate relevant registration, participant, consent, finance, email, export, and storage records. Check legal/accounting duties and any active dispute before correction or deletion.
+5. **Carry out the action manually:** authorised staff make the approved correction or deletion in the relevant system, including linked records and copies where applicable. The Admin workflow deliberately does not mutate participant or finance data automatically.
+6. **Resolve:** add a concise outcome note. A request cannot be marked `COMPLETED` unless identity is marked `VERIFIED`; deletion requests must record whether the data was deleted or retained under a documented exception. Declines require a reason.
+7. **Audit and respond:** review the case audit history and send the requester a response through the approved contact channel. Status updates do not automatically email the requester in this version; staff must send and record the response manually.
+8. **Review privileged reads:** the Admin workspace's sensitive-data access audit shows logged successful reads of the registration API used to populate participant reports/exports. It stores a hashed IP and request trace, not the raw IP. The current shared Admin token does not identify which individual administrator used it; do not treat the actor label as individual attribution.
+
+Finance sessions must not be accepted by the Admin privacy-request or sensitive-data audit APIs. Finance/Admin isolation tests include these endpoints. The access audit currently covers the registration-list API read path; it is not a full device, browser-download, screenshot, or offline-file monitoring system.
+
+### 4. Data inventory and retention review
 
 - [ ] Inventory personal data in D1 registration/participant tables, declarations, finance records, R2 gallery/finance documents, feedback, email delivery systems, exports, local downloads, and provider logs.
 - [ ] Confirm the stated target of **31 December 2030** is justified for each record category; do not assume every field must be retained for the same duration.
@@ -54,7 +69,7 @@ Verify the requester proportionately before disclosing or changing personal data
 - [ ] Define how downloaded CSV/PDF files and local copies are returned or securely deleted.
 - [ ] Schedule a periodic review and record its completion. Do not rely on the Privacy Policy alone as evidence of deletion.
 
-### 4. Security incident procedure
+### 5. Security incident procedure
 
 If suspected unauthorised access, disclosure, loss, or alteration occurs:
 
@@ -65,7 +80,7 @@ If suspected unauthorised access, disclosure, loss, or alteration occurs:
 5. Assess applicable notification obligations and deadlines with qualified legal/security support. Notify affected people and authorities when required by applicable law.
 6. Record remediation, owner, and follow-up checks. Do not claim an incident is closed until the corrective action is verified.
 
-### 5. Live acceptance tests
+### 6. Live acceptance tests
 
 Record date, tester, result, and evidence without storing unnecessary personal data.
 
@@ -80,7 +95,7 @@ Record date, tester, result, and evidence without storing unnecessary personal d
 - [ ] Registration confirmation and approval emails do not disclose more personal data than necessary.
 - [ ] Data exports are accessible only to authorised roles and are stored/deleted safely.
 
-### 6. Third-party services and access review
+### 7. Third-party services and access review
 
 - [ ] Record the service providers that may process data (hosting, database, object storage, email delivery, source/deployment platform) and review their applicable terms/security settings.
 - [ ] Confirm production secrets are not committed to source control or exposed in logs.
