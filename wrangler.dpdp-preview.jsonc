@@ -26,8 +26,5 @@
   "vars": {
     "EMAIL_SERVICE_URL": "https://example.invalid",
     "FINANCE_PREVIEW_MODE": "true"
-  },
-  "secrets": {
-    "required": ["ADMIN_TOKEN", "NHYM_EMAIL_SECRET"]
   }
 }
