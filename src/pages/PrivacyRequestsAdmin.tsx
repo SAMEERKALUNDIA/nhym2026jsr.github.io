@@ -11,6 +11,10 @@ type PrivacyRequest = {
   details: string
   status: string
   resolution_note: string
+  verification_status: string
+  verification_method: string
+  verified_at: string | null
+  verified_by: string | null
   created_at: string
   updated_at: string
 }
@@ -20,6 +24,14 @@ type AuditEntry = {
   new_status: string | null
   note: string
   actor: string
+  created_at: string
+}
+type AccessAuditEntry = {
+  actor: string
+  action: string
+  endpoint: string
+  outcome: string
+  request_trace: string
   created_at: string
 }
 const statuses = ['RECEIVED', 'IN_REVIEW', 'NEEDS_VERIFICATION', 'COMPLETED', 'DECLINED']
@@ -42,7 +54,11 @@ export default function PrivacyRequestsAdmin() {
   const [selectedId, setSelectedId] = useState('')
   const [audit, setAudit] = useState<AuditEntry[]>([])
   const [nextStatus, setNextStatus] = useState('IN_REVIEW')
+  const [nextVerificationStatus, setNextVerificationStatus] = useState('UNVERIFIED')
+  const [nextVerificationMethod, setNextVerificationMethod] = useState('')
   const [resolutionNote, setResolutionNote] = useState('')
+  const [accessAudit, setAccessAudit] = useState<AccessAuditEntry[]>([])
+  const [accessAuditLoading, setAccessAuditLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -100,6 +116,8 @@ export default function PrivacyRequestsAdmin() {
     setAudit([])
     const item = requests.find((row) => row.id === id)
     setNextStatus(item?.status || 'RECEIVED')
+    setNextVerificationStatus(item?.verification_status || 'UNVERIFIED')
+    setNextVerificationMethod(item?.verification_method || '')
     setResolutionNote(item?.resolution_note || '')
     await loadAudit(id)
   }
@@ -116,12 +134,25 @@ export default function PrivacyRequestsAdmin() {
           authorization: `Bearer ${token.trim()}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ status: nextStatus, resolutionNote }),
+        body: JSON.stringify({
+          status: nextStatus,
+          resolutionNote,
+          verificationStatus: nextVerificationStatus,
+          verificationMethod: nextVerificationStatus === 'VERIFIED' ? nextVerificationMethod : '',
+        }),
       })
-      const result = await response.json() as { ok?: boolean; error?: string; status?: string }
+      const result = await response.json() as { ok?: boolean; error?: string; status?: string; verificationStatus?: string; verificationMethod?: string; verifiedAt?: string | null }
       if (!response.ok || !result.ok) throw new Error(result.error || 'Request status update नहीं हुआ.')
       setRequests((rows) => rows.map((row) => row.id === selected.id
-        ? { ...row, status: nextStatus, resolution_note: resolutionNote, updated_at: new Date().toISOString() }
+        ? {
+            ...row,
+            status: nextStatus,
+            resolution_note: resolutionNote,
+            verification_status: result.verificationStatus || nextVerificationStatus,
+            verification_method: result.verificationMethod || (nextVerificationStatus === 'VERIFIED' ? nextVerificationMethod : ''),
+            verified_at: result.verifiedAt ?? row.verified_at,
+            updated_at: new Date().toISOString(),
+          }
         : row))
       setNotice('अनुरोध की स्थिति अपडेट हुई और audit history में दर्ज की गई.')
       await loadAudit(selected.id)
@@ -129,6 +160,29 @@ export default function PrivacyRequestsAdmin() {
       setError(e instanceof Error ? e.message : 'Request status update नहीं हुआ.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function loadAccessAudit() {
+    if (!token.trim()) {
+      setError('Admin access key दर्ज करें.')
+      return
+    }
+    setAccessAuditLoading(true)
+    setError('')
+    try {
+      const response = await fetch('/api/admin/privacy-access-audit', {
+        headers: { authorization: `Bearer ${token.trim()}` },
+        cache: 'no-store',
+      })
+      const result = await response.json() as { entries?: AccessAuditEntry[]; error?: string }
+      if (!response.ok) throw new Error(result.error || 'Sensitive-data access audit लोड नहीं हुई.')
+      setAccessAudit(Array.isArray(result.entries) ? result.entries : [])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sensitive-data access audit लोड नहीं हुई.')
+      setAccessAudit([])
+    } finally {
+      setAccessAuditLoading(false)
     }
   }
 
@@ -185,6 +239,8 @@ export default function PrivacyRequestsAdmin() {
                 <dl className="grid gap-3 sm:grid-cols-2">
                   <div><dt className="text-xs text-muted-foreground">Request type</dt><dd className="mt-1 font-medium">{requestLabels[selected.request_type] || selected.request_type}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Current status</dt><dd className="mt-1 font-medium">{selected.status}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Identity verification</dt><dd className="mt-1 font-medium">{selected.verification_status || 'UNVERIFIED'}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Verification method</dt><dd className="mt-1 font-medium">{selected.verification_method || 'Not verified'}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Email</dt><dd className="mt-1 break-all">{selected.email}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Registration ID</dt><dd className="mt-1 break-all">{selected.registration_id || 'Not supplied'}</dd></div>
                   <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Details supplied by requester</dt><dd className="mt-1 whitespace-pre-wrap break-words">{selected.details || 'No additional details supplied.'}</dd></div>
@@ -194,6 +250,28 @@ export default function PrivacyRequestsAdmin() {
 
                 <div className="space-y-3 border-t pt-4">
                   <h3 className="font-semibold">Review decision</h3>
+                  <label className="block space-y-1 text-sm font-medium">Identity verification status
+                    <select className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextVerificationStatus} onChange={(event) => {
+                      const value = event.target.value
+                      setNextVerificationStatus(value)
+                      if (value !== 'VERIFIED') setNextVerificationMethod('')
+                    }}>
+                      <option value="UNVERIFIED">UNVERIFIED</option>
+                      <option value="PENDING">PENDING — awaiting evidence</option>
+                      <option value="VERIFIED">VERIFIED</option>
+                      <option value="FAILED">FAILED</option>
+                    </select>
+                  </label>
+                  {nextVerificationStatus === 'VERIFIED' && <label className="block space-y-1 text-sm font-medium">Verification method
+                    <select className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextVerificationMethod} onChange={(event) => setNextVerificationMethod(event.target.value)} required>
+                      <option value="">Choose a method</option>
+                      <option value="REGISTRATION_DETAILS">Match registration details</option>
+                      <option value="CALLBACK_KNOWN_CONTACT">Callback to known contact</option>
+                      <option value="IN_PERSON">In-person verification</option>
+                      <option value="OTHER">Other proportionate method</option>
+                    </select>
+                  </label>}
+                  <p className="text-xs text-muted-foreground">Do not upload or paste identity documents into this system. Record only the verification method and outcome. Completion is blocked until identity is marked VERIFIED; deletion/correction still has to be carried out manually after retention review.</p>
                   <label className="block space-y-1 text-sm font-medium">Status
                     <select className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextStatus} onChange={(event) => setNextStatus(event.target.value)}>
                       {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
@@ -217,6 +295,25 @@ export default function PrivacyRequestsAdmin() {
                           <p className="font-medium">{entry.action}{entry.old_status || entry.new_status ? ` · ${entry.old_status || '—'} → ${entry.new_status || '—'}` : ''}</p>
                           <p className="mt-1 text-xs text-muted-foreground">{dateLabel(entry.created_at)} · Actor: {entry.actor || 'admin-token'}</p>
                           {entry.note && <p className="mt-2 whitespace-pre-wrap break-words">{entry.note}</p>}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+
+                <div className="space-y-3 border-t pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="font-semibold">Sensitive-data access audit</h3>
+                    <button type="button" className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50" onClick={() => void loadAccessAudit()} disabled={!token || accessAuditLoading}>{accessAuditLoading ? 'Loading…' : 'Load access audit'}</button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Shows logged Admin reads of registration data that can be used to generate participant CSV/PDF reports. The shared Admin token cannot identify which individual used it.</p>
+                  {accessAudit.length === 0 ? <p className="text-sm text-muted-foreground">Access audit अभी लोड नहीं हुई या कोई entry उपलब्ध नहीं है।</p> : (
+                    <ol className="space-y-2">
+                      {accessAudit.map((entry, index) => (
+                        <li key={`${entry.created_at}-${index}`} className="rounded-lg border p-3 text-sm">
+                          <p className="font-medium">{entry.action} · {entry.outcome}</p>
+                          <p className="mt-1 break-all text-xs text-muted-foreground">{entry.endpoint} · {entry.actor} · {dateLabel(entry.created_at)}</p>
+                          {entry.request_trace && <p className="mt-1 text-xs text-muted-foreground">Request trace: {entry.request_trace}</p>}
                         </li>
                       ))}
                     </ol>
