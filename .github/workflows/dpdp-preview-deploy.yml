@@ -130,3 +130,55 @@ jobs:
           }
           console.log('PASS DPDP Preview API access-control smoke tests.')
           NODE
+
+      - name: End-to-end privacy request lifecycle test
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const base = 'https://nhymindia-dpdp-preview.2026jsr.workers.dev'
+          const token = process.env.PREVIEW_ADMIN_TOKEN
+          if (!token) throw new Error('Preview Admin test token is not configured.')
+          const adminHeaders = { authorization: 'Bearer ' + token, 'content-type': 'application/json' }
+          async function call(path, options = {}) {
+            const response = await fetch(base + path, { ...options, cache: 'no-store' })
+            const text = await response.text()
+            let data
+            try { data = JSON.parse(text) } catch { throw new Error(path + ' returned non-JSON HTTP ' + response.status) }
+            return { status: response.status, data }
+          }
+          const created = await call('/api/privacy-requests', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              requestType: 'ACCESS',
+              email: 'dpdp-lifecycle-test@example.invalid',
+              registrationId: '',
+              details: 'Automated isolated-preview lifecycle test; no real person data.',
+              acknowledgement: true
+            })
+          })
+          if (created.status !== 201 || !created.data?.requestId) throw new Error('Could not create isolated test request: HTTP ' + created.status)
+          const id = created.data.requestId
+          const patch = (body) => call('/api/admin/privacy-requests/' + encodeURIComponent(id), {
+            method: 'PATCH', headers: adminHeaders, body: JSON.stringify(body)
+          })
+          let result = await patch({ status: 'IN_REVIEW', resolutionNote: '', verificationStatus: 'UNVERIFIED', verificationMethod: '' })
+          if (result.status !== 200) throw new Error('RECEIVED -> IN_REVIEW failed: HTTP ' + result.status)
+          result = await patch({ status: 'COMPLETED', resolutionNote: 'Test completion blocked before verification.', verificationStatus: 'UNVERIFIED', verificationMethod: '' })
+          if (result.status !== 409) throw new Error('Expected completion to be blocked before identity verification; got HTTP ' + result.status)
+          console.log('PASS completion is blocked before identity verification.')
+          result = await patch({ status: 'NEEDS_VERIFICATION', resolutionNote: '', verificationStatus: 'PENDING', verificationMethod: '' })
+          if (result.status !== 200) throw new Error('IN_REVIEW -> NEEDS_VERIFICATION failed: HTTP ' + result.status)
+          result = await patch({ status: 'NEEDS_VERIFICATION', resolutionNote: '', verificationStatus: 'VERIFIED', verificationMethod: 'REGISTRATION_DETAILS' })
+          if (result.status !== 200 || result.data?.verificationStatus !== 'VERIFIED') throw new Error('Identity verification step failed: HTTP ' + result.status)
+          result = await patch({ status: 'COMPLETED', resolutionNote: 'Automated preview test completed; no participant record changed.', verificationStatus: 'VERIFIED', verificationMethod: 'REGISTRATION_DETAILS' })
+          if (result.status !== 200 || result.data?.status !== 'COMPLETED') throw new Error('Verified request could not be completed: HTTP ' + result.status)
+          const audit = await call('/api/admin/privacy-requests/' + encodeURIComponent(id) + '/audit', { headers: { authorization: 'Bearer ' + token } })
+          if (audit.status !== 200 || !Array.isArray(audit.data?.audit)) throw new Error('Request audit history unavailable: HTTP ' + audit.status)
+          const actions = audit.data.audit.map(entry => entry.action)
+          if (!actions.includes('IDENTITY_VERIFICATION_CHANGED') || !actions.includes('STATUS_CHANGED')) throw new Error('Expected status and identity-verification audit events were not recorded.')
+          console.log('PASS full lifecycle RECEIVED -> IN_REVIEW -> NEEDS_VERIFICATION -> VERIFIED -> COMPLETED.')
+          console.log('PASS request audit history records status and identity-verification changes; test data remains isolated in Preview.')
+          NODE
+
