@@ -1011,7 +1011,7 @@ if (
         result = await env.DB.prepare(`INSERT INTO registrations
           (email, total_amount, payment_mode, payment_reference, status, declarations_json, created_at)
           VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`)
-          .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, normalizedReference, JSON.stringify({ ...body.declarations, privacyConsent: true, privacyNoticeVersion: '2026-10-27', privacyAcknowledgedAt: createdAt }), createdAt)
+          .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, normalizedReference, JSON.stringify({ ...body.declarations, privacyConsent: true, privacyNoticeVersion: '2026-10-28', privacyAcknowledgedAt: createdAt }), createdAt)
           .run()
       } catch (error) {
         // The unique index is the final guard against simultaneous duplicate submissions.
