@@ -85,18 +85,61 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing production environment secret CLOUDFLARE_API_TOKEN" && exit 1)
           pnpm dlx wrangler@4 deploy --config wrangler.jsonc
-      - name: Verify live website and protected API
+      - name: Verify live website, API authorization, and security headers
         run: |
           node --input-type=module <<'NODE'
           const base = 'https://nhymindia.2026jsr.workers.dev';
           const home = await fetch(base + '/', { cache: 'no-store' });
           if (!home.ok) throw new Error('Production home page returned HTTP ' + home.status);
-          const api = await fetch(base + '/api/admin/registrations', { cache: 'no-store' });
-          const contentType = api.headers.get('content-type') || '';
-          const body = await api.text();
-          if (api.status !== 401 || !contentType.includes('application/json')) {
-            throw new Error('Unauthenticated admin registrations endpoint should return HTTP 401 JSON; got ' + api.status + ' (' + contentType + '): ' + body.slice(0, 160));
+
+          const requiredHeaders = {
+            'x-content-type-options': 'nosniff',
+            'referrer-policy': 'no-referrer',
+            'x-frame-options': 'DENY',
+            'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+          };
+          function verifyHeaders(response, label, expectedCacheControl) {
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+              throw new Error(label + ' expected JSON content-type; got ' + contentType);
+            }
+            for (const [name, expected] of Object.entries(requiredHeaders)) {
+              const actual = response.headers.get(name);
+              if (actual !== expected) throw new Error(label + ' missing/incorrect ' + name + ': ' + actual);
+            }
+            const cacheControl = response.headers.get('cache-control') || '';
+            if (expectedCacheControl && !cacheControl.includes(expectedCacheControl)) {
+              throw new Error(label + ' incorrect cache-control: ' + cacheControl);
+            }
+            console.log('PASS', label, 'security headers and cache policy');
           }
+
+          const api = await fetch(base + '/api/admin/registrations', { cache: 'no-store' });
+          const apiBody = await api.text();
+          if (api.status !== 401) {
+            throw new Error('Unauthenticated admin registrations endpoint should return HTTP 401; got ' + api.status + ': ' + apiBody.slice(0, 160));
+          }
+          verifyHeaders(api, 'admin registrations API', 'no-store');
+
+          const privacyAdmin = await fetch(base + '/api/admin/privacy-requests', { cache: 'no-store' });
+          const privacyAdminBody = await privacyAdmin.text();
+          if (privacyAdmin.status !== 401) {
+            throw new Error('Unauthenticated privacy-request admin endpoint should return HTTP 401; got ' + privacyAdmin.status + ': ' + privacyAdminBody.slice(0, 160));
+          }
+          verifyHeaders(privacyAdmin, 'privacy-request admin API', 'no-store');
+
+          const invalidRequest = await fetch(base + '/api/privacy-requests', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ requestType: 'ACCESS', email: 'not-an-email', acknowledgement: true }),
+          });
+          const invalidBody = await invalidRequest.text();
+          if (invalidRequest.status !== 400) {
+            throw new Error('Invalid privacy request should return HTTP 400; got ' + invalidRequest.status + ': ' + invalidBody.slice(0, 160));
+          }
+          verifyHeaders(invalidRequest, 'privacy-request validation API', 'no-store');
+
           console.log('PASS production home page:', home.status);
-          console.log('PASS admin registrations remains protected:', api.status, contentType);
+          console.log('PASS unauthenticated admin APIs remain protected');
+          console.log('PASS production JSON API security-header smoke tests complete');
           NODE
