@@ -1,9 +1,45 @@
+import { useState, type FormEvent } from 'react'
 import { Meta } from '@/components/Meta'
 import { Brand } from '@/components/Brand'
 import { DeveloperCredit } from '@/components/DeveloperCredit'
 import { Button } from '@/components/ui/button'
 
 export default function Privacy() {
+  const [requestType, setRequestType] = useState('ACCESS')
+  const [email, setEmail] = useState('')
+  const [registrationId, setRegistrationId] = useState('')
+  const [details, setDetails] = useState('')
+  const [acknowledgement, setAcknowledgement] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [requestMessage, setRequestMessage] = useState('')
+  const [requestError, setRequestError] = useState(false)
+
+  async function submitPrivacyRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSubmitting(true)
+    setRequestMessage('')
+    setRequestError(false)
+    try {
+      const response = await fetch('/api/privacy-requests', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ requestType, email, registrationId, details, acknowledgement }),
+      })
+      const result = await response.json() as { ok?: boolean; requestId?: string; message?: string; error?: string }
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Request could not be submitted. Please try again.')
+      setRequestMessage(`Request received. Reference: ${result.requestId}. The LOC will review it manually; no data is changed automatically.`)
+      setEmail('')
+      setRegistrationId('')
+      setDetails('')
+      setAcknowledgement(false)
+    } catch (error) {
+      setRequestError(true)
+      setRequestMessage(error instanceof Error ? error.message : 'Request could not be submitted. Please email nhym2026jsr@gmail.com.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="min-h-dvh bg-background">
       <Meta title="Privacy Policy | National Ho Youth Meet 2026" description="Privacy notice in English and Hindi for personal data processed by the NHYM 2026 Local Organizing Committee." />
@@ -47,6 +83,38 @@ export default function Privacy() {
           <p lang="hi">गोपनीयता संबंधी अनुरोधों की LOC द्वारा मैन्युअल समीक्षा की जाती है; केवल ईमेल भेजने से रिकॉर्ड अपने-आप बदला या हटाया नहीं जाता। अनुरोध आपसे संबंधित है, इसकी पुष्टि के लिए LOC आवश्यक और उचित जानकारी माँग सकती है तथा कार्रवाई से पहले रिकॉर्ड रखने की लागू कानूनी/लेखांकन आवश्यकताओं पर विचार करेगी। जब तक LOC किसी उचित माध्यम से विशेष रूप से न माँगे, पहचान-पत्र या अन्य संवेदनशील सामग्री ईमेल न करें।</p>
           <p>Privacy and grievance contact / गोपनीयता एवं शिकायत संपर्क: <a className="underline underline-offset-4" href="mailto:nhym2026jsr@gmail.com">nhym2026jsr@gmail.com</a>. Please use the subject “Privacy Request” and avoid sending sensitive documents unless the LOC asks for them through an appropriate channel.</p>
           <p lang="hi">ईमेल का विषय “Privacy Request” रखें। जब तक LOC किसी उचित माध्यम से न माँगे, संवेदनशील दस्तावेज़ ईमेल से न भेजें।</p>
+          <form onSubmit={submitPrivacyRequest} className="mt-4 space-y-4 rounded-xl border p-4" aria-label="Privacy request form">
+            <h3 className="text-lg font-semibold">Submit a privacy request / गोपनीयता अनुरोध भेजें</h3>
+            <p className="text-sm text-muted-foreground">Use this form to request access, correction, deletion, consent withdrawal, or submit a privacy complaint. Do not enter passwords, identity-document numbers, bank details, or other sensitive information. The LOC will verify the request before taking action.</p>
+            <div className="space-y-1">
+              <label htmlFor="privacy-request-type" className="text-sm font-medium">Request type / अनुरोध का प्रकार</label>
+              <select id="privacy-request-type" value={requestType} onChange={(event) => setRequestType(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" required>
+                <option value="ACCESS">Access my data / जानकारी देखना</option>
+                <option value="CORRECT">Correct my data / जानकारी सुधारना</option>
+                <option value="DELETE">Delete my data / जानकारी हटाना</option>
+                <option value="WITHDRAW_CONSENT">Withdraw consent / सहमति वापस लेना</option>
+                <option value="COMPLAINT">Privacy complaint / गोपनीयता शिकायत</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="privacy-request-email" className="text-sm font-medium">Contact email / संपर्क ईमेल</label>
+              <input id="privacy-request-email" type="email" autoComplete="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" required />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="privacy-request-registration" className="text-sm font-medium">Registration ID (optional) / पंजीकरण संख्या (वैकल्पिक)</label>
+              <input id="privacy-request-registration" type="text" maxLength={32} value={registrationId} onChange={(event) => setRegistrationId(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. NHYM26-000123" />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="privacy-request-details" className="text-sm font-medium">Details (optional; max 1000 characters) / विवरण (वैकल्पिक)</label>
+              <textarea id="privacy-request-details" maxLength={1000} value={details} onChange={(event) => setDetails(event.target.value)} className="min-h-24 w-full rounded-md border bg-background px-3 py-2" />
+            </div>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" checked={acknowledgement} onChange={(event) => setAcknowledgement(event.target.checked)} required className="mt-1" />
+              <span>I understand the LOC will review and verify this request manually, and submitting it does not automatically access, change, withdraw, or delete data. / मैं समझता/समझती हूँ कि LOC अनुरोध की मैन्युअल समीक्षा और पुष्टि करेगी; फॉर्म भेजने से डेटा अपने-आप नहीं बदलेगा या हटेगा।</span>
+            </label>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Submitting… / भेजा जा रहा है' : 'Submit privacy request / अनुरोध भेजें'}</Button>
+            {requestMessage && <p role="status" aria-live="polite" className={requestError ? 'text-sm text-destructive' : 'text-sm'}>{requestMessage}</p>}
+          </form>
 
           <h2 className="pt-4 text-xl font-semibold">7. Security and incidents / सुरक्षा और घटनाएँ</h2>
           <p>The LOC uses access controls and technical measures intended to protect personal data. No internet service can guarantee absolute security. If a personal-data incident occurs, the LOC will assess it and take steps required by applicable law.</p>
