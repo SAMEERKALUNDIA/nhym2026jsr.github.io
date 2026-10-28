@@ -380,10 +380,10 @@ export default {
       // Backward-compatible additive migration for existing D1 databases.
       const requestColumns = await env.DB.prepare('PRAGMA table_info(privacy_requests)').all<{ name: string }>()
       const columnNames = new Set((requestColumns.results ?? []).map((column) => column.name))
-      if (!columnNames.has('verification_status')) await env.DB.prepare("ALTER TABLE privacy_requests ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED'").run()
-      if (!columnNames.has('verification_method')) await env.DB.prepare("ALTER TABLE privacy_requests ADD COLUMN verification_method TEXT NOT NULL DEFAULT ''").run()
-      if (!columnNames.has('verified_at')) await env.DB.prepare('ALTER TABLE privacy_requests ADD COLUMN verified_at TEXT').run()
-      if (!columnNames.has('verified_by')) await env.DB.prepare('ALTER TABLE privacy_requests ADD COLUMN verified_by TEXT').run()
+      if (!columnNames.has('verification_status')) { try { await env.DB.prepare("ALTER TABLE privacy_requests ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED'").run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
+      if (!columnNames.has('verification_method')) { try { await env.DB.prepare("ALTER TABLE privacy_requests ADD COLUMN verification_method TEXT NOT NULL DEFAULT ''").run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
+      if (!columnNames.has('verified_at')) { try { await env.DB.prepare('ALTER TABLE privacy_requests ADD COLUMN verified_at TEXT').run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
+      if (!columnNames.has('verified_by')) { try { await env.DB.prepare('ALTER TABLE privacy_requests ADD COLUMN verified_by TEXT').run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
       await env.DB.prepare(`CREATE TABLE IF NOT EXISTS privacy_request_rate_limits (
         ip_hash TEXT PRIMARY KEY,
         window_started_at TEXT NOT NULL,
