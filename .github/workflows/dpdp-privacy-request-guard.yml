@@ -1,0 +1,75 @@
+name: DPDP Privacy Request Security Guard
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - dpdp-request-verification-workflow
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  privacy-request-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify privacy workflow, identity gate, audit and role isolation guards
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import assert from 'node:assert/strict'
+          const worker = readFileSync('worker.ts', 'utf8')
+          const ui = readFileSync('src/pages/PrivacyRequestsAdmin.tsx', 'utf8')
+          const admin = readFileSync('src/pages/Admin.tsx', 'utf8')
+          const privacy = readFileSync('src/pages/Privacy.tsx', 'utf8')
+          const checks = [
+            ['Public request requires affirmative acknowledgement', "body.acknowledgement !== true"],
+            ['Public request has abuse rate limiting', 'privacy_request_rate_limits'],
+            ['Request data is private and not cached', "'cache-control': 'private, no-store'"],
+            ['Admin request list requires Admin token', "if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)"],
+            ['Identity verification statuses are constrained', "['UNVERIFIED','PENDING','VERIFIED','FAILED']"],
+            ['Completion requires identity to have been verified in an earlier step', "nextStatus === 'COMPLETED' && current.verification_status !== 'VERIFIED'"],
+            ['Completion also requires identity to remain verified', "nextStatus === 'COMPLETED' && verificationStatus !== 'VERIFIED'"],
+            ['Deletion completion requires retention/deletion outcome note', "current.request_type === 'DELETE'"],
+            ['Identity verification changes are audited', "'IDENTITY_VERIFICATION_CHANGED'"],
+            ['Request status and notes are audited', "'STATUS_CHANGED'"],
+            ['Sensitive registration-data reads are logged', "'REGISTRATION_REPORT_DATA_READ'"],
+            ['Successful Participant Portal lookups are audited', "'PARTICIPANT_SELF_SERVICE_LOOKUP'"],
+            ['Unmatched Participant Portal lookups are audited', "'PARTICIPANT_LOOKUP_NO_MATCH'"],
+            ['Sensitive access audit endpoint requires Admin token', "url.pathname === '/api/admin/privacy-access-audit'"],
+            ['Access audit stores only hashed IP', 'privacy-access|2026|'],
+            ['Finance preview and Finance APIs remain separate', "if (!authorised(request, env))"],
+          ]
+          for (const [label, fragment] of checks) {
+            assert.ok(worker.includes(fragment), 'Missing Worker guard: ' + label)
+            console.log('PASS', label)
+          }
+          const queueStart = worker.indexOf("if (url.pathname === '/api/admin/privacy-requests' && request.method === 'GET')")
+          const queueEnd = worker.indexOf("const privacyRequestMatch", queueStart)
+          assert.ok(queueStart >= 0 && queueEnd > queueStart, 'Privacy request queue route must exist')
+          assert.ok(worker.slice(queueStart, queueEnd).includes("if (!authorised(request, env))"), 'Privacy request queue must enforce Admin authorization')
+          console.log('PASS privacy request queue has its own Admin authorization gate')
+          const accessAuditStart = worker.indexOf("if (url.pathname === '/api/admin/privacy-access-audit' && request.method === 'GET')")
+          const accessAuditEnd = worker.indexOf('// DAILY UPDATES — public list', accessAuditStart)
+          assert.ok(accessAuditStart >= 0 && accessAuditEnd > accessAuditStart, 'Sensitive-data audit route must exist')
+          assert.ok(worker.slice(accessAuditStart, accessAuditEnd).includes("if (!authorised(request, env))"), 'Sensitive-data audit must enforce Admin authorization')
+          console.log('PASS sensitive-data access audit has its own Admin authorization gate')
+          const uiChecks = [
+            ['Admin UI includes verification status control', 'Identity verification status'],
+            ['Admin UI requires a verification method', 'Verification method'],
+            ['Admin UI shows sensitive-data access audit', 'Sensitive-data access audit'],
+            ['Admin UI warns not to upload identity documents', 'Do not upload or paste identity documents'],
+          ]
+          for (const [label, fragment] of uiChecks) {
+            assert.ok(ui.includes(fragment), 'Missing Admin UI control: ' + label)
+            console.log('PASS', label)
+          }
+          assert.ok(admin.includes("window.location.href = '/admin/privacy-requests'"), 'Admin dashboard must link to privacy request workspace')
+          console.log('PASS Admin dashboard links to restricted privacy request workspace')
+          assert.ok(privacy.includes('/api/privacy-requests'), 'Public Privacy page must submit privacy requests')
+          assert.ok(privacy.includes('does not automatically access, change, withdraw, or delete data'), 'Public form must disclose manual review')
+          console.log('PASS public privacy request form is connected and explains manual handling')
+          NODE

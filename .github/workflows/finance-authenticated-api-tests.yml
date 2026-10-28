@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# This test resets/restores one shared Preview Finance Head test account.
+# Serialize runs so overlapping workflow runs cannot invalidate each other's sessions.
+concurrency:
+  group: finance-authenticated-api-permission-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   authenticated-role-matrix:
     runs-on: ubuntu-latest

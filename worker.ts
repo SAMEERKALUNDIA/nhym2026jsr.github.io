@@ -370,9 +370,20 @@ export default {
         details TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'RECEIVED' CHECK (status IN ('RECEIVED','IN_REVIEW','NEEDS_VERIFICATION','COMPLETED','DECLINED')),
         resolution_note TEXT NOT NULL DEFAULT '',
+        verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED' CHECK (verification_status IN ('UNVERIFIED','PENDING','VERIFIED','FAILED')),
+        verification_method TEXT NOT NULL DEFAULT '',
+        verified_at TEXT,
+        verified_by TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )`).run()
+      // Backward-compatible additive migration for existing D1 databases.
+      const requestColumns = await env.DB.prepare('PRAGMA table_info(privacy_requests)').all<{ name: string }>()
+      const columnNames = new Set((requestColumns.results ?? []).map((column) => column.name))
+      if (!columnNames.has('verification_status')) { try { await env.DB.prepare("ALTER TABLE privacy_requests ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED'").run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
+      if (!columnNames.has('verification_method')) { try { await env.DB.prepare("ALTER TABLE privacy_requests ADD COLUMN verification_method TEXT NOT NULL DEFAULT ''").run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
+      if (!columnNames.has('verified_at')) { try { await env.DB.prepare('ALTER TABLE privacy_requests ADD COLUMN verified_at TEXT').run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
+      if (!columnNames.has('verified_by')) { try { await env.DB.prepare('ALTER TABLE privacy_requests ADD COLUMN verified_by TEXT').run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
       await env.DB.prepare(`CREATE TABLE IF NOT EXISTS privacy_request_rate_limits (
         ip_hash TEXT PRIMARY KEY,
         window_started_at TEXT NOT NULL,
@@ -386,6 +397,17 @@ export default {
         new_status TEXT,
         note TEXT NOT NULL DEFAULT '',
         actor TEXT NOT NULL DEFAULT 'admin-token',
+        created_at TEXT NOT NULL
+      )`).run()
+
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS privacy_access_audit (
+        id TEXT PRIMARY KEY,
+        actor TEXT NOT NULL,
+        action TEXT NOT NULL,
+        endpoint TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        ip_hash TEXT NOT NULL DEFAULT '',
+        request_trace TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL
       )`).run()
     }
@@ -443,7 +465,8 @@ export default {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       await ensurePrivacyRequestTables()
       const result = await env.DB.prepare(`
-        SELECT id, request_type, email, registration_id, details, status, resolution_note, created_at, updated_at
+        SELECT id, request_type, email, registration_id, details, status, resolution_note,
+          verification_status, verification_method, verified_at, verified_by, created_at, updated_at
         FROM privacy_requests ORDER BY created_at DESC LIMIT 200
       `).all()
       return financeJson({ requests: result.results ?? [] })
@@ -452,24 +475,70 @@ export default {
     const privacyRequestMatch = url.pathname.match(new RegExp('^/api/admin/privacy-requests/([a-f0-9-]+)$', 'i'))
     if (privacyRequestMatch && request.method === 'PATCH') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
-      const parsed = await readJsonLimited<{ status?: unknown; resolutionNote?: unknown }>(request, 4 * 1024)
+      const parsed = await readJsonLimited<{
+        status?: unknown; resolutionNote?: unknown; verificationStatus?: unknown; verificationMethod?: unknown
+      }>(request, 4 * 1024)
       if (!parsed.ok) return financeJson({ error: parsed.status === 413 ? 'Request is too large.' : 'Invalid request.' }, parsed.status)
       const nextStatus = String(parsed.value.status ?? '')
       const allowedStatuses = ['RECEIVED','IN_REVIEW','NEEDS_VERIFICATION','COMPLETED','DECLINED']
       if (!allowedStatuses.includes(nextStatus)) return financeJson({ error: 'Invalid privacy request status.' }, 400)
-      const resolutionNote = String(parsed.value.resolutionNote ?? '').trim().slice(0, 1000)
+      const resolutionNote = String(parsed.value.resolutionNote ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, 1000)
+      const verificationStatus = String(parsed.value.verificationStatus ?? 'UNVERIFIED')
+      const verificationMethod = String(parsed.value.verificationMethod ?? '').trim()
+      const allowedVerificationStatuses = ['UNVERIFIED','PENDING','VERIFIED','FAILED']
+      const allowedVerificationMethods = ['REGISTRATION_DETAILS','CALLBACK_KNOWN_CONTACT','IN_PERSON','OTHER']
+      if (!allowedVerificationStatuses.includes(verificationStatus)) return financeJson({ error: 'Invalid identity verification status.' }, 400)
+      if (verificationStatus === 'VERIFIED' && !allowedVerificationMethods.includes(verificationMethod)) {
+        return financeJson({ error: 'Choose a valid verification method before marking identity as verified.' }, 400)
+      }
+      if (verificationStatus !== 'VERIFIED' && verificationMethod) {
+        return financeJson({ error: 'A verification method can only be recorded when verification status is VERIFIED.' }, 400)
+      }
+      if ((nextStatus === 'COMPLETED' || nextStatus === 'DECLINED') && resolutionNote.length < 10) {
+        return financeJson({ error: 'Add a concise outcome/reason note (at least 10 characters) before completing or declining a request.' }, 400)
+      }
       await ensurePrivacyRequestTables()
       const id = privacyRequestMatch[1]
-      const current = await env.DB.prepare('SELECT status FROM privacy_requests WHERE id = ?').bind(id).first<{ status: string }>()
+      const current = await env.DB.prepare('SELECT status, request_type, verification_status, verification_method FROM privacy_requests WHERE id = ?')
+        .bind(id).first<{ status: string; request_type: string; verification_status: string; verification_method: string }>()
       if (!current) return financeJson({ error: 'Privacy request not found.' }, 404)
+      if (nextStatus === 'COMPLETED' && current.verification_status !== 'VERIFIED') {
+        return financeJson({ error: 'Save identity verification as VERIFIED in a separate review step before completing this request.' }, 409)
+      }
+      if (nextStatus === 'COMPLETED' && verificationStatus !== 'VERIFIED') {
+        return financeJson({ error: 'Identity must remain VERIFIED before a privacy request can be marked completed.' }, 409)
+      }
+      if (nextStatus === 'COMPLETED' && current.request_type === 'DELETE' && !/retention|deleted|deletion|removed|removal|kept|retained/i.test(resolutionNote)) {
+        return financeJson({ error: 'For deletion requests, record whether data was deleted or retained under a documented retention exception.' }, 400)
+      }
       const now = new Date().toISOString()
-      await env.DB.prepare('UPDATE privacy_requests SET status = ?, resolution_note = ?, updated_at = ? WHERE id = ?')
-        .bind(nextStatus, resolutionNote, now, id).run()
+      const verificationChanged = current.verification_status !== verificationStatus || current.verification_method !== verificationMethod
+      const verifiedAt = verificationStatus === 'VERIFIED' ? (verificationChanged ? now : null) : null
+      const verifiedBy = verificationStatus === 'VERIFIED' ? 'main-admin-token' : null
       await env.DB.prepare(`
-        INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, created_at)
-        VALUES (?, ?, 'STATUS_CHANGED', ?, ?, ?, ?)
-      `).bind(crypto.randomUUID(), id, current.status, nextStatus, resolutionNote, now).run()
-      return financeJson({ ok: true, status: nextStatus, updatedAt: now })
+        UPDATE privacy_requests
+        SET status = ?, resolution_note = ?, verification_status = ?, verification_method = ?,
+            verified_at = CASE WHEN ? = 'VERIFIED' AND ? IS NOT NULL THEN ? WHEN ? <> 'VERIFIED' THEN NULL ELSE verified_at END,
+            verified_by = CASE WHEN ? = 'VERIFIED' THEN ? ELSE NULL END,
+            updated_at = ?
+        WHERE id = ?
+      `).bind(
+        nextStatus, resolutionNote, verificationStatus, verificationMethod,
+        verificationStatus, verifiedAt, now, verificationStatus, verificationStatus, verifiedBy, now, id
+      ).run()
+      if (current.status !== nextStatus || resolutionNote) {
+        await env.DB.prepare(`
+          INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'main-admin-token', ?)
+        `).bind(crypto.randomUUID(), id, current.status === nextStatus ? 'REVIEW_NOTE_UPDATED' : 'STATUS_CHANGED', current.status, nextStatus, resolutionNote, now).run()
+      }
+      if (verificationChanged) {
+        await env.DB.prepare(`
+          INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
+          VALUES (?, ?, 'IDENTITY_VERIFICATION_CHANGED', ?, ?, ?, 'main-admin-token', ?)
+        `).bind(crypto.randomUUID(), id, current.verification_status, verificationStatus, verificationStatus === 'VERIFIED' ? `Method: ${verificationMethod}` : 'Verification status updated; no identity document stored.', now).run()
+      }
+      return financeJson({ ok: true, status: nextStatus, verificationStatus, verificationMethod, verifiedAt: verificationStatus === 'VERIFIED' ? (verifiedAt ?? now) : null, updatedAt: now })
     }
 
     if (url.pathname.match(new RegExp('^/api/admin/privacy-requests/([a-f0-9-]+)/audit$', 'i')) && request.method === 'GET') {
@@ -481,6 +550,17 @@ export default {
         FROM privacy_request_audit WHERE request_id = ? ORDER BY created_at ASC LIMIT 200
       `).bind(auditMatch[1]).all()
       return financeJson({ audit: result.results ?? [] })
+    }
+
+    // Admin-only audit trail for privileged reads that can feed participant reports/exports.
+    if (url.pathname === '/api/admin/privacy-access-audit' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      await ensurePrivacyRequestTables()
+      const result = await env.DB.prepare(`
+        SELECT actor, action, endpoint, outcome, ip_hash, request_trace, created_at
+        FROM privacy_access_audit ORDER BY created_at DESC LIMIT 200
+      `).all()
+      return financeJson({ entries: result.results ?? [] })
     }
 
     // DAILY UPDATES — public list exposes only Admin-approved publications.
@@ -1283,6 +1363,16 @@ if (
             AND datetime(window_started_at) > datetime('now', '-15 minutes')
             AND (locked_until IS NULL OR datetime(locked_until) <= datetime('now'))
         `).bind(lookupAttemptKey).run()
+        await ensurePrivacyRequestTables()
+        await env.DB.prepare(`
+          INSERT INTO privacy_access_audit (id, actor, action, endpoint, outcome, ip_hash, request_trace, created_at)
+          VALUES (?, 'participant-portal', 'PARTICIPANT_LOOKUP_NO_MATCH', '/api/participant/lookup', 'NO_MATCH', ?, ?, ?)
+        `).bind(
+          crypto.randomUUID(),
+          await financeDigest(`privacy-access|2026|${lookupIp}`),
+          (request.headers.get('cf-ray') ?? '').slice(0, 100),
+          new Date().toISOString()
+        ).run()
         return json(
           {
             error:
@@ -1317,6 +1407,18 @@ if (
       `)
         .bind(registration.id)
         .all()
+
+      // Audit self-service access without storing the registration ID, email, or raw IP.
+      await ensurePrivacyRequestTables()
+      await env.DB.prepare(`
+        INSERT INTO privacy_access_audit (id, actor, action, endpoint, outcome, ip_hash, request_trace, created_at)
+        VALUES (?, 'participant-portal', 'PARTICIPANT_SELF_SERVICE_LOOKUP', '/api/participant/lookup', 'SUCCESS', ?, ?, ?)
+      `).bind(
+        crypto.randomUUID(),
+        await financeDigest(`privacy-access|2026|${lookupIp}`),
+        (request.headers.get('cf-ray') ?? '').slice(0, 100),
+        new Date().toISOString()
+      ).run()
 
       return json({
         ok: true,
@@ -2275,6 +2377,19 @@ if (
       if (!authorised(request, env)) {
         return financeJson({ error: 'Unauthorized' }, 401)
       }
+
+      // Log privileged reads that can feed CSV/PDF reports. Only a hashed IP is
+      // stored; the shared Admin token cannot attribute an individual person.
+      await ensurePrivacyRequestTables()
+      await env.DB.prepare(`
+        INSERT INTO privacy_access_audit (id, actor, action, endpoint, outcome, ip_hash, request_trace, created_at)
+        VALUES (?, 'main-admin-token', 'REGISTRATION_REPORT_DATA_READ', '/api/admin/registrations', 'SUCCESS', ?, ?, ?)
+      `).bind(
+        crypto.randomUUID(),
+        await financeDigest(`privacy-access|2026|${request.headers.get('CF-Connecting-IP') ?? 'unknown'}`),
+        (request.headers.get('cf-ray') ?? '').slice(0, 100),
+        new Date().toISOString()
+      ).run()
 
       // Finance preview uses an isolated database without NHYM registration tables.
       // Return an empty, correctly-shaped result rather than throwing a D1 error.

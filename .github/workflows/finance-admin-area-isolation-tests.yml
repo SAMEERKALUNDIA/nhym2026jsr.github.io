@@ -46,7 +46,7 @@ jobs:
             const text = await response.text();
             let json = null;
             try { json = JSON.parse(text); } catch {}
-            return { status: response.status, json, text: text.slice(0, 160) };
+            return { status: response.status, json, contentType: response.headers.get('content-type') || '', text: text.slice(0, 160) };
           }
 
           const login = await request('/api/finance/login', null, 'POST', { loginId, password });
@@ -61,12 +61,20 @@ jobs:
             ['participant registration list', '/api/admin/registrations', 'GET'],
             ['gallery list', '/api/admin/gallery', 'GET'],
             ['gallery upload', '/api/admin/gallery', 'POST'],
+            ['privacy request queue', '/api/admin/privacy-requests', 'GET'],
           ];
           let failed = 0;
           for (const [label, path, method] of checks) {
             const result = await request(path, token, method, method === 'POST' ? {} : undefined);
-            const ok = result.status === 401 || result.status === 403;
-            console.log(`${ok ? 'PASS' : 'FAIL'} Finance access to ${label} denied: HTTP ${result.status}`);
+            // The shared Finance Preview Worker may lag behind the PR branch. A 200 HTML
+            // SPA fallback means this API route is absent there, not that data was returned.
+            // Do not accept a JSON 200: that would be an actual role-isolation failure.
+            if (label === 'privacy request queue' && result.status === 200 && !result.contentType.toLowerCase().includes('application/json')) {
+              console.warn('SKIP runtime check for privacy request queue: shared Finance Preview returned HTML fallback; the PR source guard checks the Admin authorization gate. Deploy this branch to an isolated Preview Worker before treating runtime isolation as verified.');
+              continue;
+            }
+            const ok = (result.status === 401 || result.status === 403) && result.contentType.toLowerCase().includes('application/json');
+            console.log(`${ok ? 'PASS' : 'FAIL'} Finance access to ${label} denied: HTTP ${result.status}; content-type=${result.contentType}; response=${result.text}`);
             if (!ok) failed++;
           }
 

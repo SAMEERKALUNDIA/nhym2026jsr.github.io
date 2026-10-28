@@ -2275,6 +2275,17 @@ if (!authenticated) {
           Record expenses, submit approval requests, record payments and export the finance register.
         </p>
       </button>
+
+      <button
+        type="button"
+        onClick={() => { window.location.href = '/admin/privacy-requests' }}
+        className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40"
+      >
+        <div className="text-xl font-semibold">Privacy Requests &amp; Audit →</div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Review data access, correction, deletion and consent requests; verify identity and review sensitive-data access history.
+        </p>
+      </button>
     </div>
 
     <section className="mt-6 rounded-xl border bg-card p-5">
