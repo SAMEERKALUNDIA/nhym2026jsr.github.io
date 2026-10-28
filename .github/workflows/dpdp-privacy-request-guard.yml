@@ -23,6 +23,7 @@ jobs:
           import assert from 'node:assert/strict'
           const worker = readFileSync('worker.ts', 'utf8')
           const ui = readFileSync('src/pages/PrivacyRequestsAdmin.tsx', 'utf8')
+          const admin = readFileSync('src/pages/Admin.tsx', 'utf8')
           const privacy = readFileSync('src/pages/Privacy.tsx', 'utf8')
           const checks = [
             ['Public request requires affirmative acknowledgement', "body.acknowledgement !== true"],
@@ -66,6 +67,8 @@ jobs:
             assert.ok(ui.includes(fragment), 'Missing Admin UI control: ' + label)
             console.log('PASS', label)
           }
+          assert.ok(admin.includes("window.location.href = '/admin/privacy-requests'"), 'Admin dashboard must link to privacy request workspace')
+          console.log('PASS Admin dashboard links to restricted privacy request workspace')
           assert.ok(privacy.includes('/api/privacy-requests'), 'Public Privacy page must submit privacy requests')
           assert.ok(privacy.includes('does not automatically access, change, withdraw, or delete data'), 'Public form must disclose manual review')
           console.log('PASS public privacy request form is connected and explains manual handling')
