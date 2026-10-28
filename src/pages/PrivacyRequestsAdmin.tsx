@@ -1,0 +1,234 @@
+import { useCallback, useState } from 'react'
+import { Meta } from '@/components/Meta'
+import { Brand } from '@/components/Brand'
+import { DeveloperCredit } from '@/components/DeveloperCredit'
+
+type PrivacyRequest = {
+  id: string
+  request_type: string
+  email: string
+  registration_id: string | null
+  details: string
+  status: string
+  resolution_note: string
+  created_at: string
+  updated_at: string
+}
+type AuditEntry = {
+  action: string
+  old_status: string | null
+  new_status: string | null
+  note: string
+  actor: string
+  created_at: string
+}
+const statuses = ['RECEIVED', 'IN_REVIEW', 'NEEDS_VERIFICATION', 'COMPLETED', 'DECLINED']
+const requestLabels: Record<string, string> = {
+  ACCESS: 'Access to personal data',
+  CORRECT: 'Correction of personal data',
+  DELETE: 'Deletion request',
+  WITHDRAW_CONSENT: 'Withdraw consent',
+  COMPLAINT: 'Complaint',
+}
+function dateLabel(value: string) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+}
+
+export default function PrivacyRequestsAdmin() {
+  const [token, setToken] = useState('')
+  const [requests, setRequests] = useState<PrivacyRequest[]>([])
+  const [selectedId, setSelectedId] = useState('')
+  const [audit, setAudit] = useState<AuditEntry[]>([])
+  const [nextStatus, setNextStatus] = useState('IN_REVIEW')
+  const [resolutionNote, setResolutionNote] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const selected = requests.find((item) => item.id === selectedId)
+
+  const loadRequests = useCallback(async (authToken = token) => {
+    if (!authToken.trim()) {
+      setError('Admin access key दर्ज करें.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    setNotice('')
+    try {
+      const response = await fetch('/api/admin/privacy-requests', {
+        headers: { authorization: `Bearer ${authToken.trim()}` },
+        cache: 'no-store',
+      })
+      const result = await response.json() as { requests?: PrivacyRequest[]; error?: string }
+      if (!response.ok) throw new Error(response.status === 401 ? 'Admin access key सही नहीं है या अनुमति नहीं है.' : result.error || 'Privacy requests लोड नहीं हो सके.')
+      const rows = Array.isArray(result.requests) ? result.requests : []
+      setRequests(rows)
+      setSelectedId((current) => rows.some((item) => item.id === current) ? current : rows[0]?.id ?? '')
+      setNotice(`कुल ${rows.length} अनुरोध लोड हुए. अधिकतम 200 नवीनतम अनुरोध दिखाए जाते हैं.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Privacy requests लोड नहीं हो सके.')
+      setRequests([])
+      setAudit([])
+      setSelectedId('')
+    } finally {
+      setLoading(false)
+    }
+  }, [token])
+
+  const loadAudit = useCallback(async (id: string, authToken = token) => {
+    if (!id || !authToken.trim()) return
+    try {
+      const response = await fetch(`/api/admin/privacy-requests/${encodeURIComponent(id)}/audit`, {
+        headers: { authorization: `Bearer ${authToken.trim()}` },
+        cache: 'no-store',
+      })
+      const result = await response.json() as { audit?: AuditEntry[]; error?: string }
+      if (!response.ok) throw new Error(result.error || 'Audit history लोड नहीं हुई.')
+      setAudit(Array.isArray(result.audit) ? result.audit : [])
+    } catch (e) {
+      setAudit([])
+      setError(e instanceof Error ? e.message : 'Audit history लोड नहीं हुई.')
+    }
+  }, [token])
+
+  async function chooseRequest(id: string) {
+    setSelectedId(id)
+    setAudit([])
+    const item = requests.find((row) => row.id === id)
+    setNextStatus(item?.status || 'RECEIVED')
+    setResolutionNote(item?.resolution_note || '')
+    await loadAudit(id)
+  }
+
+  async function updateRequest() {
+    if (!selected || !token.trim()) return
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const response = await fetch(`/api/admin/privacy-requests/${encodeURIComponent(selected.id)}`, {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${token.trim()}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ status: nextStatus, resolutionNote }),
+      })
+      const result = await response.json() as { ok?: boolean; error?: string; status?: string }
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Request status update नहीं हुआ.')
+      setRequests((rows) => rows.map((row) => row.id === selected.id
+        ? { ...row, status: nextStatus, resolution_note: resolutionNote, updated_at: new Date().toISOString() }
+        : row))
+      setNotice('अनुरोध की स्थिति अपडेट हुई और audit history में दर्ज की गई.')
+      await loadAudit(selected.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Request status update नहीं हुआ.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="min-h-dvh bg-background text-foreground">
+      <Meta title="Privacy Request Management | NHYM 2026" description="Restricted administrative workspace for reviewing privacy requests submitted to the NHYM 2026 LOC." />
+      <header className="border-b px-gutter py-5">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <Brand />
+          <a className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted" href="/admin">Admin Dashboard</a>
+        </div>
+      </header>
+      <main className="mx-auto max-w-6xl space-y-6 px-gutter py-8">
+        <section className="space-y-2">
+          <p className="text-sm text-muted-foreground">Restricted administrative access</p>
+          <h1 className="text-3xl font-bold">Privacy Request Management</h1>
+          <p className="max-w-3xl text-sm text-muted-foreground">Access, correction, deletion, consent-withdrawal और complaint अनुरोधों की समीक्षा करें। अनुरोध जमा होने से डेटा अपने-आप नहीं बदलता या हटता है। पहचान सत्यापित करने और retention obligations जाँचने के बाद ही कार्रवाई करें।</p>
+        </section>
+
+        <form className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row" onSubmit={(event) => { event.preventDefault(); void loadRequests() }}>
+          <label className="flex-1 space-y-1 text-sm font-medium">
+            Admin access key
+            <input type="password" autoComplete="current-password" value={token} onChange={(event) => setToken(event.target.value)} className="w-full rounded-lg border bg-background px-3 py-2 font-normal" placeholder="Enter Admin access key" required />
+          </label>
+          <button className="self-end rounded-lg bg-primary px-5 py-2.5 font-medium text-primary-foreground disabled:opacity-50" type="submit" disabled={loading}>{loading ? 'Loading…' : 'Load requests'}</button>
+        </form>
+
+        {error && <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">{error}</p>}
+        {notice && <p role="status" className="rounded-lg border border-green-700/30 bg-green-700/5 p-3 text-sm">{notice}</p>}
+
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <section className="space-y-3">
+            <h2 className="text-xl font-semibold">Submitted requests</h2>
+            {requests.length === 0 ? <p className="rounded-xl border p-5 text-sm text-muted-foreground">अभी कोई request सूची में नहीं है। पहले Admin access key से Load requests करें।</p> : (
+              <div className="space-y-2">
+                {requests.map((item) => (
+                  <button type="button" key={item.id} onClick={() => void chooseRequest(item.id)} className={`block w-full rounded-xl border p-4 text-left transition hover:bg-muted/60 ${selectedId === item.id ? 'border-primary bg-muted/40' : 'bg-card'}`}>
+                    <span className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold">{requestLabels[item.request_type] || item.request_type}</span>
+                      <span className="rounded-full border px-2 py-1 text-xs">{item.status}</span>
+                    </span>
+                    <span className="mt-2 block break-all text-sm">{item.email}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">Ref: {item.id} · {dateLabel(item.created_at)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <h2 className="text-xl font-semibold">Request details &amp; audit</h2>
+            {!selected ? <p className="rounded-xl border p-5 text-sm text-muted-foreground">विवरण देखने के लिए बाईं ओर से request चुनें।</p> : (
+              <div className="space-y-5 rounded-xl border bg-card p-4 sm:p-5">
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  <div><dt className="text-xs text-muted-foreground">Request type</dt><dd className="mt-1 font-medium">{requestLabels[selected.request_type] || selected.request_type}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Current status</dt><dd className="mt-1 font-medium">{selected.status}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Email</dt><dd className="mt-1 break-all">{selected.email}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Registration ID</dt><dd className="mt-1 break-all">{selected.registration_id || 'Not supplied'}</dd></div>
+                  <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Details supplied by requester</dt><dd className="mt-1 whitespace-pre-wrap break-words">{selected.details || 'No additional details supplied.'}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Received</dt><dd className="mt-1">{dateLabel(selected.created_at)}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Last updated</dt><dd className="mt-1">{dateLabel(selected.updated_at)}</dd></div>
+                </dl>
+
+                <div className="space-y-3 border-t pt-4">
+                  <h3 className="font-semibold">Review decision</h3>
+                  <label className="block space-y-1 text-sm font-medium">Status
+                    <select className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextStatus} onChange={(event) => setNextStatus(event.target.value)}>
+                      {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                    </select>
+                  </label>
+                  <label className="block space-y-1 text-sm font-medium">Resolution / internal note
+                    <textarea className="min-h-24 w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={1000} value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Record verification outcome, action taken, or reason for decline. Do not enter unnecessary sensitive data." />
+                  </label>
+                  <button type="button" className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground disabled:opacity-50" disabled={saving} onClick={() => void updateRequest()}>{saving ? 'Saving…' : 'Save status & audit note'}</button>
+                </div>
+
+                <div className="space-y-3 border-t pt-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-semibold">Audit history</h3>
+                    <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => void loadAudit(selected.id)} disabled={!token || loading}>Refresh</button>
+                  </div>
+                  {audit.length === 0 ? <p className="text-sm text-muted-foreground">Audit entries नहीं मिलीं या अभी लोड नहीं हुई हैं।</p> : (
+                    <ol className="space-y-3">
+                      {audit.map((entry, index) => (
+                        <li key={`${entry.created_at}-${index}`} className="rounded-lg border p-3 text-sm">
+                          <p className="font-medium">{entry.action}{entry.old_status || entry.new_status ? ` · ${entry.old_status || '—'} → ${entry.new_status || '—'}` : ''}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{dateLabel(entry.created_at)} · Actor: {entry.actor || 'admin-token'}</p>
+                          {entry.note && <p className="mt-2 whitespace-pre-wrap break-words">{entry.note}</p>}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+        <p className="text-xs text-muted-foreground">Security note: access key is held only in this page's memory and is not saved to local storage. Sign out by leaving the page. This page is a workflow tool, not an automatic identity-verification or deletion system.</p>
+      </main>
+      <footer className="border-t px-gutter py-5"><div className="mx-auto max-w-6xl"><DeveloperCredit /></div></footer>
+    </div>
+  )
+}
