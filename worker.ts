@@ -432,7 +432,7 @@ export default {
       return financeJson({ requests: result.results ?? [] })
     }
 
-    const privacyRequestMatch = url.pathname.match(/^\\/api\\/admin\\/privacy-requests\\/([a-f0-9-]+)$/i)
+    const privacyRequestMatch = url.pathname.match(new RegExp('^/api/admin/privacy-requests/([a-f0-9-]+)$', 'i'))
     if (privacyRequestMatch && request.method === 'PATCH') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       const parsed = await readJsonLimited<{ status?: unknown; resolutionNote?: unknown }>(request, 4 * 1024)
@@ -455,10 +455,10 @@ export default {
       return financeJson({ ok: true, status: nextStatus, updatedAt: now })
     }
 
-    if (url.pathname.match(/^\\/api\\/admin\\/privacy-requests\\/([a-f0-9-]+)\\/audit$/i) && request.method === 'GET') {
+    if (url.pathname.match(new RegExp('^/api/admin/privacy-requests/([a-f0-9-]+)/audit$', 'i')) && request.method === 'GET') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       await ensurePrivacyRequestTables()
-      const auditMatch = url.pathname.match(/^\\/api\\/admin\\/privacy-requests\\/([a-f0-9-]+)\\/audit$/i)!
+      const auditMatch = url.pathname.match(new RegExp('^/api/admin/privacy-requests/([a-f0-9-]+)/audit$', 'i'))!
       const result = await env.DB.prepare(`
         SELECT action, old_status, new_status, note, actor, created_at
         FROM privacy_request_audit WHERE request_id = ? ORDER BY created_at ASC LIMIT 200
