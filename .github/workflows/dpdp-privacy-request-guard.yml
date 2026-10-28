@@ -54,6 +54,6 @@ jobs:
             console.log('PASS', label)
           }
           assert.ok(privacy.includes('/api/privacy-requests'), 'Public Privacy page must submit privacy requests')
-          assert.ok(privacy.includes('does not automatically change, withdraw, or delete data'), 'Public form must disclose manual review')
+          assert.ok(privacy.includes('does not automatically access, change, withdraw, or delete data'), 'Public form must disclose manual review')
           console.log('PASS public privacy request form is connected and explains manual handling')
           NODE
