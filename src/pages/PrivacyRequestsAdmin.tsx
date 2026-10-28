@@ -83,7 +83,14 @@ export default function PrivacyRequestsAdmin() {
       if (!response.ok) throw new Error(response.status === 401 ? 'Admin access key सही नहीं है या अनुमति नहीं है.' : result.error || 'Privacy requests लोड नहीं हो सके.')
       const rows = Array.isArray(result.requests) ? result.requests : []
       setRequests(rows)
-      setSelectedId((current) => rows.some((item) => item.id === current) ? current : rows[0]?.id ?? '')
+      const selectedRow = rows.find((item) => item.id === selectedId) ?? rows[0]
+      setSelectedId(selectedRow?.id ?? '')
+      if (selectedRow) {
+        setNextStatus(selectedRow.status || 'RECEIVED')
+        setNextVerificationStatus(selectedRow.verification_status || 'UNVERIFIED')
+        setNextVerificationMethod(selectedRow.verification_method || '')
+        setResolutionNote(selectedRow.resolution_note || '')
+      }
       setNotice(`कुल ${rows.length} अनुरोध लोड हुए. अधिकतम 200 नवीनतम अनुरोध दिखाए जाते हैं.`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Privacy requests लोड नहीं हो सके.')
@@ -93,7 +100,7 @@ export default function PrivacyRequestsAdmin() {
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, selectedId])
 
   const loadAudit = useCallback(async (id: string, authToken = token) => {
     if (!id || !authToken.trim()) return
