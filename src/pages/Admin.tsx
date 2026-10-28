@@ -2265,6 +2265,11 @@ if (!authenticated) {
         <p className="mt-2 text-sm text-muted-foreground">सार्वजनिक प्रतिक्रियाएँ देखें और एक या कई प्रतिक्रियाएँ चुनकर हटाएँ।</p>
       </button>
 
+      <button type="button" onClick={() => { window.location.href = '/admin/privacy-requests' }} className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40">
+        <div className="text-xl font-semibold">Privacy Requests →</div>
+        <p className="mt-2 text-sm text-muted-foreground">Review access, correction, deletion and consent requests; update status and inspect audit history.</p>
+      </button>
+
       <button
         type="button"
         onClick={() => { window.location.href = '/admin/finance' }}
