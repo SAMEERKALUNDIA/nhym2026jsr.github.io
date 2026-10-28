@@ -1,0 +1,135 @@
+name: DPDP Isolated Preview Deployment and API Tests
+
+on:
+  push:
+    branches:
+      - dpdp-request-verification-workflow
+    paths:
+      - "worker.ts"
+      - "src/**"
+      - "public/**"
+      - "wrangler.dpdp-preview.jsonc"
+      - ".github/workflows/dpdp-preview-deploy.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dpdp-isolated-preview-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-test:
+    runs-on: ubuntu-24.04
+    environment: finance-preview
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate Preview isolation and Worker syntax
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import ts from 'typescript'
+          const production = JSON.parse(readFileSync('wrangler.jsonc', 'utf8'))
+          const preview = JSON.parse(readFileSync('wrangler.dpdp-preview.jsonc', 'utf8'))
+          const fail = message => { console.error('FAIL ' + message); process.exit(1) }
+          if (preview.name !== 'nhymindia-dpdp-preview') fail('Unexpected DPDP Preview Worker name.')
+          if (preview.name === production.name) fail('Preview Worker must not share production Worker name.')
+          if (preview.d1_databases?.[0]?.database_id === production.d1_databases?.[0]?.database_id) fail('Preview must not bind production D1.')
+          if (preview.r2_buckets?.[0]?.bucket_name === production.r2_buckets?.[0]?.bucket_name) fail('Preview must not bind production R2.')
+          if (preview.vars?.FINANCE_PREVIEW_MODE !== 'true') fail('Preview-only mode must be enabled.')
+          for (const secret of ['ADMIN_TOKEN', 'NHYM_EMAIL_SECRET']) {
+            if (!preview.secrets?.required?.includes(secret)) fail('Required secret declaration missing: ' + secret)
+          }
+          const result = ts.transpileModule(readFileSync('worker.ts', 'utf8'), {
+            reportDiagnostics: true,
+            compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
+          })
+          const errors = (result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error)
+          if (errors.length) {
+            for (const diagnostic of errors) console.error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\\n'))
+            process.exit(1)
+          }
+          console.log('PASS isolated Worker name, non-production D1/R2 bindings, Preview mode and Worker syntax.')
+          NODE
+
+      - name: Build website assets
+        run: pnpm build
+
+      - name: Deploy isolated DPDP Preview Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+          NHYM_EMAIL_SECRET: ${{ secrets.PREVIEW_NHYM_EMAIL_SECRET }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          test -n "$ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
+          test -n "$NHYM_EMAIL_SECRET" || (echo "Missing finance-preview environment secret PREVIEW_NHYM_EMAIL_SECRET" && exit 1)
+          printf '%s' "$ADMIN_TOKEN" | pnpm dlx wrangler@4 secret put ADMIN_TOKEN --config wrangler.dpdp-preview.jsonc
+          printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.dpdp-preview.jsonc
+          pnpm dlx wrangler@4 deploy --config wrangler.dpdp-preview.jsonc
+
+      - name: Test privacy request and sensitive-data audit access controls
+        env:
+          PREVIEW_ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const base = 'https://nhymindia-dpdp-preview.2026jsr.workers.dev'
+          const adminToken = process.env.PREVIEW_ADMIN_TOKEN
+          if (!adminToken) throw new Error('Preview Admin test token is not configured.')
+          const routes = [
+            ['/api/admin/privacy-requests', 'privacy request queue'],
+            ['/api/admin/privacy-access-audit', 'sensitive-data access audit']
+          ]
+          async function fetchRoute(path, token) {
+            const response = await fetch(base + path, {
+              headers: token ? { authorization: 'Bearer ' + token } : {},
+              cache: 'no-store'
+            })
+            const contentType = response.headers.get('content-type') || ''
+            const text = await response.text()
+            let data = null
+            try { data = JSON.parse(text) } catch {}
+            return { status: response.status, contentType, data, text: text.slice(0, 120) }
+          }
+          const deadline = Date.now() + 120000
+          let ready = false
+          while (Date.now() < deadline) {
+            try {
+              const response = await fetch(base + '/api/admin/privacy-requests', { cache: 'no-store' })
+              if (response.status === 401) { ready = true; break }
+            } catch {}
+            await new Promise(resolve => setTimeout(resolve, 5000))
+          }
+          if (!ready) throw new Error('DPDP Preview Worker did not become ready with expected unauthenticated denial.')
+          for (const [path, label] of routes) {
+            const denied = await fetchRoute(path, null)
+            if (denied.status !== 401 || !denied.contentType.toLowerCase().includes('application/json') || denied.data?.error !== 'Unauthorized') {
+              throw new Error('FAIL ' + label + ' must deny unauthenticated access with JSON 401; got HTTP ' + denied.status + ', content-type=' + denied.contentType + ', body=' + denied.text)
+            }
+            console.log('PASS ' + label + ' denies unauthenticated requests (JSON 401)')
+            const allowed = await fetchRoute(path, adminToken)
+            if (allowed.status !== 200 || !allowed.contentType.toLowerCase().includes('application/json') || !allowed.data || typeof allowed.data !== 'object') {
+              throw new Error('FAIL authorized Admin could not read ' + label + ' JSON; HTTP ' + allowed.status + ', content-type=' + allowed.contentType + ', body=' + allowed.text)
+            }
+            // Do not print returned request records or audit contents: they may contain sensitive operational data.
+            console.log('PASS authorized Admin receives JSON for ' + label + ' (200; response content withheld)')
+          }
+          console.log('PASS DPDP Preview API access-control smoke tests.')
+          NODE
