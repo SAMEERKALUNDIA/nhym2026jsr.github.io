@@ -61,6 +61,8 @@ jobs:
             ['participant registration list', '/api/admin/registrations', 'GET'],
             ['gallery list', '/api/admin/gallery', 'GET'],
             ['gallery upload', '/api/admin/gallery', 'POST'],
+            ['privacy request queue', '/api/admin/privacy-requests', 'GET'],
+            ['sensitive-data access audit', '/api/admin/privacy-access-audit', 'GET'],
           ];
           let failed = 0;
           for (const [label, path, method] of checks) {
