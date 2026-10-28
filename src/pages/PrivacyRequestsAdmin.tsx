@@ -313,7 +313,7 @@ export default function PrivacyRequestsAdmin() {
                     <h3 className="font-semibold">Sensitive-data access audit</h3>
                     <button type="button" className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50" onClick={() => void loadAccessAudit()} disabled={!token || accessAuditLoading}>{accessAuditLoading ? 'Loading…' : 'Load access audit'}</button>
                   </div>
-                  <p className="text-xs text-muted-foreground">Shows logged Admin reads of registration data that can be used to generate participant CSV/PDF reports. The shared Admin token cannot identify which individual used it.</p>
+                  <p className="text-xs text-muted-foreground">Shows logged Admin reads of registration data used for participant CSV/PDF reports, plus successful and unmatched Participant Portal lookups. The shared Admin token cannot identify which individual used it.</p>
                   {accessAudit.length === 0 ? <p className="text-sm text-muted-foreground">Access audit अभी लोड नहीं हुई या कोई entry उपलब्ध नहीं है।</p> : (
                     <ol className="space-y-2">
                       {accessAudit.map((entry, index) => (
