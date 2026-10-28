@@ -19,8 +19,20 @@ type RegistrationPayload = {
   participants: Array<Record<string, unknown> & { name?: string; category?: string; fee?: number }>
 }
 
+// Apply consistent defensive headers to every JSON API response, including errors.
+const API_SECURITY_HEADERS = {
+  'content-type': 'application/json; charset=utf-8',
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'x-frame-options': 'DENY',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+}
+
 const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } })
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...API_SECURITY_HEADERS, 'cache-control': 'no-store' },
+  })
 
 // Read JSON with a streaming byte cap so public API requests cannot force an
 // unbounded request-body allocation. Callers should use the endpoint-specific cap.
@@ -65,7 +77,10 @@ async function readJsonLimited<T>(request: Request, maxBytes: number): Promise<
 
 // Finance responses contain private accounting/user data and must not be cached.
 const financeJson = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'private, no-store' } })
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...API_SECURITY_HEADERS, 'cache-control': 'private, no-store' },
+  })
 
 // Store registration text in uppercase while preserving Payment Reference exactly.
 function uppercaseRegistrationValues(value: unknown, key = ''): unknown {
