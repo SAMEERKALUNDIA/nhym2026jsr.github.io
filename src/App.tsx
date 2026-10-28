@@ -14,6 +14,7 @@ const Privacy = lazy(() => import('@/pages/Privacy'))
 const Finance = lazy(() => import('@/pages/Finance'))
 const DailyUpdates = lazy(() => import('@/pages/DailyUpdates'))
 const DailyUpdatesAdmin = lazy(() => import('@/pages/DailyUpdatesAdmin'))
+const PrivacyRequestsAdmin = lazy(() => import('@/pages/PrivacyRequestsAdmin'))
 
 /* This is a one-page site with one action, so there is no site-wide header or
    footer above the routes: the page owns its own shell, its own main and its
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="admin/participants" element={<Admin />} />
         <Route path="admin/gallery" element={<Admin />} />
         <Route path="admin/feedback" element={<Admin />} />
+        <Route path="admin/privacy-requests" element={<PrivacyRequestsAdmin />} />
         <Route path="admin/homepage-sections" element={<Admin />} />
         <Route path="admin/finance" element={<Finance />} />
 
