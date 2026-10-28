@@ -344,6 +344,130 @@ export default {
       return json({ ok: true })
     }
 
+    // PRIVACY REQUESTS — public submission; private, admin-authorized review.
+    // Store only a hashed IP for short-window abuse prevention; never log raw IP here.
+    const ensurePrivacyRequestTables = async () => {
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS privacy_requests (
+        id TEXT PRIMARY KEY,
+        request_type TEXT NOT NULL CHECK (request_type IN ('ACCESS','CORRECT','DELETE','WITHDRAW_CONSENT','COMPLAINT')),
+        email TEXT NOT NULL,
+        registration_id TEXT,
+        details TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'RECEIVED' CHECK (status IN ('RECEIVED','IN_REVIEW','NEEDS_VERIFICATION','COMPLETED','DECLINED')),
+        resolution_note TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`).run()
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS privacy_request_rate_limits (
+        ip_hash TEXT PRIMARY KEY,
+        window_started_at TEXT NOT NULL,
+        request_count INTEGER NOT NULL DEFAULT 0
+      )`).run()
+      await env.DB.prepare(`CREATE TABLE IF NOT EXISTS privacy_request_audit (
+        id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        old_status TEXT,
+        new_status TEXT,
+        note TEXT NOT NULL DEFAULT '',
+        actor TEXT NOT NULL DEFAULT 'admin-token',
+        created_at TEXT NOT NULL
+      )`).run()
+    }
+
+    if (url.pathname === '/api/privacy-requests' && request.method === 'POST') {
+      const parsed = await readJsonLimited<{
+        requestType?: unknown; email?: unknown; registrationId?: unknown;
+        details?: unknown; acknowledgement?: unknown
+      }>(request, 8 * 1024)
+      if (!parsed.ok) return json({ error: parsed.status === 413 ? 'Request is too large.' : 'Invalid request.' }, parsed.status)
+      const body = parsed.value
+      const requestType = String(body.requestType ?? '')
+      const email = String(body.email ?? '').trim().toLowerCase()
+      const registrationId = String(body.registrationId ?? '').trim().slice(0, 32)
+      const rawDetails = String(body.details ?? '')
+      if (rawDetails.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
+      const details = rawDetails.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim()
+      if (!['ACCESS','CORRECT','DELETE','WITHDRAW_CONSENT','COMPLAINT'].includes(requestType)) {
+        return json({ error: 'Choose a valid privacy request type.' }, 400)
+      }
+      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        return json({ error: 'Enter a valid email address.' }, 400)
+      }
+      if (body.acknowledgement !== true) return json({ error: 'Please acknowledge the privacy request handling notice.' }, 400)
+      if (details.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
+
+      await ensurePrivacyRequestTables()
+      await env.DB.prepare("DELETE FROM privacy_request_rate_limits WHERE datetime(window_started_at) <= datetime('now', '-24 hours')").run()
+      const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown'
+      const ipHash = await financeDigest(`privacy-request|2026|${ip}`)
+      await env.DB.prepare(`
+        INSERT INTO privacy_request_rate_limits (ip_hash, window_started_at, request_count)
+        VALUES (?, CURRENT_TIMESTAMP, 1)
+        ON CONFLICT(ip_hash) DO UPDATE SET
+          window_started_at = CASE WHEN datetime(privacy_request_rate_limits.window_started_at) <= datetime('now', '-1 hour') THEN CURRENT_TIMESTAMP ELSE privacy_request_rate_limits.window_started_at END,
+          request_count = CASE WHEN datetime(privacy_request_rate_limits.window_started_at) <= datetime('now', '-1 hour') THEN 1 ELSE privacy_request_rate_limits.request_count + 1 END
+      `).bind(ipHash).run()
+      const limit = await env.DB.prepare('SELECT request_count FROM privacy_request_rate_limits WHERE ip_hash = ?').bind(ipHash).first<{ request_count: number }>()
+      if (Number(limit?.request_count ?? 0) > 5) return json({ error: 'Too many requests from this network. Please try again later.' }, 429)
+
+      const id = crypto.randomUUID()
+      const now = new Date().toISOString()
+      await env.DB.prepare(`
+        INSERT INTO privacy_requests (id, request_type, email, registration_id, details, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'RECEIVED', ?, ?)
+      `).bind(id, requestType, email, registrationId || null, details, now, now).run()
+      await env.DB.prepare(`
+        INSERT INTO privacy_request_audit (id, request_id, action, new_status, note, created_at)
+        VALUES (?, ?, 'SUBMITTED', 'RECEIVED', '', ?)
+      `).bind(crypto.randomUUID(), id, now).run()
+      return json({ ok: true, requestId: id, status: 'RECEIVED', message: 'Your request has been received for manual review. Submission does not automatically change or delete records.' }, 201)
+    }
+
+    if (url.pathname === '/api/admin/privacy-requests' && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      await ensurePrivacyRequestTables()
+      const result = await env.DB.prepare(`
+        SELECT id, request_type, email, registration_id, details, status, resolution_note, created_at, updated_at
+        FROM privacy_requests ORDER BY created_at DESC LIMIT 200
+      `).all()
+      return financeJson({ requests: result.results ?? [] })
+    }
+
+    const privacyRequestMatch = url.pathname.match(new RegExp('^/api/admin/privacy-requests/([a-f0-9-]+)$', 'i'))
+    if (privacyRequestMatch && request.method === 'PATCH') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      const parsed = await readJsonLimited<{ status?: unknown; resolutionNote?: unknown }>(request, 4 * 1024)
+      if (!parsed.ok) return financeJson({ error: parsed.status === 413 ? 'Request is too large.' : 'Invalid request.' }, parsed.status)
+      const nextStatus = String(parsed.value.status ?? '')
+      const allowedStatuses = ['RECEIVED','IN_REVIEW','NEEDS_VERIFICATION','COMPLETED','DECLINED']
+      if (!allowedStatuses.includes(nextStatus)) return financeJson({ error: 'Invalid privacy request status.' }, 400)
+      const resolutionNote = String(parsed.value.resolutionNote ?? '').trim().slice(0, 1000)
+      await ensurePrivacyRequestTables()
+      const id = privacyRequestMatch[1]
+      const current = await env.DB.prepare('SELECT status FROM privacy_requests WHERE id = ?').bind(id).first<{ status: string }>()
+      if (!current) return financeJson({ error: 'Privacy request not found.' }, 404)
+      const now = new Date().toISOString()
+      await env.DB.prepare('UPDATE privacy_requests SET status = ?, resolution_note = ?, updated_at = ? WHERE id = ?')
+        .bind(nextStatus, resolutionNote, now, id).run()
+      await env.DB.prepare(`
+        INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, created_at)
+        VALUES (?, ?, 'STATUS_CHANGED', ?, ?, ?, ?)
+      `).bind(crypto.randomUUID(), id, current.status, nextStatus, resolutionNote, now).run()
+      return financeJson({ ok: true, status: nextStatus, updatedAt: now })
+    }
+
+    if (url.pathname.match(new RegExp('^/api/admin/privacy-requests/([a-f0-9-]+)/audit$', 'i')) && request.method === 'GET') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      await ensurePrivacyRequestTables()
+      const auditMatch = url.pathname.match(new RegExp('^/api/admin/privacy-requests/([a-f0-9-]+)/audit$', 'i'))!
+      const result = await env.DB.prepare(`
+        SELECT action, old_status, new_status, note, actor, created_at
+        FROM privacy_request_audit WHERE request_id = ? ORDER BY created_at ASC LIMIT 200
+      `).bind(auditMatch[1]).all()
+      return financeJson({ audit: result.results ?? [] })
+    }
+
     // DAILY UPDATES — public list exposes only Admin-approved publications.
     if (url.pathname === '/api/daily-updates' && request.method === 'GET') {
       const result = await env.DB.prepare(`
