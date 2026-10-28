@@ -482,7 +482,7 @@ export default {
       const nextStatus = String(parsed.value.status ?? '')
       const allowedStatuses = ['RECEIVED','IN_REVIEW','NEEDS_VERIFICATION','COMPLETED','DECLINED']
       if (!allowedStatuses.includes(nextStatus)) return financeJson({ error: 'Invalid privacy request status.' }, 400)
-      const resolutionNote = String(parsed.value.resolutionNote ?? '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]/g, '').trim().slice(0, 1000)
+      const resolutionNote = String(parsed.value.resolutionNote ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, 1000)
       const verificationStatus = String(parsed.value.verificationStatus ?? 'UNVERIFIED')
       const verificationMethod = String(parsed.value.verificationMethod ?? '').trim()
       const allowedVerificationStatuses = ['UNVERIFIED','PENDING','VERIFIED','FAILED']
