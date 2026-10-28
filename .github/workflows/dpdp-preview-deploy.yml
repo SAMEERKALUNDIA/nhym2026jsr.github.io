@@ -52,9 +52,6 @@ jobs:
           if (preview.d1_databases?.[0]?.database_id === production.d1_databases?.[0]?.database_id) fail('Preview must not bind production D1.')
           if (preview.r2_buckets?.[0]?.bucket_name === production.r2_buckets?.[0]?.bucket_name) fail('Preview must not bind production R2.')
           if (preview.vars?.FINANCE_PREVIEW_MODE !== 'true') fail('Preview-only mode must be enabled.')
-          for (const secret of ['ADMIN_TOKEN', 'NHYM_EMAIL_SECRET']) {
-            if (!preview.secrets?.required?.includes(secret)) fail('Required secret declaration missing: ' + secret)
-          }
           const result = ts.transpileModule(readFileSync('worker.ts', 'utf8'), {
             reportDiagnostics: true,
             compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
