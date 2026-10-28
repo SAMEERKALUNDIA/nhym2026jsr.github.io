@@ -727,6 +727,7 @@ export default function Home() {
                   {EVENT.email}
                 </a>
               </p>
+              <p className="mt-3 text-sm"><a className="underline underline-offset-4" href="/privacy">Privacy Policy / गोपनीयता नीति</a></p>
             </div>
           </div>
           <div

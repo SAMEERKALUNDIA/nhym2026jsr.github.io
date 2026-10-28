@@ -29,6 +29,7 @@ export default function FeedbackCampaign({ mode = 'all' }: { mode?: 'all' | 'not
   const [city, setCity] = useState('')
   const [category, setCategory] = useState<Feedback['category']>('Support')
   const [message, setMessage] = useState('')
+  const [publicConsent, setPublicConsent] = useState(false)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [notice, setNotice] = useState('')
@@ -60,7 +61,7 @@ export default function FeedbackCampaign({ mode = 'all' }: { mode?: 'all' | 'not
       const response = await fetch('/api/public-feedback', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, city, category, message }),
+        body: JSON.stringify({ name, city, category, message, publicConsent }),
       })
       const data = await response.json() as { feedback?: Feedback; error?: string }
       if (!response.ok) throw new Error(data.error || 'प्रतिक्रिया भेजी नहीं जा सकी।')
@@ -69,6 +70,7 @@ export default function FeedbackCampaign({ mode = 'all' }: { mode?: 'all' | 'not
       setCity('')
       setCategory('Support')
       setMessage('')
+      setPublicConsent(false)
       setNotice('आपकी प्रतिक्रिया सार्वजनिक रूप से प्रकाशित कर दी गई है।')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'प्रतिक्रिया भेजी नहीं जा सकी।')
@@ -126,7 +128,7 @@ export default function FeedbackCampaign({ mode = 'all' }: { mode?: 'all' | 'not
         <div className={`space-y-8 ${mode === 'notice' ? 'hidden' : ''}`}>
           <form onSubmit={submitFeedback} className="rounded-2xl border border-border bg-background p-5 shadow-sm sm:p-6">
             <h3 className="flex items-center gap-2 text-xl font-bold"><MessageCircle className="size-5" /> अपनी प्रतिक्रिया दें</h3>
-            <p className="mt-2 text-sm text-muted-foreground">आपका संदेश सबमिट होते ही सार्वजनिक रूप से दिखाई देगा। ईमेल या मोबाइल नंबर न लिखें।</p>
+            <p className="mt-2 text-sm text-muted-foreground">सबमिट करने पर आपका नाम, शहर (यदि दिया गया हो), प्रतिक्रिया का प्रकार और संदेश सार्वजनिक रूप से दिखाई देंगे। ईमेल, मोबाइल नंबर या निजी जानकारी न लिखें। <a className="underline underline-offset-4" href="/privacy" target="_blank" rel="noreferrer">Privacy Policy / गोपनीयता नीति</a> पढ़ें।</p>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="grid gap-1.5 text-sm font-medium">नाम
                 <input required maxLength={80} value={name} onChange={e => setName(e.target.value)} className="min-w-0 rounded-lg border border-input bg-background px-3 py-2.5 font-normal" placeholder="अपना नाम" />
@@ -143,6 +145,10 @@ export default function FeedbackCampaign({ mode = 'all' }: { mode?: 'all' | 'not
                 <textarea required minLength={3} maxLength={1500} rows={4} value={message} onChange={e => setMessage(e.target.value)} className="resize-y rounded-lg border border-input bg-background px-3 py-2.5 font-normal" placeholder="अपने विचार, समर्थन या सुझाव लिखें…" />
               </label>
             </div>
+            <label className="mt-4 flex items-start gap-3 text-sm">
+              <input type="checkbox" required checked={publicConsent} onChange={e => setPublicConsent(e.target.checked)} className="mt-1 size-5 shrink-0 accent-[var(--brand)]" />
+              <span>मैं समझता/समझती हूँ कि मेरा नाम, दिया गया शहर, प्रतिक्रिया का प्रकार और संदेश सार्वजनिक रूप से प्रकाशित होंगे, और मैं इनके प्रकाशन की सहमति देता/देती हूँ।</span>
+            </label>
             {error && <p role="alert" className="mt-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
             {notice && <p role="status" className="mt-4 rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-700">{notice}</p>}
             <Button type="submit" disabled={submitting} className="mt-4 w-full sm:w-auto">

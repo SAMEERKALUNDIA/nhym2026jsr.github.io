@@ -15,11 +15,53 @@ type RegistrationPayload = {
   paymentMode: string
   paymentReference: string
   declarations: Record<string, boolean>
+  privacyConsent?: boolean
   participants: Array<Record<string, unknown> & { name?: string; category?: string; fee?: number }>
 }
 
 const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
+  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } })
+
+// Read JSON with a streaming byte cap so public API requests cannot force an
+// unbounded request-body allocation. Callers should use the endpoint-specific cap.
+async function readJsonLimited<T>(request: Request, maxBytes: number): Promise<
+  { ok: true; value: T } | { ok: false; status: 400 | 413 }
+> {
+  const declaredLength = Number(request.headers.get('content-length') ?? 0)
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    try { await request.body?.cancel() } catch {}
+    return { ok: false, status: 413 }
+  }
+  if (!request.body) return { ok: false, status: 400 }
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        try { await reader.cancel() } catch {}
+        return { ok: false, status: 413 }
+      }
+      chunks.push(value)
+    }
+  } catch {
+    return { ok: false, status: 400 }
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  try {
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(bytes)) as T }
+  } catch {
+    return { ok: false, status: 400 }
+  }
+}
 
 // Finance responses contain private accounting/user data and must not be cached.
 const financeJson = (data: unknown, status = 200) =>
@@ -248,17 +290,33 @@ export default {
     }
 
     if (url.pathname === '/api/public-feedback' && request.method === 'POST') {
-      let body: { name?: unknown; city?: unknown; category?: unknown; message?: unknown }
-      try { body = await request.json() } catch { return json({ error: 'संदेश का प्रारूप सही नहीं है।' }, 400) }
+      const parsedFeedback = await readJsonLimited<{ name?: unknown; city?: unknown; category?: unknown; message?: unknown; publicConsent?: unknown }>(request, 64 * 1024)
+      if (!parsedFeedback.ok) {
+        return json({ error: parsedFeedback.status === 413 ? 'संदेश बहुत बड़ा है। कृपया छोटा संदेश भेजें।' : 'संदेश का प्रारूप सही नहीं है।' }, parsedFeedback.status)
+      }
+      const body = parsedFeedback.value
       const clean = (value: unknown, max: number) => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, max)
       const name = clean(body.name, 80)
       const city = clean(body.city, 80)
       const message = clean(body.message, 1500)
       const category = String(body.category ?? '')
       if (name.length < 2 || message.length < 3) return json({ error: 'कृपया अपना नाम और कम-से-कम 3 अक्षरों का संदेश दर्ज करें।' }, 400)
+      if (body.publicConsent !== true) return json({ error: 'सार्वजनिक प्रकाशन की सहमति आवश्यक है।' }, 400)
       if (!['Support', 'Opposition', 'Suggestion', 'Other'].includes(category)) return json({ error: 'प्रतिक्रिया का प्रकार चुनें।' }, 400)
       if (/https?:\/\/|www\./i.test(message)) return json({ error: 'कृपया संदेश में बाहरी लिंक न डालें।' }, 400)
 
+      // Feedback is published immediately, so reject obvious contact details in every public text field.
+      // This is a guardrail, not a guarantee that every form of personal information is detected.
+      const publicText = `${name} ${city} ${message}`
+      const containsEmail = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(publicText)
+      const containsIndianMobile = /(?:\+?91[\s-]?)?[6-9]\d(?:[\s-]?\d){8}/.test(publicText)
+      if (containsEmail || containsIndianMobile) {
+        return json({ error: 'सार्वजनिक प्रतिक्रिया में ईमेल या मोबाइल नंबर न लिखें। कृपया निजी संपर्क जानकारी हटाकर दोबारा भेजें।' }, 400)
+      }
+
+      // Remove expired feedback rate-limit digests opportunistically. This table contains
+      // only hashes and is used for the one-hour anti-spam window, not long-term analytics.
+      await env.DB.prepare("DELETE FROM public_feedback_rate_limits WHERE datetime(window_started_at) <= datetime('now', '-24 hours')").run()
       const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown'
       const ipHash = await financeDigest(`public-feedback|2026|${ip}`)
       await env.DB.prepare(`
@@ -879,18 +937,34 @@ if (
       if (Number(registrationSetting?.is_open ?? 1) !== 1) {
         return json({ error: 'NHYM 2026 के लिए registration बंद हो चुका है। कृपया आयोजन समिति से संपर्क करें।' }, 403)
       }
-      let body: RegistrationPayload
-      try { body = await request.json() as RegistrationPayload } catch { return json({ error: 'Invalid request.' }, 400) }
+      const parsedBody = await readJsonLimited<RegistrationPayload>(request, 1024 * 1024)
+      if (!parsedBody.ok) {
+        return json({ error: parsedBody.status === 413 ? 'Registration request is too large. Please reduce the submitted data and try again.' : 'Invalid request.' }, parsedBody.status)
+      }
+      let body: RegistrationPayload = parsedBody.value
       body = uppercaseRegistrationValues(body) as RegistrationPayload
       if (!body.email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(body.email.trim())) return json({ error: 'A valid email address is required.' }, 400)
       if (!Array.isArray(body.participants) || body.participants.length < 1 || body.participants.length > 100) return json({ error: 'Add between 1 and 100 participants per registration.' }, 400)
       if (!['UPI', 'BANK', 'CASH', 'OTHER'].includes(body.paymentMode) || !body.paymentReference || body.paymentReference.trim().length < 2 || body.paymentReference.length > 200) return json({ error: 'A valid payment method and transaction/reference number are required.' }, 400)
       if (!body.declarations || !['INFO', 'PAYMENT', 'FINAL'].every((key) => body.declarations[key.toLowerCase()] === true)) return json({ error: 'All declarations are required.' }, 400)
+      if (body.privacyConsent !== true) return json({ error: 'Please acknowledge the Privacy Notice before submitting.' }, 400)
 
       // Recalculate each fee from the server's approved fee schedule. Never trust
       // the amount or fee values supplied by the browser.
       const expectedFees: number[] = []
       for (const participant of body.participants) {
+        const dob = String(participant.dob ?? '')
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return json({ error: 'A valid date of birth is required for each participant.' }, 400)
+        const birthDate = new Date(dob + 'T00:00:00Z')
+        if (Number.isNaN(birthDate.getTime()) || birthDate.toISOString().slice(0, 10) !== dob) return json({ error: 'A valid date of birth is required for each participant.' }, 400)
+        const indiaDateParts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+        const currentYear = Number(indiaDateParts.find((part) => part.type === 'year')?.value)
+        const currentMonth = Number(indiaDateParts.find((part) => part.type === 'month')?.value)
+        const currentDay = Number(indiaDateParts.find((part) => part.type === 'day')?.value)
+        let age = currentYear - birthDate.getUTCFullYear()
+        const monthDifference = currentMonth - (birthDate.getUTCMonth() + 1)
+        if (monthDifference < 0 || (monthDifference === 0 && currentDay < birthDate.getUTCDate())) age--
+        if (age < 18) return json({ error: 'Registration is available only to participants aged 18 or older.' }, 400)
         const category = String(participant.category ?? '')
         let expectedFee: number
         if (category === 'STUDENT') expectedFee = 500
@@ -937,7 +1011,7 @@ if (
         result = await env.DB.prepare(`INSERT INTO registrations
           (email, total_amount, payment_mode, payment_reference, status, declarations_json, created_at)
           VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`)
-          .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, normalizedReference, JSON.stringify(body.declarations), createdAt)
+          .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, normalizedReference, JSON.stringify({ ...body.declarations, privacyConsent: true, privacyNoticeVersion: '2026-10-27', privacyAcknowledgedAt: createdAt }), createdAt)
           .run()
       } catch (error) {
         // The unique index is the final guard against simultaneous duplicate submissions.
@@ -950,13 +1024,32 @@ if (
 
       const id = Number(result.meta.last_row_id)
       const registrationId = `NHYM26-${String(id).padStart(6, '0')}`
-      await env.DB.prepare('UPDATE registrations SET registration_id = ? WHERE id = ?').bind(registrationId, id).run()
+      try {
+        await env.DB.prepare('UPDATE registrations SET registration_id = ? WHERE id = ?').bind(registrationId, id).run()
 
-      const statements = body.participants.map((p, i) => env.DB.prepare(`INSERT INTO participants
-        (registration_id, participant_no, name, dob, gender, address, district, state, pin, age, category, fee, activities_json, cultural, sports, from_outside, accommodation, note, details_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(id, i + 1, String(p.name ?? '').trim().toUpperCase(), String(p.dob ?? ''), String(p.gender ?? ''), String(p.address ?? ''), String(p.district ?? ''), String(p.state ?? ''), String(p.pin ?? ''), String(p.age ?? ''), String(p.category ?? ''), Math.round(Number(p.fee) || 0), JSON.stringify(p.activities ?? []), String(p.cultural ?? ''), String(p.sports ?? ''), String(p.fromOutside ?? ''), String(p.accommodation ?? ''), String(p.note ?? ''), JSON.stringify({ ...p, name: String(p.name ?? '').trim().toUpperCase() })))
-      if (statements.length) await env.DB.batch(statements)
+        const statements = body.participants.map((p, i) => env.DB.prepare(`INSERT INTO participants
+          (registration_id, participant_no, name, dob, gender, address, district, state, pin, age, category, fee, activities_json, cultural, sports, from_outside, accommodation, note, details_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(id, i + 1, String(p.name ?? '').trim().toUpperCase(), String(p.dob ?? ''), String(p.gender ?? ''), String(p.address ?? ''), String(p.district ?? ''), String(p.state ?? ''), String(p.pin ?? ''), String(p.age ?? ''), String(p.category ?? ''), Math.round(Number(p.fee) || 0), JSON.stringify(p.activities ?? []), String(p.cultural ?? ''), String(p.sports ?? ''), String(p.fromOutside ?? ''), String(p.accommodation ?? ''), String(p.note ?? ''), JSON.stringify({ ...p, name: String(p.name ?? '').trim().toUpperCase() })))
+        if (statements.length) await env.DB.batch(statements)
+      } catch (error) {
+        // D1 cannot wrap the initial ID-generating insert and subsequent participant
+        // batch in one transaction here. Best-effort cleanup prevents an orphaned
+        // pending registration if the follow-up write fails.
+        try {
+          await env.DB.batch([
+            env.DB.prepare('DELETE FROM participants WHERE registration_id = ?').bind(id),
+            env.DB.prepare('DELETE FROM registrations WHERE id = ?').bind(id),
+          ])
+        } catch (cleanupError) {
+          console.error('Registration follow-up write and cleanup failed', {
+            registrationRowId: id,
+            error: error instanceof Error ? error.message : String(error),
+            cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+          })
+        }
+        throw error
+      }
       return json({ ok: true, registrationId, status: 'PENDING' }, 201)
     }
 
@@ -966,19 +1059,11 @@ if (
       url.pathname === '/api/participant/lookup' &&
       request.method === 'POST'
     ) {
-      let body: {
-        registrationId?: string
-        email?: string
+      const parsedLookup = await readJsonLimited<{ registrationId?: string; email?: string }>(request, 8 * 1024)
+      if (!parsedLookup.ok) {
+        return json({ error: parsedLookup.status === 413 ? 'Request too large.' : 'Invalid request.' }, parsedLookup.status)
       }
-
-      try {
-        body = await request.json() as {
-          registrationId?: string
-          email?: string
-        }
-      } catch {
-        return json({ error: 'Invalid request.' }, 400)
-      }
+      const body = parsedLookup.value
 
       const registrationId =
         String(body.registrationId ?? '')

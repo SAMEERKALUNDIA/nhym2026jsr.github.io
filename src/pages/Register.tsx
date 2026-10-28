@@ -265,8 +265,10 @@ function labelOf(row: Draft) {
 
 export default function Register() {
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null)
+  const [registrationStatusError, setRegistrationStatusError] = useState(false)
   const [rows, setRows] = useState<Draft[]>([blank(1)])
   const [agreed, setAgreed] = useState<Record<DeclarationId, boolean>>(NO_DECLARATIONS)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [formError, setFormError] = useState('')
   /* The address the approval message is sent to. It belongs to the submission
@@ -287,7 +289,7 @@ export default function Register() {
         if (!response.ok || typeof data.open !== 'boolean') throw new Error('Status unavailable')
         if (active) setRegistrationOpen(data.open)
       })
-      .catch(() => { if (active) setRegistrationOpen(true) })
+      .catch(() => { if (active) setRegistrationStatusError(true) })
     return () => { active = false }
   }, [])
 
@@ -319,6 +321,10 @@ export default function Register() {
     let ok = true
     let problem = ''
     const stillToTick = DECLARATIONS.filter((declaration) => !agreed[declaration.id])
+    if (!privacyAccepted) {
+      ok = false
+      problem = 'Please read the Privacy Policy and acknowledge the notice before submitting.'
+    }
     if (stillToTick.length > 0) {
       ok = false
       problem = `Tick ${stillToTick
@@ -335,6 +341,11 @@ if (!row.dob.trim()) {
   ok = false
   return { ...row, error: 'Select the date of birth.' }
 }
+        const ageFromDob = calculateAge(row.dob)
+        if (ageFromDob === '' || Number(ageFromDob) < 18) {
+          ok = false
+          return { ...row, error: 'Registration is available only to participants aged 18 or older.' }
+        }
         if (row.gender === '') {
           ok = false
           return { ...row, error: 'Choose Male, Female, or Transgender.' }
@@ -664,6 +675,7 @@ if (!row.dob.trim()) {
         body: JSON.stringify({
           email: email.trim(), total, paymentMode, paymentReference: paymentReference.trim().replace(/\s+/g, '').toUpperCase(), agreed,
           declarations: agreed,
+          privacyConsent: privacyAccepted,
           participants: rows.map((row) => ({ ...row, fee: feeOf(row) ?? 0 })),
         }),
       })
@@ -699,7 +711,7 @@ if (!row.dob.trim()) {
   }
 
   if (registrationOpen === null) {
-    return <div className="min-h-dvh bg-background flex items-center justify-center px-6"><p className="text-muted-foreground">Registration स्थिति जाँची जा रही है…</p></div>
+    return <div className="min-h-dvh bg-background flex items-center justify-center px-6"><section className="max-w-xl rounded-2xl border bg-card p-8 text-center shadow-sm"><p className="text-muted-foreground">{registrationStatusError ? 'Registration की स्थिति अभी जाँची नहीं जा सकी। सुरक्षा के लिए नया registration तब तक उपलब्ध नहीं होगा जब तक स्थिति की पुष्टि न हो जाए। कृपया कुछ देर बाद पुनः प्रयास करें या NHYM LOC से संपर्क करें।' : 'Registration स्थिति जाँची जा रही है…'}</p>{registrationStatusError && <Button className="mt-5" onClick={() => window.location.reload()}>पुनः प्रयास करें</Button>}</section></div>
   }
 
   return (
@@ -1285,6 +1297,13 @@ if (!row.dob.trim()) {
                           </li>
                         ))}
                       </ul>
+                      <div className="mt-5 rounded-lg border border-border bg-background p-4">
+                        <p className="text-sm text-muted-foreground">Data collected may include participant name, date of birth, gender, address, district, state, PIN code, activity/accommodation choices, contact email and payment reference. The NHYM 2026 LOC uses it for age/eligibility checks, registration, event and accommodation planning, payment verification, status emails and required event/financial records. The current retention target is 31 December 2030, subject to legal/accounting needs and earlier deletion when no longer needed. For access, correction, deletion, consent withdrawal or a privacy complaint, email nhym2026jsr@gmail.com. Read the <a className="font-medium underline underline-offset-4" href="/privacy" target="_blank" rel="noreferrer">Privacy Policy / गोपनीयता नीति</a> for full details.</p>
+                        <label className="mt-3 flex items-start gap-3 text-sm">
+                          <input type="checkbox" checked={privacyAccepted} onChange={(e) => setPrivacyAccepted(e.target.checked)} className="mt-1 size-5 shrink-0 accent-[var(--brand)]" required aria-required="true" />
+                          <span>I have read the Privacy Notice and understand how my and the listed participants’ information will be used for NHYM 2026 registration and event administration. I confirm all participants listed are aged 18 or older.</span>
+                        </label>
+                      </div>
                     </fieldset>
 
                     {formError && (

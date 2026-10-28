@@ -10,6 +10,7 @@ const NotFound = lazy(() => import('@/pages/NotFound'))
 const Admin = lazy(() => import('@/pages/Admin'))
 const Participant = lazy(() => import('@/pages/Participant'))
 const Register = lazy(() => import('@/pages/Register'))
+const Privacy = lazy(() => import('@/pages/Privacy'))
 const Finance = lazy(() => import('@/pages/Finance'))
 const DailyUpdates = lazy(() => import('@/pages/DailyUpdates'))
 const DailyUpdatesAdmin = lazy(() => import('@/pages/DailyUpdatesAdmin'))
@@ -41,6 +42,7 @@ export default function App() {
         />
 
         <Route path="register" element={<Register />} />
+        <Route path="privacy" element={<Privacy />} />
 
         <Route path="daily-updates" element={<DailyUpdates />} />
         <Route path="admin/updates" element={<DailyUpdatesAdmin />} />
