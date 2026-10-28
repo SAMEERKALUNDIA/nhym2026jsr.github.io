@@ -385,11 +385,13 @@ export default {
       const requestType = String(body.requestType ?? '')
       const email = String(body.email ?? '').trim().toLowerCase()
       const registrationId = String(body.registrationId ?? '').trim().slice(0, 32)
-      const details = String(body.details ?? '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]/g, '').trim().slice(0, 1000)
+      const rawDetails = String(body.details ?? '')
+      if (rawDetails.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
+      const details = rawDetails.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim()
       if (!['ACCESS','CORRECT','DELETE','WITHDRAW_CONSENT','COMPLAINT'].includes(requestType)) {
         return json({ error: 'Choose a valid privacy request type.' }, 400)
       }
-      if (email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(email)) {
+      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
         return json({ error: 'Enter a valid email address.' }, 400)
       }
       if (body.acknowledgement !== true) return json({ error: 'Please acknowledge the privacy request handling notice.' }, 400)
