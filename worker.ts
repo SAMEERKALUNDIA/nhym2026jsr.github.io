@@ -575,7 +575,7 @@ export default {
             updated_at = ?
         WHERE id = ?
       `).bind(
-        nextStatus, resolutionNote, verificationStatus, verificationMethod,
+        nextStatus, deletionTargetIds.length > 0 ? 'DISPOSITION: DELETED\\nREASON: Participant personal data removed; anonymized registration/accounting shell retained.' : resolutionNote, verificationStatus, verificationMethod,
         verificationStatus, verifiedAt, now, verificationStatus, verificationStatus, verifiedBy, now, id
       ).run()
       if (current.status !== nextStatus || resolutionNote) {
