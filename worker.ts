@@ -535,6 +535,16 @@ export default {
           if (!current.registration_id && deletionTargetIds.length > 1) {
             return financeJson({ error: 'This email matches multiple registrations. Add the exact registration ID to the verified request before deleting anything; no records were changed.' }, 409)
           }
+          // Fail closed when a registration contains multiple participants. The
+          // request currently identifies a registration, not an individual
+          // participant row; deleting the whole group could erase other people's
+          // data. A scoped participant selector is required before supporting this.
+          const participantCount = await env.DB.prepare(
+            `SELECT COUNT(*) AS count FROM participants WHERE registration_id IN (${deletionTargetIds.map(() => '?').join(', ')})`
+          ).bind(...deletionTargetIds).first<{ count: number }>()
+          if (Number(participantCount?.count ?? 0) > 1) {
+            return financeJson({ error: 'This registration contains multiple participants. No data was deleted. A participant-specific request/scope is required so other participants are not affected.' }, 409)
+          }
           await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
           const placeholders = deletionTargetIds.map(() => '?').join(', ')
           const nowForDeletion = new Date().toISOString()
