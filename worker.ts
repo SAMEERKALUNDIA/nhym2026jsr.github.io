@@ -510,12 +510,14 @@ export default {
       }
       let deletionTargetIds: number[] = []
       let deletionReason = ''
+      let deletedParticipantScoped = false
       if (nextStatus === 'COMPLETED' && current.request_type === 'DELETE') {
-        const deletionDisposition = resolutionNote.match(/^DISPOSITION:\s*(DELETED|RETAINED_EXCEPTION)\s*\nREASON:\s*(.{10,})$/i)
+        const deletionDisposition = resolutionNote.match(/^DISPOSITION:\s*(DELETED|RETAINED_EXCEPTION)\s*\n(?:PARTICIPANT_NO:\s*(\d+)\s*\n)?REASON:\s*(.{10,})$/i)
         if (!deletionDisposition) {
-          return financeJson({ error: 'For DELETE requests, use two lines: DISPOSITION: DELETED or DISPOSITION: RETAINED_EXCEPTION, then REASON: followed by at least 10 characters.' }, 400)
+          return financeJson({ error: 'Use: DISPOSITION: DELETED, optional PARTICIPANT_NO: [number] for a multi-participant registration, then REASON: with at least 10 characters.' }, 400)
         }
-        deletionReason = deletionDisposition[2].trim()
+        deletionReason = deletionDisposition[3].trim()
+        const participantNo = deletionDisposition[2] ? Number(deletionDisposition[2]) : null
         if (deletionDisposition[1].toUpperCase() === 'RETAINED_EXCEPTION' && !/retention|legal|law|obligation|exception/i.test(deletionReason)) {
           return financeJson({ error: 'A retained-data exception must explain the applicable retention/legal obligation.' }, 400)
         }
@@ -530,42 +532,53 @@ export default {
           if (deletionTargetIds.length === 0) {
             return financeJson({ error: 'No matching registration was found for this verified email/registration ID. Nothing was deleted; check the request details before retrying.' }, 404)
           }
-          // Never guess which registration to erase when an email has multiple
-          // registrations and the verified request does not specify an exact ID.
           if (!current.registration_id && deletionTargetIds.length > 1) {
             return financeJson({ error: 'This email matches multiple registrations. Add the exact registration ID to the verified request before deleting anything; no records were changed.' }, 409)
           }
-          // Fail closed when a registration contains multiple participants. The
-          // request currently identifies a registration, not an individual
-          // participant row; deleting the whole group could erase other people's
-          // data. A scoped participant selector is required before supporting this.
-          const participantCount = await env.DB.prepare(
-            `SELECT COUNT(*) AS count FROM participants WHERE registration_id IN (${deletionTargetIds.map(() => '?').join(', ')})`
-          ).bind(...deletionTargetIds).first<{ count: number }>()
-          if (Number(participantCount?.count ?? 0) > 1) {
-            return financeJson({ error: 'This registration contains multiple participants. No data was deleted. A participant-specific request/scope is required so other participants are not affected.' }, 409)
+          const placeholders = deletionTargetIds.map(() => '?').join(', ')
+          const participantRows = await env.DB.prepare(
+            `SELECT id, participant_no FROM participants WHERE registration_id IN (${placeholders}) ORDER BY participant_no`
+          ).bind(...deletionTargetIds).all<{ id: number; participant_no: number }>()
+          const participants = participantRows.results ?? []
+          if (participants.length > 1 && participantNo === null) {
+            return financeJson({ error: 'This registration contains multiple participants. Specify the verified participant using PARTICIPANT_NO: [number]. No data was deleted.' }, 409)
+          }
+          if (participantNo !== null && (!Number.isInteger(participantNo) || !participants.some(p => Number(p.participant_no) === participantNo))) {
+            return financeJson({ error: 'PARTICIPANT_NO does not match a participant in this registration. No data was deleted.' }, 409)
+          }
+          const selectedParticipants = participantNo === null ? participants : participants.filter(p => Number(p.participant_no) === participantNo)
+          if (selectedParticipants.length === 0) {
+            return financeJson({ error: 'No matching participant was found. No data was deleted.' }, 404)
           }
           await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
-          const placeholders = deletionTargetIds.map(() => '?').join(', ')
           const nowForDeletion = new Date().toISOString()
-          // Remove participant personal details and correction snapshots, but retain
-          // a minimal anonymized registration shell for accounting/statistical history.
-          await env.DB.batch([
-            env.DB.prepare(`DELETE FROM participant_change_audit WHERE registration_id IN (${placeholders})`).bind(...deletionTargetIds),
-            env.DB.prepare(`DELETE FROM participants WHERE registration_id IN (${placeholders})`).bind(...deletionTargetIds),
-            env.DB.prepare(`UPDATE registrations
+          const participantIds = selectedParticipants.map(p => Number(p.id))
+          const participantPlaceholders = participantIds.map(() => '?').join(', ')
+          deletedParticipantScoped = participants.length > 1
+          // Delete only the verified participant row and that person's correction snapshots.
+          // Preserve the shared registration/payment shell when other participants remain.
+          const batch = [
+            env.DB.prepare(`DELETE FROM participant_change_audit WHERE participant_id IN (${participantPlaceholders})`).bind(...participantIds),
+            env.DB.prepare(`DELETE FROM participants WHERE id IN (${participantPlaceholders})`).bind(...participantIds)
+          ]
+          if (!deletedParticipantScoped) {
+            batch.push(env.DB.prepare(`UPDATE registrations
               SET email = 'deleted+' || id || '@privacy.invalid',
                   payment_reference = 'REDACTED-' || id,
                   declarations_json = '{}',
                   updated_at = ?
-              WHERE id IN (${placeholders})`).bind(nowForDeletion, ...deletionTargetIds),
+              WHERE id IN (${placeholders})`).bind(nowForDeletion, ...deletionTargetIds))
+          }
+          batch.push(
             env.DB.prepare('DELETE FROM privacy_request_audit WHERE request_id = ?').bind(id),
             env.DB.prepare(`UPDATE privacy_requests
               SET email = ?, registration_id = NULL, details = '', resolution_note = ?, updated_at = ?
               WHERE id = ?`).bind(`deleted+${id}@privacy.invalid`, `DISPOSITION: DELETED\nREASON: ${deletionReason.slice(0, 300)}`, nowForDeletion, id),
             env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
-              VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', 'Participant personal details and correction snapshots deleted; minimal anonymized registration/accounting record retained.', 'main-admin-token', ?)`)
-              .bind(crypto.randomUUID(), id, current.status, nowForDeletion)          ])
+              VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', ?, 'main-admin-token', ?)`)
+              .bind(crypto.randomUUID(), id, current.status, deletedParticipantScoped ? 'Verified participant personal details and that participant correction snapshots deleted; shared registration and accounting records retained for remaining participants.' : 'Participant personal details and correction snapshots deleted; minimal anonymized registration/accounting record retained.', nowForDeletion)
+          )
+          await env.DB.batch(batch)
         }
       }
       if (nextStatus === 'COMPLETED' && current.request_type === 'CORRECT') {
