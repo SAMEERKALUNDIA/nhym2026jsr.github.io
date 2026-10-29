@@ -70,7 +70,7 @@ jobs:
           if (config.d1_databases?.[0]?.database_id === production.d1_databases?.[0]?.database_id) fail('Registration Preview must not use Production D1.')
           if (config.d1_databases?.[0]?.database_id === finance.d1_databases?.[0]?.database_id) fail('Registration Preview must not use Finance Preview D1.')
           if (config.r2_buckets?.[0]?.bucket_name !== 'nhym-gallery-preview') fail('Preview must not bind the Production gallery bucket.')
-          if (config.vars?.FINANCE_PREVIEW_MODE !== 'true') fail('Preview-only mode must be enabled.')
+          if (config.vars?.FINANCE_PREVIEW_MODE === 'true') fail('Registration Preview must not enable Finance Preview mode, because that mode hides registration records.')
           console.log('PASS dedicated Registration Preview Worker/D1 and Preview-only resource isolation.')
           NODE
 
