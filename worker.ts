@@ -512,6 +512,7 @@ export default {
         return financeJson({ error: 'For deletion requests, record whether data was deleted or retained under a documented retention exception.' }, 400)
       }
       if (nextStatus === 'COMPLETED' && current.request_type === 'CORRECT') {
+        await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
         const correction = await env.DB.prepare('SELECT id FROM participant_change_audit WHERE privacy_request_id = ? LIMIT 1').bind(id).first()
         if (!correction) return financeJson({ error: 'Complete the verified participant correction through Manage Participants and save its linked audit entry before completing this request.' }, 409)
       }
