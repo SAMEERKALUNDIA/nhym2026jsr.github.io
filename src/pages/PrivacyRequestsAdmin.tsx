@@ -292,7 +292,7 @@ export default function PrivacyRequestsAdmin() {
                       <option value="OTHER">Other proportionate method</option>
                     </select>
                   </label>}
-                  <p className="text-xs text-muted-foreground">Do not upload or paste identity documents into this system. Record only the verification method and outcome. DELETE कार्रवाई केवल VERIFIED पहचान, सही Registration ID और retention review के बाद ही करें। Status COMPLETED और DISPOSITION: DELETED सेव करने पर matching personal data हटाने की कार्रवाई चलेगी; multi-participant registration पर सुरक्षा कारणों से कार्रवाई रुक जाएगी।</p>
+                  <p className="text-xs text-muted-foreground">Do not upload or paste identity documents into this system. Record only the verification method and outcome. DELETE कार्रवाई केवल VERIFIED पहचान, सही Registration ID और retention review के बाद ही करें। Status COMPLETED और DISPOSITION: DELETED सेव करने पर matching personal data हटाने की कार्रवाई चलेगी। वैध disposition के लिए DISPOSITION: DELETED या DISPOSITION: RETAINED_EXCEPTION लिखें और REASON: में कम-से-कम 10 अक्षरों का कारण दें। Multi-participant registration में केवल एक PARTICIPANT_NO: [number] चुनें; हर प्रतिभागी के लिए अलग सत्यापित अनुरोध आवश्यक है। साझा registration/payment रिकॉर्ड सुरक्षित रखे जाते हैं।</p>
                   <label className="block space-y-1 text-sm font-medium">Status
                     <select className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextStatus} onChange={(event) => setNextStatus(event.target.value)}>
                       {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
