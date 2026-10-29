@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - dpdp-request-verification-workflow
+      - dpdp-verified-data-deletion
   workflow_dispatch:
 permissions:
   contents: read
