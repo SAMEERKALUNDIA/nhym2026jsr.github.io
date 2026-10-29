@@ -133,7 +133,7 @@ export default function PrivacyRequestsAdmin() {
   async function updateRequest() {
     if (!selected || !token.trim()) return
     if (selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\s*DELETED\b/im.test(resolutionNote)) {
-      const confirmed = window.confirm('FINAL CONFIRMATION: This will permanently delete only the specified participant and that participant's correction snapshots from this Preview database. The shared registration and payment/accounting records will be retained. This cannot be undone. Continue only after verifying the requester, Registration ID, participant number, and retention obligations.')
+      const confirmed = window.confirm("FINAL CONFIRMATION: This will permanently delete only the specified participant and that participant's correction snapshots from this Preview database. The shared registration and payment/accounting records will be retained. This cannot be undone. Continue only after verifying the requester, Registration ID, participant number, and retention obligations.")
       if (!confirmed) return
     }
     setSaving(true)
