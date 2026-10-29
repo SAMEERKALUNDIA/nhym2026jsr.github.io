@@ -427,7 +427,10 @@ if (!row.dob.trim()) {
       if (!email.trim()) problem = 'Email address is required so the approval message can reach you.'
       else problem = 'Enter a valid email address so the approval message can reach you.'
     }
-    if (!referenceOk(paymentReference)) {
+    // Visitor-only registrations collect their payment reference per participant.
+    // The shared registration-level reference is required only when at least one
+    // non-visitor participant is included.
+    if (rows.some((row) => row.category !== 'visitor') && !referenceOk(paymentReference)) {
       ok = false
       if (!problem) problem = 'Enter the UPI transaction ID, bank reference or receipt number for this registration.'
     }
@@ -673,7 +676,11 @@ if (!row.dob.trim()) {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(), total, paymentMode, paymentReference: paymentReference.trim().replace(/\s+/g, '').toUpperCase(), agreed,
+          email: email.trim(),
+          total,
+          paymentMode: rows.some((row) => row.category !== 'visitor') ? paymentMode : (rows[0]?.mode ?? paymentMode),
+          paymentReference: (rows.some((row) => row.category !== 'visitor') ? paymentReference : (rows[0]?.reference || paymentReference)).trim().replace(/\s+/g, '').toUpperCase(),
+          agreed,
           declarations: agreed,
           privacyConsent: privacyAccepted,
           participants: rows.map((row) => ({ ...row, fee: feeOf(row) ?? 0 })),
@@ -1237,14 +1244,16 @@ if (!row.dob.trim()) {
                       </div>
                     </fieldset>
 
-                    <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
-                      <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">Payment reference</legend>
-                      <p className="max-w-lg text-sm text-muted-foreground">Pay the total using the bank/UPI details shown on this page, then enter the reference below. The committee will verify it before approval.</p>
-                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                        <div><Label>Payment method</Label><Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent></Select></div>
-                        <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /><p className="mt-2 text-xs text-muted-foreground">Each payment reference can be used for only one registration. Enter it exactly as shown in your payment receipt.</p><Label htmlFor="payment-screenshot" className="mt-4 block">Read from payment screenshot (optional)</Label><Input id="payment-screenshot" type="file" accept="image/*" disabled={ocrBusy} onChange={readPaymentScreenshot} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" /><p className="mt-2 text-xs text-muted-foreground">OCR runs in your browser. The screenshot is not uploaded or saved. Please check the detected reference yourself.</p>{ocrMessage && <p role="status" className="mt-2 text-xs text-muted-foreground">{ocrBusy ? 'Processing… ' : ''}{ocrMessage}</p>}</div>
-                      </div>
-                    </fieldset>
+                    {rows.some((row) => row.category !== 'visitor') && (
+                      <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
+                        <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">Payment reference</legend>
+                        <p className="max-w-lg text-sm text-muted-foreground">Pay the total for the non-visitor participant categories using the bank/UPI details shown on this page, then enter the reference below. The committee will verify it before approval.</p>
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                          <div><Label>Payment method</Label><Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent></Select></div>
+                          <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /><p className="mt-2 text-xs text-muted-foreground">Each payment reference can be used for only one registration. Enter it exactly as shown in your payment receipt.</p><Label htmlFor="payment-screenshot" className="mt-4 block">Read from payment screenshot (optional)</Label><Input id="payment-screenshot" type="file" accept="image/*" disabled={ocrBusy} onChange={readPaymentScreenshot} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" /><p className="mt-2 text-xs text-muted-foreground">OCR runs in your browser. The screenshot is not uploaded or saved. Please check the detected reference yourself.</p>{ocrMessage && <p role="status" className="mt-2 text-xs text-muted-foreground">{ocrBusy ? 'Processing… ' : ''}{ocrMessage}</p>}</div>
+                        </div>
+                      </fieldset>
+                    )}
 
                     <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
                       <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
