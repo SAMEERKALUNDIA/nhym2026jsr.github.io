@@ -131,7 +131,7 @@ export default function PrivacyRequestsAdmin() {
 
   async function updateRequest() {
     if (!selected || !token.trim()) return
-    if (selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\\s*DELETED\\b/im.test(resolutionNote)) {
+    if (selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\s*DELETED\b/im.test(resolutionNote)) {
       const confirmed = window.confirm('FINAL CONFIRMATION: This will permanently delete the matching registration and participant personal data from this Preview database and anonymize this privacy request. This action cannot be undone. Continue only after verifying the requester and checking retention obligations.')
       if (!confirmed) return
     }
@@ -165,7 +165,7 @@ export default function PrivacyRequestsAdmin() {
             updated_at: new Date().toISOString(),
           }
         : row))
-      setNotice(selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\\s*DELETED\\b/im.test(resolutionNote)
+      setNotice(selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\s*DELETED\b/im.test(resolutionNote)
         ? 'डेटा deletion पूरा हुआ; संबंधित registration/participant personal data हटाया गया और अनुरोध anonymize किया गया.'
         : 'अनुरोध की स्थिति अपडेट हुई और audit history में दर्ज की गई.')
       await loadRequests()
