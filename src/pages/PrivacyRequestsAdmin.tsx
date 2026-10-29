@@ -165,7 +165,10 @@ export default function PrivacyRequestsAdmin() {
             updated_at: new Date().toISOString(),
           }
         : row))
-      setNotice('अनुरोध की स्थिति अपडेट हुई और audit history में दर्ज की गई.')
+      setNotice(selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\\s*DELETED\\b/im.test(resolutionNote)
+        ? 'डेटा deletion पूरा हुआ; संबंधित registration/participant personal data हटाया गया और अनुरोध anonymize किया गया.'
+        : 'अनुरोध की स्थिति अपडेट हुई और audit history में दर्ज की गई.')
+      await loadRequests()
       await loadAudit(selected.id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Request status update नहीं हुआ.')
