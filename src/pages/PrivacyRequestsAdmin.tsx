@@ -131,7 +131,7 @@ export default function PrivacyRequestsAdmin() {
 
   async function updateRequest() {
     if (!selected || !token.trim()) return
-    if (selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\\s*DELETED\\b/im.test(resolutionNote)) {
+    if (selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\s*DELETED\b/im.test(resolutionNote)) {
       const confirmed = window.confirm('FINAL CONFIRMATION: This will permanently delete the matching registration and participant personal data from this Preview database and anonymize this privacy request. This action cannot be undone. Continue only after verifying the requester and checking retention obligations.')
       if (!confirmed) return
     }
@@ -165,7 +165,7 @@ export default function PrivacyRequestsAdmin() {
             updated_at: new Date().toISOString(),
           }
         : row))
-      setNotice(selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\\s*DELETED\\b/im.test(resolutionNote)
+      setNotice(selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\s*DELETED\b/im.test(resolutionNote)
         ? 'डेटा deletion पूरा हुआ; संबंधित registration/participant personal data हटाया गया और अनुरोध anonymize किया गया.'
         : 'अनुरोध की स्थिति अपडेट हुई और audit history में दर्ज की गई.')
       await loadRequests()
@@ -292,7 +292,7 @@ export default function PrivacyRequestsAdmin() {
                       <option value="OTHER">Other proportionate method</option>
                     </select>
                   </label>}
-                  <p className="text-xs text-muted-foreground">Do not upload or paste identity documents into this system. Record only the verification method and outcome. Completion is blocked until identity is marked VERIFIED; deletion/correction still has to be carried out manually after retention review.</p>
+                  <p className="text-xs text-muted-foreground">Do not upload or paste identity documents into this system. Record only the verification method and outcome. DELETE कार्रवाई केवल VERIFIED पहचान, सही Registration ID और retention review के बाद ही करें। Status COMPLETED और DISPOSITION: DELETED सेव करने पर matching personal data हटाने की कार्रवाई चलेगी; multi-participant registration पर सुरक्षा कारणों से कार्रवाई रुक जाएगी।</p>
                   <label className="block space-y-1 text-sm font-medium">Status
                     <select className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextStatus} onChange={(event) => setNextStatus(event.target.value)}>
                       {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
