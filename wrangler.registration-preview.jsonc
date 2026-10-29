@@ -24,7 +24,7 @@
     }
   ],
   "vars": {
-    "EMAIL_SERVICE_URL": "https://example.invalid",
+    "EMAIL_SERVICE_URL": "https://example.invalid"
   },
   "secrets": {
     "required": ["ADMIN_TOKEN", "NHYM_EMAIL_SECRET"]
