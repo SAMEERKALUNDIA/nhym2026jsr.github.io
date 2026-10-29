@@ -1,0 +1,135 @@
+name: Registration Preview Worker Deployment and Smoke Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "worker.ts"
+      - "src/**"
+      - "public/**"
+      - "schema.sql"
+      - "wrangler.registration-preview.jsonc"
+      - ".github/workflows/registration-preview-worker.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  push:
+    branches:
+      - dpdp-participant-correction-workflow
+    paths:
+      - "worker.ts"
+      - "src/**"
+      - "public/**"
+      - "schema.sql"
+      - "wrangler.registration-preview.jsonc"
+      - ".github/workflows/registration-preview-worker.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: registration-preview-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy-registration-preview:
+    runs-on: ubuntu-24.04
+    environment: finance-preview
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build website assets
+        run: pnpm build
+
+      - name: Verify isolated Registration Preview configuration
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const config = JSON.parse(readFileSync('wrangler.registration-preview.jsonc', 'utf8'))
+          const production = JSON.parse(readFileSync('wrangler.jsonc', 'utf8'))
+          const finance = JSON.parse(readFileSync('wrangler.daily-updates-preview.jsonc', 'utf8'))
+          const fail = message => { console.error('FAIL ' + message); process.exit(1) }
+          if (config.name !== 'nhymindia-registration-preview') fail('Unexpected Registration Preview Worker name.')
+          if (config.d1_databases?.[0]?.database_id !== 'd952e14f-1803-44c5-af6f-b7650338ff0c') fail('Registration Preview must use its dedicated D1 database.')
+          if (config.d1_databases?.[0]?.database_id === production.d1_databases?.[0]?.database_id) fail('Registration Preview must not use Production D1.')
+          if (config.d1_databases?.[0]?.database_id === finance.d1_databases?.[0]?.database_id) fail('Registration Preview must not use Finance Preview D1.')
+          if (config.r2_buckets?.[0]?.bucket_name !== 'nhym-gallery-preview') fail('Preview must not bind the Production gallery bucket.')
+          if (config.vars?.FINANCE_PREVIEW_MODE !== 'true') fail('Preview-only mode must be enabled.')
+          console.log('PASS dedicated Registration Preview Worker/D1 and Preview-only resource isolation.')
+          NODE
+
+      - name: Deploy isolated Registration Preview Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_TOKEN: ${{ secrets.PREVIEW_ADMIN_TOKEN }}
+          NHYM_EMAIL_SECRET: ${{ secrets.PREVIEW_NHYM_EMAIL_SECRET }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          test -n "$ADMIN_TOKEN" || (echo "Missing finance-preview environment secret PREVIEW_ADMIN_TOKEN" && exit 1)
+          test -n "$NHYM_EMAIL_SECRET" || (echo "Missing finance-preview environment secret PREVIEW_NHYM_EMAIL_SECRET" && exit 1)
+          printf '%s' "$ADMIN_TOKEN" | pnpm dlx wrangler@4 secret put ADMIN_TOKEN --config wrangler.registration-preview.jsonc
+          printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.registration-preview.jsonc
+          pnpm dlx wrangler@4 deploy --config wrangler.registration-preview.jsonc
+
+      - name: Apply registration schema to dedicated Preview D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing finance-preview environment secret CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing finance-preview environment variable CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          pnpm dlx wrangler@4 d1 execute nhym2026-registration-preview --remote --file=schema.sql --config wrangler.registration-preview.jsonc
+
+      - name: Smoke-test Registration Preview API
+        run: |
+          node --input-type=module <<'NODE'
+          const base = 'https://nhymindia-registration-preview.2026jsr.workers.dev'
+          const checks = [
+            { name: 'registration status endpoint', path: '/api/registration-status', method: 'GET', expected: 200 },
+            { name: 'invalid registration request returns JSON validation error', path: '/api/registrations', method: 'POST', expected: 400, body: '{}' },
+          ]
+          let failed = false
+          for (const check of checks) {
+            let response
+            try {
+              response = await fetch(base + check.path, {
+                method: check.method,
+                headers: check.body ? { 'content-type': 'application/json' } : undefined,
+                body: check.body
+              })
+            } catch (error) {
+              console.error('FAIL ' + check.name + ': ' + String(error))
+              failed = true
+              continue
+            }
+            const text = await response.text()
+            if (response.status !== check.expected) {
+              console.error('FAIL ' + check.name + ': expected ' + check.expected + ', got ' + response.status + '; ' + text.slice(0, 200))
+              failed = true
+            } else if (!response.headers.get('content-type')?.includes('application/json') || !text.trim().startsWith('{')) {
+              console.error('FAIL ' + check.name + ': expected JSON, got ' + response.headers.get('content-type') + '; ' + text.slice(0, 200))
+              failed = true
+            } else {
+              console.log('PASS ' + check.name + ' (' + response.status + ', JSON)')
+            }
+          }
+          if (failed) process.exit(1)
+          NODE
