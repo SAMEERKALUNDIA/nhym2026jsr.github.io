@@ -2373,6 +2373,99 @@ if (
       return financeJson({ error: 'Finance endpoint not found.' }, 404)
     }
 
+    // PARTICIPANT CORRECTION — Main Admin only; never expose this through Finance sessions.
+    const participantCorrectionMatch = url.pathname.match(/^\/api\/admin\/participants\/(\d+)$/)
+    if (participantCorrectionMatch && request.method === 'PATCH') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      if (env.FINANCE_PREVIEW_MODE === 'true') return financeJson({ error: 'Participant editing is unavailable in Finance Preview.' }, 403)
+
+      let body: {
+        name?: unknown; dob?: unknown; gender?: unknown; address?: unknown;
+        district?: unknown; state?: unknown; pin?: unknown; activities?: unknown;
+        cultural?: unknown; sports?: unknown; fromOutside?: unknown;
+        accommodation?: unknown; note?: unknown; reason?: unknown;
+        privacyRequestId?: unknown
+      }
+      try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+      const reason = String(body.reason ?? '').trim().slice(0, 500)
+      if (reason.length < 5) return financeJson({ error: 'Correction reason is required (at least 5 characters).' }, 400)
+
+      const id = Number(participantCorrectionMatch[1])
+      const current = await env.DB.prepare(`
+        SELECT id, registration_id, participant_no, name, dob, gender, address, district, state, pin,
+          age, activities_json, cultural, sports, from_outside, accommodation, note
+        FROM participants WHERE id = ?
+      `).bind(id).first<any>()
+      if (!current) return financeJson({ error: 'Participant not found.' }, 404)
+
+      const fields: Record<string, unknown> = {
+        name: body.name, dob: body.dob, gender: body.gender, address: body.address,
+        district: body.district, state: body.state, pin: body.pin,
+        activities_json: body.activities, cultural: body.cultural, sports: body.sports,
+        from_outside: body.fromOutside, accommodation: body.accommodation, note: body.note
+      }
+      const limits: Record<string, number> = {
+        name: 150, dob: 10, gender: 40, address: 500, district: 100, state: 100,
+        pin: 10, activities_json: 2000, cultural: 200, sports: 200,
+        from_outside: 20, accommodation: 100, note: 1000
+      }
+      const updated: Record<string, string> = {}
+      for (const [field, value] of Object.entries(fields)) {
+        if (value === undefined) continue
+        const normalized = String(value ?? '').trim()
+        if (normalized.length > limits[field]) return financeJson({ error: `Field ${field} exceeds the allowed length.` }, 400)
+        if (field === 'name' && normalized.length < 2) return financeJson({ error: 'Participant name must contain at least 2 characters.' }, 400)
+        if (field === 'dob' && normalized && !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return financeJson({ error: 'Date of birth must use YYYY-MM-DD format.' }, 400)
+        if (field === 'pin' && normalized && !/^\d{4,10}$/.test(normalized)) return financeJson({ error: 'PIN must contain 4–10 digits.' }, 400)
+        if (field === 'activities_json' && normalized) {
+          try { if (!Array.isArray(JSON.parse(normalized))) throw new Error() } catch { return financeJson({ error: 'Activities must be a JSON array.' }, 400) }
+        }
+        updated[field] = normalized
+      }
+      if (Object.keys(updated).length === 0) return financeJson({ error: 'No participant fields were supplied for correction.' }, 400)
+
+      const nextDob = updated.dob ?? String(current.dob ?? '')
+      let nextAge = String(current.age ?? '')
+      if (nextDob) {
+        const dobDate = new Date(`${nextDob}T00:00:00.000Z`)
+        if (Number.isNaN(dobDate.getTime()) || dobDate.toISOString().slice(0, 10) !== nextDob || dobDate.getTime() > Date.now()) return financeJson({ error: 'Date of birth is invalid or in the future.' }, 400)
+        const now = new Date()
+        let age = now.getUTCFullYear() - dobDate.getUTCFullYear()
+        if (now.getUTCMonth() < dobDate.getUTCMonth() || (now.getUTCMonth() === dobDate.getUTCMonth() && now.getUTCDate() < dobDate.getUTCDate())) age--
+        if (age < 18) return financeJson({ error: 'Participant must be at least 18 years old under the current registration policy.' }, 400)
+        nextAge = String(age)
+      }
+
+      const oldValues: Record<string, unknown> = {}
+      const newValues: Record<string, unknown> = {}
+      for (const [field, value] of Object.entries(updated)) {
+        oldValues[field] = current[field]
+        newValues[field] = value
+      }
+      if (updated.dob !== undefined) {
+        oldValues.age = current.age
+        newValues.age = nextAge
+      }
+
+      const setParts = Object.keys(updated).map(field => `${field} = ?`)
+      const bindValues: unknown[] = Object.values(updated)
+      if (updated.dob !== undefined) { setParts.push('age = ?'); bindValues.push(nextAge) }
+      bindValues.push(id)
+      const nowIso = new Date().toISOString()
+
+      await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE participants SET ${setParts.join(', ')} WHERE id = ?`).bind(...bindValues),
+        env.DB.prepare(`INSERT INTO participant_change_audit (id, participant_id, registration_id, action, old_values_json, new_values_json, reason, privacy_request_id, actor, request_trace, created_at)
+          VALUES (?, ?, ?, 'PARTICIPANT_DATA_CORRECTED', ?, ?, ?, ?, 'main-admin-token', ?, ?)`).bind(
+            crypto.randomUUID(), id, current.registration_id, JSON.stringify(oldValues), JSON.stringify(newValues),
+            reason, String(body.privacyRequestId ?? '').trim().slice(0, 100) || null,
+            (request.headers.get('cf-ray') ?? '').slice(0, 100), nowIso
+          )
+      ])
+      return financeJson({ ok: true, participantId: id, updatedFields: Object.keys(updated), age: nextAge, updatedAt: nowIso })
+    }
+
     if (url.pathname === '/api/admin/registrations' && request.method === 'GET') {
       if (!authorised(request, env)) {
         return financeJson({ error: 'Unauthorized' }, 401)
