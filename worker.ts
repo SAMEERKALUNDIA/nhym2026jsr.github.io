@@ -432,6 +432,9 @@ export default {
         return json({ error: 'Enter a valid email address.' }, 400)
       }
       if (body.acknowledgement !== true) return json({ error: 'Please acknowledge the privacy request handling notice.' }, 400)
+      if (requestType === 'DELETE' && !/^NHYM26-\\d{6}$/i.test(registrationId)) {
+        return json({ error: 'A valid Registration ID (format NHYM26-000123) is required for deletion requests.' }, 400)
+      }
       if (details.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
 
       await ensurePrivacyRequestTables()
@@ -520,14 +523,22 @@ export default {
           return financeJson({ error: 'A retained-data exception must explain the applicable retention/legal obligation.' }, 400)
         }
         if (deletionDisposition[1].toUpperCase() === 'DELETED') {
+          // Fail closed: a deletion must be tied to one exact Registration ID as well as the verified email.
+          const exactRegistrationId = String(current.registration_id ?? '').trim()
+          if (!/^NHYM26-\\d{6}$/i.test(exactRegistrationId)) {
+            return financeJson({ error: 'A valid Registration ID is required on the verified privacy request. Nothing was deleted.' }, 400)
+          }
           const targetRows = await env.DB.prepare(`
             SELECT id FROM registrations
             WHERE lower(email) = lower(?)
-              AND (? IS NULL OR registration_id = ?)
-          `).bind(current.email, current.registration_id || null, current.registration_id || null).all<{ id: number }>()
+              AND upper(registration_id) = upper(?)
+          `).bind(current.email, exactRegistrationId).all<{ id: number }>()
           deletionTargetIds = (targetRows.results ?? []).map(row => Number(row.id)).filter(Number.isFinite)
           if (deletionTargetIds.length === 0) {
-            return financeJson({ error: 'No matching registration was found for this verified email/registration ID. Nothing was deleted; check the request details before retrying.' }, 404)
+            return financeJson({ error: 'No registration matched both the verified email and exact Registration ID. Nothing was deleted; check the request details before retrying.' }, 404)
+          }
+          if (deletionTargetIds.length !== 1) {
+            return financeJson({ error: 'More than one record matched the exact Registration ID and email. Nothing was deleted; escalate for manual review.' }, 409)
           }
           await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
           const placeholders = deletionTargetIds.map(() => '?').join(', ')
