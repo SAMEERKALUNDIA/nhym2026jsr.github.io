@@ -194,6 +194,9 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [updatingId, setUpdatingId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Row | null>(null)
+  const [editingParticipantId, setEditingParticipantId] = useState<number | null>(null)
+  const [participantDraft, setParticipantDraft] = useState({ name: '', dob: '', gender: '', address: '', district: '', state: '', pin: '', reason: '', privacyRequestId: '' })
+  const [participantSaving, setParticipantSaving] = useState(false)
   const [adminFinanceUsers, setAdminFinanceUsers] = useState<Array<{id:string;display_name:string;login_id:string;role:string;is_active:number;last_login_at:string|null}>>([])
   const [showAdminFinanceUsers, setShowAdminFinanceUsers] = useState(false)
   const [adminFinanceLoading, setAdminFinanceLoading] = useState(false)
@@ -703,6 +706,45 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [])
 				
+  function beginParticipantEdit(participant: Participant) {
+    setEditingParticipantId(participant.id)
+    setParticipantDraft({
+      name: participant.name || '', dob: participant.dob || '', gender: participant.gender || '',
+      address: participant.address || '', district: participant.district || '', state: participant.state || '',
+      pin: participant.pin || '', reason: '', privacyRequestId: new URLSearchParams(window.location.search).get('privacyRequestId') || ''
+    })
+    setError('')
+    setSuccess('')
+  }
+
+  async function saveParticipantCorrection(participant: Participant) {
+    if (!token || participantDraft.reason.trim().length < 5) {
+      setError('Correction reason is required (at least 5 characters).')
+      return
+    }
+    if (!window.confirm(`Save the reviewed corrections for ${participant.name || 'this participant'}? This change will be recorded in the audit history.`)) return
+    setParticipantSaving(true); setError(''); setSuccess('')
+    try {
+      const response = await fetch(`/api/admin/participants/${participant.id}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: participantDraft.name, dob: participantDraft.dob, gender: participantDraft.gender,
+          address: participantDraft.address, district: participantDraft.district, state: participantDraft.state,
+          pin: participantDraft.pin, reason: participantDraft.reason,
+          privacyRequestId: participantDraft.privacyRequestId || undefined
+        })
+      })
+      const result = await response.json() as { ok?: boolean; error?: string; updatedFields?: string[] }
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Participant correction could not be saved.')
+      await load()
+      setEditingParticipantId(null)
+      setSuccess(`Participant data corrected. Updated fields: ${(result.updatedFields || []).join(', ')}. Audit history recorded.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Participant correction could not be saved.')
+    } finally { setParticipantSaving(false) }
+  }
+
   async function changeStatus(
     row: Row,
     value: 'PAYMENT_VERIFIED' | 'APPROVED' | 'REJECTED'
@@ -3041,6 +3083,45 @@ if (!authenticated) {
                     {' — '}
                     {participant.name.toUpperCase()}
                   </div>
+                  <div className="mb-4">
+                    <Button type="button" variant="outline" onClick={() => beginParticipantEdit(participant)}>
+                      Edit Participant / जानकारी सुधारें
+                    </Button>
+                  </div>
+                  {editingParticipantId === participant.id && (
+                    <div className="mb-5 space-y-3 rounded-lg border border-primary/40 bg-muted/30 p-4">
+                      <h3 className="font-semibold">Correct participant data</h3>
+                      <p className="text-xs text-muted-foreground">पहचान सत्यापित करने और सही जानकारी की पुष्टि के बाद ही बदलाव सेव करें। DOB बदलने पर आयु दोबारा निकाली जाएगी; 18 वर्ष से कम आयु का रिकॉर्ड इस registration policy के अनुसार सेव नहीं होगा।</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {([
+                          ['name', 'Name'],
+                          ['dob', 'Date of birth'],
+                          ['gender', 'Gender'],
+                          ['district', 'District'],
+                          ['state', 'State'],
+                          ['pin', 'PIN'],
+                          ['address', 'Address'],
+                        ] as const).map(([field, label]) => (
+                          <label key={field} className={field === 'address' ? 'space-y-1 text-sm sm:col-span-2' : 'space-y-1 text-sm'}>
+                            <span className="font-medium">{label}</span>
+                            {field === 'address' ? (
+                              <textarea className="w-full rounded-lg border bg-background px-3 py-2" maxLength={500} value={participantDraft[field]} onChange={event => setParticipantDraft(current => ({ ...current, [field]: event.target.value }))} />
+                            ) : (
+                              <Input type={field === 'dob' ? 'date' : 'text'} maxLength={field === 'name' ? 150 : field === 'pin' ? 10 : 100} value={participantDraft[field]} onChange={event => setParticipantDraft(current => ({ ...current, [field]: event.target.value }))} />
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                      <label className="block space-y-1 text-sm font-medium">Reason for correction (required)
+                        <textarea className="w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={500} minLength={5} value={participantDraft.reason} onChange={event => setParticipantDraft(current => ({ ...current, reason: event.target.value }))} placeholder="e.g. Verified correction requested by participant" required />
+                      </label>
+                      {participantDraft.privacyRequestId && <p className="text-xs text-muted-foreground">Linked privacy request: {participantDraft.privacyRequestId}</p>}
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" disabled={participantSaving} onClick={() => void saveParticipantCorrection(participant)}>{participantSaving ? 'Saving…' : 'Save correction'}</Button>
+                        <Button type="button" variant="outline" disabled={participantSaving} onClick={() => setEditingParticipantId(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 
