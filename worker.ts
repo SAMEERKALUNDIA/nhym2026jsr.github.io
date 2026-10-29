@@ -2459,7 +2459,7 @@ if (
       }
 
       const setParts = Object.keys(updated).map(field => `${field} = ?`)
-      const bindValues: unknown[] = Object.values(updated)
+      const bindValues: Array<string | number | null> = Object.values(updated)
       if (updated.dob !== undefined) { setParts.push('age = ?'); bindValues.push(nextAge) }
       bindValues.push(id)
       const nowIso = new Date().toISOString()
