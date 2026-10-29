@@ -292,7 +292,7 @@ export default function PrivacyRequestsAdmin() {
                     </select>
                   </label>
                   <label className="block space-y-1 text-sm font-medium">Resolution / internal note
-                    <textarea className="min-h-24 w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={1000} value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Record verification outcome, action taken, or reason for decline. Do not enter unnecessary sensitive data." />
+                    <textarea className="min-h-24 w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={1000} value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder={selected.request_type === 'DELETE' ? 'For completion use exactly: DISPOSITION: DELETED (or RETAINED_EXCEPTION)\nREASON: explain action taken or retention/legal obligation (at least 10 characters). This records the reviewed outcome; it does not delete data automatically.' : 'Record verification outcome, action taken, or reason for decline. Do not enter unnecessary sensitive data.'} />
                   </label>
                   <button type="button" className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground disabled:opacity-50" disabled={saving} onClick={() => void updateRequest()}>{saving ? 'Saving…' : 'Save status & audit note'}</button>
                 </div>
