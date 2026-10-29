@@ -197,6 +197,9 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [editingParticipantId, setEditingParticipantId] = useState<number | null>(null)
   const [participantDraft, setParticipantDraft] = useState({ name: '', dob: '', gender: '', address: '', district: '', state: '', pin: '', reason: '', privacyRequestId: '' })
   const [participantSaving, setParticipantSaving] = useState(false)
+  const [participantAudit, setParticipantAudit] = useState<Array<{action:string;old_values_json:string;new_values_json:string;reason:string;privacy_request_id:string|null;actor:string;created_at:string}>>([])
+  const [participantAuditId, setParticipantAuditId] = useState<number | null>(null)
+  const [participantAuditLoading, setParticipantAuditLoading] = useState(false)
   const [adminFinanceUsers, setAdminFinanceUsers] = useState<Array<{id:string;display_name:string;login_id:string;role:string;is_active:number;last_login_at:string|null}>>([])
   const [showAdminFinanceUsers, setShowAdminFinanceUsers] = useState(false)
   const [adminFinanceLoading, setAdminFinanceLoading] = useState(false)
@@ -715,6 +718,21 @@ useEffect(() => {
     })
     setError('')
     setSuccess('')
+  }
+
+  async function loadParticipantAudit(participant: Participant) {
+    setParticipantAuditLoading(true); setError('')
+    try {
+      const response = await fetch(`/api/admin/participants/${participant.id}/audit`, { headers: { authorization: `Bearer ${token}` }, cache: 'no-store' })
+      const result = await response.json() as { entries?: typeof participantAudit; error?: string }
+      if (!response.ok) throw new Error(result.error || 'Correction audit history could not be loaded.')
+      setParticipantAudit(Array.isArray(result.entries) ? result.entries : [])
+      setParticipantAuditId(participant.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Correction audit history could not be loaded.')
+      setParticipantAudit([])
+      setParticipantAuditId(participant.id)
+    } finally { setParticipantAuditLoading(false) }
   }
 
   async function saveParticipantCorrection(participant: Participant) {
@@ -3087,6 +3105,23 @@ if (!authenticated) {
                     <Button type="button" variant="outline" onClick={() => beginParticipantEdit(participant)}>
                       Edit Participant / जानकारी सुधारें
                     </Button>
+                  </div>
+                  <div className="mb-4">
+                    <Button type="button" variant="outline" disabled={participantAuditLoading} onClick={() => void loadParticipantAudit(participant)}>
+                      {participantAuditLoading && participantAuditId === participant.id ? 'Loading audit…' : 'Correction Audit History'}
+                    </Button>
+                    {participantAuditId === participant.id && (
+                      <div className="mt-3 space-y-2 rounded-lg border p-3">
+                        {participantAudit.length === 0 ? <p className="text-sm text-muted-foreground">No correction audit entries found.</p> : participantAudit.map((entry, index) => (
+                          <div key={`${participant.id}-audit-${index}`} className="border-b pb-2 last:border-0">
+                            <p className="text-sm font-semibold">{entry.action} · {new Date(entry.created_at).toLocaleString('en-IN')}</p>
+                            <p className="text-sm">Reason: {entry.reason}</p>
+                            {entry.privacy_request_id && <p className="text-xs text-muted-foreground">Privacy request: {entry.privacy_request_id}</p>}
+                            <details className="mt-1 text-xs"><summary className="cursor-pointer">Changed fields (before / after)</summary><pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words">{JSON.stringify({ before: JSON.parse(entry.old_values_json || '{}'), after: JSON.parse(entry.new_values_json || '{}') }, null, 2)}</pre></details>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {editingParticipantId === participant.id && (
                     <div className="mb-5 space-y-3 rounded-lg border border-primary/40 bg-muted/30 p-4">
