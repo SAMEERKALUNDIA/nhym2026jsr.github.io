@@ -521,29 +521,41 @@ export default {
         }
         if (deletionDisposition[1].toUpperCase() === 'DELETED') {
           const targetRows = await env.DB.prepare(`
-            SELECT id FROM registrations
+            SELECT id, registration_id FROM registrations
             WHERE lower(email) = lower(?)
               AND (? IS NULL OR registration_id = ?)
-          `).bind(current.email, current.registration_id || null, current.registration_id || null).all<{ id: number }>()
+            ORDER BY id
+          `).bind(current.email, current.registration_id || null, current.registration_id || null).all<{ id: number; registration_id: string | null }>()
           deletionTargetIds = (targetRows.results ?? []).map(row => Number(row.id)).filter(Number.isFinite)
           if (deletionTargetIds.length === 0) {
             return financeJson({ error: 'No matching registration was found for this verified email/registration ID. Nothing was deleted; check the request details before retrying.' }, 404)
           }
+          // Never guess which registration to erase when an email has multiple
+          // registrations and the verified request does not specify an exact ID.
+          if (!current.registration_id && deletionTargetIds.length > 1) {
+            return financeJson({ error: 'This email matches multiple registrations. Add the exact registration ID to the verified request before deleting anything; no records were changed.' }, 409)
+          }
           await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
           const placeholders = deletionTargetIds.map(() => '?').join(', ')
           const nowForDeletion = new Date().toISOString()
+          // Remove participant personal details and correction snapshots, but retain
+          // a minimal anonymized registration shell for accounting/statistical history.
           await env.DB.batch([
             env.DB.prepare(`DELETE FROM participant_change_audit WHERE registration_id IN (${placeholders})`).bind(...deletionTargetIds),
             env.DB.prepare(`DELETE FROM participants WHERE registration_id IN (${placeholders})`).bind(...deletionTargetIds),
-            env.DB.prepare(`DELETE FROM registrations WHERE id IN (${placeholders})`).bind(...deletionTargetIds),
+            env.DB.prepare(`UPDATE registrations
+              SET email = 'deleted+' || id || '@privacy.invalid',
+                  payment_reference = 'REDACTED-' || id,
+                  declarations_json = '{}',
+                  updated_at = ?
+              WHERE id IN (${placeholders})`).bind(nowForDeletion, ...deletionTargetIds),
             env.DB.prepare('DELETE FROM privacy_request_audit WHERE request_id = ?').bind(id),
             env.DB.prepare(`UPDATE privacy_requests
               SET email = ?, registration_id = NULL, details = '', resolution_note = ?, updated_at = ?
               WHERE id = ?`).bind(`deleted+${id}@privacy.invalid`, `DISPOSITION: DELETED\nREASON: ${deletionReason.slice(0, 300)}`, nowForDeletion, id),
             env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
-              VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', 'Verified registration and participant personal data deleted; request record anonymized.', 'main-admin-token', ?)`)
-              .bind(crypto.randomUUID(), id, current.status, nowForDeletion)
-          ])
+              VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', 'Participant personal details and correction snapshots deleted; minimal anonymized registration/accounting record retained.', 'main-admin-token', ?)`)
+              .bind(crypto.randomUUID(), id, current.status, nowForDeletion)          ])
         }
       }
       if (nextStatus === 'COMPLETED' && current.request_type === 'CORRECT') {
