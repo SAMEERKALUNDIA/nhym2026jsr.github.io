@@ -436,7 +436,7 @@ export default {
         return json({ error: 'Enter a valid email address.' }, 400)
       }
       if (body.acknowledgement !== true) return json({ error: 'Please acknowledge the privacy request handling notice.' }, 400)
-      if (requestType === 'DELETE' && !/^NHYM26-\\d{6}$/i.test(registrationId)) {
+      if (requestType === 'DELETE' && !/^NHYM26-\d{6}$/i.test(registrationId)) {
         return json({ error: 'A valid Registration ID (format NHYM26-000123) is required for deletion requests.' }, 400)
       }
       if (requestType === 'DELETE' && (!Number.isInteger(participantNo) || Number(participantNo) < 1 || Number(participantNo) > 100)) {
@@ -532,7 +532,7 @@ export default {
         if (deletionDisposition[1].toUpperCase() === 'DELETED') {
           // Fail closed: a deletion must be tied to one exact Registration ID as well as the verified email.
           const exactRegistrationId = String(current.registration_id ?? '').trim()
-          if (!/^NHYM26-\\d{6}$/i.test(exactRegistrationId)) {
+          if (!/^NHYM26-\d{6}$/i.test(exactRegistrationId)) {
             return financeJson({ error: 'A valid Registration ID is required on the verified privacy request. Nothing was deleted.' }, 400)
           }
           const exactParticipantNo = Number(current.participant_no)
