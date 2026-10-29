@@ -476,7 +476,7 @@ export default {
     if (privacyRequestMatch && request.method === 'PATCH') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       const parsed = await readJsonLimited<{
-        status?: unknown; resolutionNote?: unknown; verificationStatus?: unknown; verificationMethod?: unknown
+        status?: unknown; resolutionNote?: unknown; verificationStatus?: unknown; verificationMethod?: unknown; registrationId?: unknown
       }>(request, 4 * 1024)
       if (!parsed.ok) return financeJson({ error: parsed.status === 413 ? 'Request is too large.' : 'Invalid request.' }, parsed.status)
       const nextStatus = String(parsed.value.status ?? '')
@@ -485,6 +485,7 @@ export default {
       const resolutionNote = String(parsed.value.resolutionNote ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, 1000)
       const verificationStatus = String(parsed.value.verificationStatus ?? 'UNVERIFIED')
       const verificationMethod = String(parsed.value.verificationMethod ?? '').trim()
+      const requestedRegistrationId = String(parsed.value.registrationId ?? '').trim().slice(0, 32)
       const allowedVerificationStatuses = ['UNVERIFIED','PENDING','VERIFIED','FAILED']
       const allowedVerificationMethods = ['REGISTRATION_DETAILS','CALLBACK_KNOWN_CONTACT','IN_PERSON','OTHER']
       if (!allowedVerificationStatuses.includes(verificationStatus)) return financeJson({ error: 'Invalid identity verification status.' }, 400)
@@ -508,6 +509,15 @@ export default {
       if (nextStatus === 'COMPLETED' && verificationStatus !== 'VERIFIED') {
         return financeJson({ error: 'Identity must remain VERIFIED before a privacy request can be marked completed.' }, 409)
       }
+      let targetRegistrationId = current.registration_id
+      if (requestedRegistrationId) {
+        if (current.request_type !== 'DELETE') return financeJson({ error: 'Registration ID can only be assigned during a deletion-request review.' }, 400)
+        const exactMatch = await env.DB.prepare(`SELECT registration_id FROM registrations WHERE lower(email) = lower(?) AND registration_id = ? LIMIT 2`).bind(current.email, requestedRegistrationId).all<{ registration_id: string }>()
+        if ((exactMatch.results ?? []).length !== 1) return financeJson({ error: 'The supplied Registration ID does not uniquely match this request email. No records were changed.' }, 409)
+        targetRegistrationId = requestedRegistrationId
+        await env.DB.prepare('UPDATE privacy_requests SET registration_id = ?, updated_at = ? WHERE id = ?').bind(targetRegistrationId, new Date().toISOString(), id).run()
+        await env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, created_at) VALUES (?, ?, 'REGISTRATION_ID_MATCHED', ?, ?, ?, ?)`).bind(crypto.randomUUID(), id, current.status, nextStatus, 'Admin supplied Registration ID; exact email + registration match validated.', new Date().toISOString()).run()
+      }
       let deletionTargetIds: number[] = []
       let deletionReason = ''
       let deletedParticipantScoped = false
@@ -527,7 +537,7 @@ export default {
             WHERE lower(email) = lower(?)
               AND (? IS NULL OR registration_id = ?)
             ORDER BY id
-          `).bind(current.email, current.registration_id || null, current.registration_id || null).all<{ id: number; registration_id: string | null }>()
+          `).bind(current.email, targetRegistrationId || null, targetRegistrationId || null).all<{ id: number; registration_id: string | null }>()
           deletionTargetIds = (targetRows.results ?? []).map(row => Number(row.id)).filter(Number.isFinite)
           if (deletionTargetIds.length === 0) {
             return financeJson({ error: 'No matching registration was found for this verified email/registration ID. Nothing was deleted; check the request details before retrying.' }, 404)
