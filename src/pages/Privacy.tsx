@@ -101,8 +101,8 @@ export default function Privacy() {
               <input id="privacy-request-email" type="email" autoComplete="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" required />
             </div>
             <div className="space-y-1">
-              <label htmlFor="privacy-request-registration" className="text-sm font-medium">Registration ID (optional) / पंजीकरण संख्या (वैकल्पिक)</label>
-              <input id="privacy-request-registration" type="text" maxLength={32} value={registrationId} onChange={(event) => setRegistrationId(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. NHYM26-000123" />
+              <label htmlFor="privacy-request-registration" className="text-sm font-medium">Registration ID {requestType === 'DELETE' ? '(required) / अनिवार्य' : '(optional) / वैकल्पिक'}</label>
+              <input id="privacy-request-registration" type="text" maxLength={32} value={registrationId} onChange={(event) => setRegistrationId(event.target.value.toUpperCase())} required={requestType === 'DELETE'} pattern={requestType === 'DELETE' ? 'NHYM26-[0-9]{6}' : undefined} title={requestType === 'DELETE' ? 'Enter a Registration ID such as NHYM26-000123' : undefined} className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. NHYM26-000123" />
             </div>
             <div className="space-y-1">
               <label htmlFor="privacy-request-details" className="text-sm font-medium">Details (optional; max 1000 characters) / विवरण (वैकल्पिक)</label>
