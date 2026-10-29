@@ -2374,7 +2374,7 @@ if (
     }
 
     // PARTICIPANT CORRECTION — Main Admin only; never expose this through Finance sessions.
-    const participantCorrectionMatch = url.pathname.match(/^\/api\/admin\/participants\/(\d+)$/)
+    const participantCorrectionMatch = url.pathname.match(/^\/api\/admin\/participants\/(\d+)(?:\/audit)?$/)
     if (participantCorrectionMatch && request.method === 'GET' && url.pathname.endsWith('/audit')) {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       if (env.FINANCE_PREVIEW_MODE === 'true') return financeJson({ entries: [] })
@@ -2386,7 +2386,7 @@ if (
       return financeJson({ entries: result.results ?? [] })
     }
 
-    if (participantCorrectionMatch && request.method === 'PATCH') {
+    if (participantCorrectionMatch && request.method === 'PATCH' && !url.pathname.endsWith('/audit')) {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       if (env.FINANCE_PREVIEW_MODE === 'true') return financeJson({ error: 'Participant editing is unavailable in Finance Preview.' }, 403)
 
