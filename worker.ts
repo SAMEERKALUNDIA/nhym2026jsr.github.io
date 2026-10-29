@@ -508,8 +508,15 @@ export default {
       if (nextStatus === 'COMPLETED' && verificationStatus !== 'VERIFIED') {
         return financeJson({ error: 'Identity must remain VERIFIED before a privacy request can be marked completed.' }, 409)
       }
-      if (nextStatus === 'COMPLETED' && current.request_type === 'DELETE' && !/retention|deleted|deletion|removed|removal|kept|retained/i.test(resolutionNote)) {
-        return financeJson({ error: 'For deletion requests, record whether data was deleted or retained under a documented retention exception.' }, 400)
+      if (nextStatus === 'COMPLETED' && current.request_type === 'DELETE') {
+        // Structured disposition is stronger than free-text keyword matching, but does not itself delete data.
+        const deletionDisposition = resolutionNote.match(/^DISPOSITION:\s*(DELETED|RETAINED_EXCEPTION)\s*\nREASON:\s*(.{10,})$/i)
+        if (!deletionDisposition) {
+          return financeJson({ error: 'For DELETE requests, use two lines: DISPOSITION: DELETED or DISPOSITION: RETAINED_EXCEPTION, then REASON: followed by at least 10 characters. This records a reviewed outcome; it does not delete data automatically.' }, 400)
+        }
+        if (deletionDisposition[1].toUpperCase() === 'RETAINED_EXCEPTION' && !/retention|legal|law|obligation|exception/i.test(deletionDisposition[2])) {
+          return financeJson({ error: 'A retained-data disposition must explain the applicable retention/legal obligation in the reason.' }, 400)
+        }
       }
       if (nextStatus === 'COMPLETED' && current.request_type === 'CORRECT') {
         await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
