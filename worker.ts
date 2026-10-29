@@ -2375,6 +2375,17 @@ if (
 
     // PARTICIPANT CORRECTION — Main Admin only; never expose this through Finance sessions.
     const participantCorrectionMatch = url.pathname.match(/^\/api\/admin\/participants\/(\d+)$/)
+    if (participantCorrectionMatch && request.method === 'GET' && url.pathname.endsWith('/audit')) {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      if (env.FINANCE_PREVIEW_MODE === 'true') return financeJson({ entries: [] })
+      await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
+      const auditId = Number(participantCorrectionMatch[1])
+      const participant = await env.DB.prepare('SELECT id FROM participants WHERE id = ?').bind(auditId).first()
+      if (!participant) return financeJson({ error: 'Participant not found.' }, 404)
+      const result = await env.DB.prepare('SELECT action, old_values_json, new_values_json, reason, privacy_request_id, actor, request_trace, created_at FROM participant_change_audit WHERE participant_id = ? ORDER BY created_at DESC LIMIT 50').bind(auditId).all()
+      return financeJson({ entries: result.results ?? [] })
+    }
+
     if (participantCorrectionMatch && request.method === 'PATCH') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       if (env.FINANCE_PREVIEW_MODE === 'true') return financeJson({ error: 'Participant editing is unavailable in Finance Preview.' }, 403)
