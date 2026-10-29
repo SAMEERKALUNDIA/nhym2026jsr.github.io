@@ -132,7 +132,7 @@ export default function PrivacyRequestsAdmin() {
   async function updateRequest() {
     if (!selected || !token.trim()) return
     if (selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\s*DELETED\b/im.test(resolutionNote)) {
-      const confirmed = window.confirm('FINAL CONFIRMATION: This will permanently delete the matching registration and participant personal data from this Preview database and anonymize this privacy request. This action cannot be undone. Continue only after verifying the requester and checking retention obligations.')
+      const confirmed = window.confirm('FINAL CONFIRMATION: This will permanently delete the participant data identified by this verified request from the Preview database. For a multi-participant registration, include PARTICIPANT_NO: [number] in the resolution note; shared registration/payment records will be retained. This action cannot be undone. Continue only after verifying the requester and checking retention obligations.')
       if (!confirmed) return
     }
     setSaving(true)
@@ -166,7 +166,7 @@ export default function PrivacyRequestsAdmin() {
           }
         : row))
       setNotice(selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\s*DELETED\b/im.test(resolutionNote)
-        ? 'डेटा deletion पूरा हुआ; संबंधित registration/participant personal data हटाया गया और अनुरोध anonymize किया गया.'
+        ? 'डेटा deletion पूरा हुआ; अनुरोध anonymize किया गया और संबंधित participant का व्यक्तिगत डेटा हटाया गया।'
         : 'अनुरोध की स्थिति अपडेट हुई और audit history में दर्ज की गई.')
       await loadRequests()
       await loadAudit(selected.id)
@@ -299,7 +299,7 @@ export default function PrivacyRequestsAdmin() {
                     </select>
                   </label>
                   <label className="block space-y-1 text-sm font-medium">Resolution / internal note
-                    <textarea className="min-h-24 w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={1000} value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder={selected.request_type === 'DELETE' ? 'For completion use exactly: DISPOSITION: DELETED (or RETAINED_EXCEPTION)\nREASON: explain action taken or retention/legal obligation (at least 10 characters). DELETED permanently removes matching registration and participant personal data from this database after verification.' : 'Record verification outcome, action taken, or reason for decline. Do not enter unnecessary sensitive data.'} />
+                    <textarea className="min-h-24 w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={1000} value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder={selected.request_type === 'DELETE' ? 'DELETE पूरा करने के लिए लिखें: DISPOSITION: DELETED\nPARTICIPANT_NO: [number] (केवल multi-participant registration के लिए)\nREASON: कार्रवाई/retention review का कारण, कम से कम 10 अक्षर। Single participant registration में PARTICIPANT_NO की जरूरत नहीं है।' : 'Record verification outcome, action taken, or reason for decline. Do not enter unnecessary sensitive data.'} />
                   </label>
                   <button type="button" className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground disabled:opacity-50" disabled={saving} onClick={() => void updateRequest()}>{saving ? 'Saving…' : 'Save status & audit note'}</button>
                 </div>
