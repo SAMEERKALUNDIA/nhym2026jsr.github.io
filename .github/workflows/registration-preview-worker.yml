@@ -15,6 +15,7 @@ on:
   push:
     branches:
       - dpdp-participant-correction-workflow
+      - dpdp-verified-data-deletion
     paths:
       - "worker.ts"
       - "src/**"
