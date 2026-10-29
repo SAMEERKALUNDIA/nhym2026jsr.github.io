@@ -57,6 +57,7 @@ export default function PrivacyRequestsAdmin() {
   const [nextVerificationStatus, setNextVerificationStatus] = useState('UNVERIFIED')
   const [nextVerificationMethod, setNextVerificationMethod] = useState('')
   const [resolutionNote, setResolutionNote] = useState('')
+  const [nextRegistrationId, setNextRegistrationId] = useState('')
   const [accessAudit, setAccessAudit] = useState<AccessAuditEntry[]>([])
   const [accessAuditLoading, setAccessAuditLoading] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -126,6 +127,7 @@ export default function PrivacyRequestsAdmin() {
     setNextVerificationStatus(item?.verification_status || 'UNVERIFIED')
     setNextVerificationMethod(item?.verification_method || '')
     setResolutionNote(item?.resolution_note || '')
+    setNextRegistrationId(item?.registration_id || '')
     await loadAudit(id)
   }
 
@@ -150,6 +152,7 @@ export default function PrivacyRequestsAdmin() {
           resolutionNote,
           verificationStatus: nextVerificationStatus,
           verificationMethod: nextVerificationStatus === 'VERIFIED' ? nextVerificationMethod : '',
+          registrationId: nextRegistrationId.trim(),
         }),
       })
       const result = await response.json() as { ok?: boolean; error?: string; status?: string; verificationStatus?: string; verificationMethod?: string; verifiedAt?: string | null }
@@ -159,6 +162,7 @@ export default function PrivacyRequestsAdmin() {
             ...row,
             status: nextStatus,
             resolution_note: resolutionNote,
+            registration_id: nextRegistrationId.trim() || row.registration_id,
             verification_status: result.verificationStatus || nextVerificationStatus,
             verification_method: result.verificationMethod || (nextVerificationStatus === 'VERIFIED' ? nextVerificationMethod : ''),
             verified_at: result.verifiedAt ?? row.verified_at,
@@ -271,6 +275,10 @@ export default function PrivacyRequestsAdmin() {
                 )}
                 <div className="space-y-3 border-t pt-4">
                   <h3 className="font-semibold">Review decision</h3>
+                  {selected.request_type === 'DELETE' && <label className="block space-y-1 text-sm font-medium">Exact Registration ID (required if email matches multiple registrations)
+                    <input className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextRegistrationId} onChange={(event) => setNextRegistrationId(event.target.value.trimStart().slice(0, 32))} maxLength={32} placeholder="e.g. NHYM26-000005" />
+                    <span className="block text-xs text-muted-foreground">The system validates this ID against the request email before deleting anything. Do not use the request reference number here.</span>
+                  </label>
                   <label className="block space-y-1 text-sm font-medium">Identity verification status
                     <select className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextVerificationStatus} onChange={(event) => {
                       const value = event.target.value
