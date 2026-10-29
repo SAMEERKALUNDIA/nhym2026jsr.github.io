@@ -367,6 +367,7 @@ export default {
         request_type TEXT NOT NULL CHECK (request_type IN ('ACCESS','CORRECT','DELETE','WITHDRAW_CONSENT','COMPLAINT')),
         email TEXT NOT NULL,
         registration_id TEXT,
+        participant_no INTEGER,
         details TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'RECEIVED' CHECK (status IN ('RECEIVED','IN_REVIEW','NEEDS_VERIFICATION','COMPLETED','DECLINED')),
         resolution_note TEXT NOT NULL DEFAULT '',
@@ -380,6 +381,7 @@ export default {
       // Backward-compatible additive migration for existing D1 databases.
       const requestColumns = await env.DB.prepare('PRAGMA table_info(privacy_requests)').all<{ name: string }>()
       const columnNames = new Set((requestColumns.results ?? []).map((column) => column.name))
+      if (!columnNames.has('participant_no')) { try { await env.DB.prepare('ALTER TABLE privacy_requests ADD COLUMN participant_no INTEGER').run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
       if (!columnNames.has('verification_status')) { try { await env.DB.prepare("ALTER TABLE privacy_requests ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED'").run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
       if (!columnNames.has('verification_method')) { try { await env.DB.prepare("ALTER TABLE privacy_requests ADD COLUMN verification_method TEXT NOT NULL DEFAULT ''").run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
       if (!columnNames.has('verified_at')) { try { await env.DB.prepare('ALTER TABLE privacy_requests ADD COLUMN verified_at TEXT').run() } catch (error) { if (!/duplicate column name/i.test(error instanceof Error ? error.message : String(error))) throw error } }
@@ -414,7 +416,7 @@ export default {
 
     if (url.pathname === '/api/privacy-requests' && request.method === 'POST') {
       const parsed = await readJsonLimited<{
-        requestType?: unknown; email?: unknown; registrationId?: unknown;
+        requestType?: unknown; email?: unknown; registrationId?: unknown; participantNo?: unknown;
         details?: unknown; acknowledgement?: unknown
       }>(request, 8 * 1024)
       if (!parsed.ok) return json({ error: parsed.status === 413 ? 'Request is too large.' : 'Invalid request.' }, parsed.status)
@@ -422,6 +424,8 @@ export default {
       const requestType = String(body.requestType ?? '')
       const email = String(body.email ?? '').trim().toLowerCase()
       const registrationId = String(body.registrationId ?? '').trim().slice(0, 32)
+      const participantNoRaw = String(body.participantNo ?? '').trim()
+      const participantNo = participantNoRaw ? Number(participantNoRaw) : null
       const rawDetails = String(body.details ?? '')
       if (rawDetails.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
       const details = rawDetails.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim()
@@ -434,6 +438,9 @@ export default {
       if (body.acknowledgement !== true) return json({ error: 'Please acknowledge the privacy request handling notice.' }, 400)
       if (requestType === 'DELETE' && !/^NHYM26-\\d{6}$/i.test(registrationId)) {
         return json({ error: 'A valid Registration ID (format NHYM26-000123) is required for deletion requests.' }, 400)
+      }
+      if (requestType === 'DELETE' && (!Number.isInteger(participantNo) || Number(participantNo) < 1 || Number(participantNo) > 100)) {
+        return json({ error: 'A valid participant number (1–100) is required for deletion requests.' }, 400)
       }
       if (details.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
 
@@ -454,9 +461,9 @@ export default {
       const id = crypto.randomUUID()
       const now = new Date().toISOString()
       await env.DB.prepare(`
-        INSERT INTO privacy_requests (id, request_type, email, registration_id, details, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'RECEIVED', ?, ?)
-      `).bind(id, requestType, email, registrationId || null, details, now, now).run()
+        INSERT INTO privacy_requests (id, request_type, email, registration_id, participant_no, details, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'RECEIVED', ?, ?)
+      `).bind(id, requestType, email, registrationId || null, participantNo, details, now, now).run()
       await env.DB.prepare(`
         INSERT INTO privacy_request_audit (id, request_id, action, new_status, note, created_at)
         VALUES (?, ?, 'SUBMITTED', 'RECEIVED', '', ?)
@@ -468,7 +475,7 @@ export default {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       await ensurePrivacyRequestTables()
       const result = await env.DB.prepare(`
-        SELECT id, request_type, email, registration_id, details, status, resolution_note,
+        SELECT id, request_type, email, registration_id, participant_no, details, status, resolution_note,
           verification_status, verification_method, verified_at, verified_by, created_at, updated_at
         FROM privacy_requests ORDER BY created_at DESC LIMIT 200
       `).all()
@@ -502,8 +509,8 @@ export default {
       }
       await ensurePrivacyRequestTables()
       const id = privacyRequestMatch[1]
-      const current = await env.DB.prepare('SELECT status, request_type, email, registration_id, details, verification_status, verification_method FROM privacy_requests WHERE id = ?')
-        .bind(id).first<{ status: string; request_type: string; email: string; registration_id: string | null; details: string; verification_status: string; verification_method: string }>()
+      const current = await env.DB.prepare('SELECT status, request_type, email, registration_id, participant_no, details, verification_status, verification_method FROM privacy_requests WHERE id = ?')
+        .bind(id).first<{ status: string; request_type: string; email: string; registration_id: string | null; participant_no: number | null; details: string; verification_status: string; verification_method: string }>()
       if (!current) return financeJson({ error: 'Privacy request not found.' }, 404)
       if (nextStatus === 'COMPLETED' && current.verification_status !== 'VERIFIED') {
         return financeJson({ error: 'Save identity verification as VERIFIED in a separate review step before completing this request.' }, 409)
@@ -528,31 +535,42 @@ export default {
           if (!/^NHYM26-\\d{6}$/i.test(exactRegistrationId)) {
             return financeJson({ error: 'A valid Registration ID is required on the verified privacy request. Nothing was deleted.' }, 400)
           }
-          const targetRows = await env.DB.prepare(`
+          const exactParticipantNo = Number(current.participant_no)
+          if (!Number.isInteger(exactParticipantNo) || exactParticipantNo < 1) {
+            return financeJson({ error: 'A valid participant number is required on the verified privacy request. Nothing was deleted.' }, 400)
+          }
+          const registrationRows = await env.DB.prepare(`
             SELECT id FROM registrations
             WHERE lower(email) = lower(?)
               AND upper(registration_id) = upper(?)
           `).bind(current.email, exactRegistrationId).all<{ id: number }>()
-          deletionTargetIds = (targetRows.results ?? []).map(row => Number(row.id)).filter(Number.isFinite)
-          if (deletionTargetIds.length === 0) {
-            return financeJson({ error: 'No registration matched both the verified email and exact Registration ID. Nothing was deleted; check the request details before retrying.' }, 404)
+          const registrationTargets = (registrationRows.results ?? []).map(row => Number(row.id)).filter(Number.isFinite)
+          if (registrationTargets.length !== 1) {
+            return financeJson({ error: registrationTargets.length === 0
+              ? 'No registration matched both the verified email and exact Registration ID. Nothing was deleted.'
+              : 'More than one registration matched the exact Registration ID and email. Nothing was deleted; escalate for manual review.' }, registrationTargets.length === 0 ? 404 : 409)
           }
+          const participantRows = await env.DB.prepare(`
+            SELECT id FROM participants WHERE registration_id = ? AND participant_no = ?
+          `).bind(registrationTargets[0], exactParticipantNo).all<{ id: number }>()
+          deletionTargetIds = (participantRows.results ?? []).map(row => Number(row.id)).filter(Number.isFinite)
           if (deletionTargetIds.length !== 1) {
-            return financeJson({ error: 'More than one record matched the exact Registration ID and email. Nothing was deleted; escalate for manual review.' }, 409)
+            return financeJson({ error: deletionTargetIds.length === 0
+              ? 'No participant matched this Registration ID and participant number. Nothing was deleted.'
+              : 'More than one participant matched this participant number. Nothing was deleted; escalate for manual review.' }, deletionTargetIds.length === 0 ? 404 : 409)
           }
           await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
-          const placeholders = deletionTargetIds.map(() => '?').join(', ')
+          const participantPlaceholders = deletionTargetIds.map(() => '?').join(', ')
           const nowForDeletion = new Date().toISOString()
           await env.DB.batch([
-            env.DB.prepare(`DELETE FROM participant_change_audit WHERE registration_id IN (${placeholders})`).bind(...deletionTargetIds),
-            env.DB.prepare(`DELETE FROM participants WHERE registration_id IN (${placeholders})`).bind(...deletionTargetIds),
-            env.DB.prepare(`DELETE FROM registrations WHERE id IN (${placeholders})`).bind(...deletionTargetIds),
+            env.DB.prepare(`DELETE FROM participant_change_audit WHERE participant_id IN (${participantPlaceholders})`).bind(...deletionTargetIds),
+            env.DB.prepare(`DELETE FROM participants WHERE id IN (${participantPlaceholders})`).bind(...deletionTargetIds),
             env.DB.prepare('DELETE FROM privacy_request_audit WHERE request_id = ?').bind(id),
             env.DB.prepare(`UPDATE privacy_requests
-              SET email = ?, registration_id = NULL, details = '', resolution_note = ?, updated_at = ?
+              SET email = ?, registration_id = NULL, participant_no = NULL, details = '', resolution_note = ?, updated_at = ?
               WHERE id = ?`).bind(`deleted+${id}@privacy.invalid`, `DISPOSITION: DELETED\nREASON: ${deletionReason.slice(0, 300)}`, nowForDeletion, id),
             env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
-              VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', 'Verified registration and participant personal data deleted; request record anonymized.', 'main-admin-token', ?)`)
+              VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', 'Verified individual participant personal data deleted; shared registration and accounting records retained; request anonymized.', 'main-admin-token', ?)`)
               .bind(crypto.randomUUID(), id, current.status, nowForDeletion)
           ])
         }
