@@ -499,8 +499,8 @@ export default {
       }
       await ensurePrivacyRequestTables()
       const id = privacyRequestMatch[1]
-      const current = await env.DB.prepare('SELECT status, request_type, verification_status, verification_method FROM privacy_requests WHERE id = ?')
-        .bind(id).first<{ status: string; request_type: string; verification_status: string; verification_method: string }>()
+      const current = await env.DB.prepare('SELECT status, request_type, email, registration_id, details, verification_status, verification_method FROM privacy_requests WHERE id = ?')
+        .bind(id).first<{ status: string; request_type: string; email: string; registration_id: string | null; details: string; verification_status: string; verification_method: string }>()
       if (!current) return financeJson({ error: 'Privacy request not found.' }, 404)
       if (nextStatus === 'COMPLETED' && current.verification_status !== 'VERIFIED') {
         return financeJson({ error: 'Save identity verification as VERIFIED in a separate review step before completing this request.' }, 409)
@@ -508,14 +508,42 @@ export default {
       if (nextStatus === 'COMPLETED' && verificationStatus !== 'VERIFIED') {
         return financeJson({ error: 'Identity must remain VERIFIED before a privacy request can be marked completed.' }, 409)
       }
+      let deletionTargetIds: number[] = []
+      let deletionReason = ''
       if (nextStatus === 'COMPLETED' && current.request_type === 'DELETE') {
-        // Structured disposition is stronger than free-text keyword matching, but does not itself delete data.
         const deletionDisposition = resolutionNote.match(/^DISPOSITION:\s*(DELETED|RETAINED_EXCEPTION)\s*\nREASON:\s*(.{10,})$/i)
         if (!deletionDisposition) {
-          return financeJson({ error: 'For DELETE requests, use two lines: DISPOSITION: DELETED or DISPOSITION: RETAINED_EXCEPTION, then REASON: followed by at least 10 characters. This records a reviewed outcome; it does not delete data automatically.' }, 400)
+          return financeJson({ error: 'For DELETE requests, use two lines: DISPOSITION: DELETED or DISPOSITION: RETAINED_EXCEPTION, then REASON: followed by at least 10 characters.' }, 400)
         }
-        if (deletionDisposition[1].toUpperCase() === 'RETAINED_EXCEPTION' && !/retention|legal|law|obligation|exception/i.test(deletionDisposition[2])) {
-          return financeJson({ error: 'A retained-data disposition must explain the applicable retention/legal obligation in the reason.' }, 400)
+        deletionReason = deletionDisposition[2].trim()
+        if (deletionDisposition[1].toUpperCase() === 'RETAINED_EXCEPTION' && !/retention|legal|law|obligation|exception/i.test(deletionReason)) {
+          return financeJson({ error: 'A retained-data exception must explain the applicable retention/legal obligation.' }, 400)
+        }
+        if (deletionDisposition[1].toUpperCase() === 'DELETED') {
+          const targetRows = await env.DB.prepare(`
+            SELECT id FROM registrations
+            WHERE lower(email) = lower(?)
+              AND (? IS NULL OR registration_id = ?)
+          `).bind(current.email, current.registration_id || null, current.registration_id || null).all<{ id: number }>()
+          deletionTargetIds = (targetRows.results ?? []).map(row => Number(row.id)).filter(Number.isFinite)
+          if (deletionTargetIds.length === 0) {
+            return financeJson({ error: 'No matching registration was found for this verified email/registration ID. Nothing was deleted; check the request details before retrying.' }, 404)
+          }
+          await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
+          const placeholders = deletionTargetIds.map(() => '?').join(', ')
+          const nowForDeletion = new Date().toISOString()
+          await env.DB.batch([
+            env.DB.prepare(`DELETE FROM participant_change_audit WHERE registration_id IN (${placeholders})`).bind(...deletionTargetIds),
+            env.DB.prepare(`DELETE FROM participants WHERE registration_id IN (${placeholders})`).bind(...deletionTargetIds),
+            env.DB.prepare(`DELETE FROM registrations WHERE id IN (${placeholders})`).bind(...deletionTargetIds),
+            env.DB.prepare('DELETE FROM privacy_request_audit WHERE request_id = ?').bind(id),
+            env.DB.prepare(`UPDATE privacy_requests
+              SET email = ?, registration_id = NULL, details = '', resolution_note = ?, updated_at = ?
+              WHERE id = ?`).bind(`deleted+${id}@privacy.invalid`, `DISPOSITION: DELETED\nREASON: ${deletionReason.slice(0, 300)}`, nowForDeletion, id),
+            env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
+              VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', 'Verified registration and participant personal data deleted; request record anonymized.', 'main-admin-token', ?)`)
+              .bind(crypto.randomUUID(), id, current.status, nowForDeletion)
+          ])
         }
       }
       if (nextStatus === 'COMPLETED' && current.request_type === 'CORRECT') {
@@ -539,10 +567,13 @@ export default {
         verificationStatus, verifiedAt, now, verificationStatus, verificationStatus, verifiedBy, now, id
       ).run()
       if (current.status !== nextStatus || resolutionNote) {
-        await env.DB.prepare(`
-          INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'main-admin-token', ?)
-        `).bind(crypto.randomUUID(), id, current.status === nextStatus ? 'REVIEW_NOTE_UPDATED' : 'STATUS_CHANGED', current.status, nextStatus, resolutionNote, now).run()
+        const isCompletedDeletion = nextStatus === 'COMPLETED' && current.request_type === 'DELETE' && deletionTargetIds.length > 0
+        if (!isCompletedDeletion) {
+          await env.DB.prepare(`
+            INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'main-admin-token', ?)
+          `).bind(crypto.randomUUID(), id, current.status === nextStatus ? 'REVIEW_NOTE_UPDATED' : 'STATUS_CHANGED', current.status, nextStatus, resolutionNote, now).run()
+        }
       }
       if (verificationChanged) {
         await env.DB.prepare(`
