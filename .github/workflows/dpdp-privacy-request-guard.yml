@@ -34,6 +34,9 @@ jobs:
             ['Completion requires identity to have been verified in an earlier step', "nextStatus === 'COMPLETED' && current.verification_status !== 'VERIFIED'"],
             ['Completion also requires identity to remain verified', "nextStatus === 'COMPLETED' && verificationStatus !== 'VERIFIED'"],
             ['Deletion completion requires a structured disposition', 'DISPOSITION:'],
+            ['DELETED disposition deletes matching registration and participant data', 'PERSONAL_DATA_DELETED'],
+            ['Deletion is scoped to verified request email and optional registration ID', 'lower(email) = lower(?)'],
+            ['Deletion anonymizes the completed privacy request', 'deleted+'],
             ['Deletion disposition is limited to DELETED or RETAINED_EXCEPTION', 'DELETED|RETAINED_EXCEPTION'],
             ['Deletion disposition requires a reason of at least 10 characters', '.{10,})$/i'],
             ['Retained-data exception requires a retention/legal rationale', 'applicable retention/legal obligation'],
@@ -72,7 +75,7 @@ jobs:
             ['Admin UI shows sensitive-data access audit', 'Sensitive-data access audit'],
             ['Admin UI warns not to upload identity documents', 'Do not upload or paste identity documents'],
             ['DELETE resolution UI shows structured disposition instructions', 'RETAINED_EXCEPTION'],
-            ['DELETE resolution UI explains no automatic deletion occurs', 'it does not delete data automatically'],
+            ['DELETE resolution UI explains destructive deletion confirmation', 'FINAL CONFIRMATION'],
 
           ]
           for (const [label, fragment] of uiChecks) {
