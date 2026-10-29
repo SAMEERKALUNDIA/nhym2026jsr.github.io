@@ -68,12 +68,18 @@ jobs:
             ['Admin UI requires a verification method', 'Verification method'],
             ['Admin UI shows sensitive-data access audit', 'Sensitive-data access audit'],
             ['Admin UI warns not to upload identity documents', 'Do not upload or paste identity documents'],
-            ['Manage Participants has an Edit Participant action', 'Edit Participant'],
-            ['Participant correction audit history is viewable', 'Correction Audit History'],
 
           ]
           for (const [label, fragment] of uiChecks) {
             assert.ok(ui.includes(fragment), 'Missing Admin UI control: ' + label)
+            console.log('PASS', label)
+          }
+          const participantAdminChecks = [
+            ['Manage Participants has an Edit Participant action', 'Edit Participant'],
+            ['Participant correction audit history is viewable', 'Correction Audit History'],
+          ]
+          for (const [label, fragment] of participantAdminChecks) {
+            assert.ok(admin.includes(fragment), 'Missing participant Admin UI control: ' + label)
             console.log('PASS', label)
           }
           assert.ok(admin.includes("window.location.href = '/admin/privacy-requests'"), 'Admin dashboard must link to privacy request workspace')
