@@ -511,6 +511,10 @@ export default {
       if (nextStatus === 'COMPLETED' && current.request_type === 'DELETE' && !/retention|deleted|deletion|removed|removal|kept|retained/i.test(resolutionNote)) {
         return financeJson({ error: 'For deletion requests, record whether data was deleted or retained under a documented retention exception.' }, 400)
       }
+      if (nextStatus === 'COMPLETED' && current.request_type === 'CORRECT') {
+        const correction = await env.DB.prepare('SELECT id FROM participant_change_audit WHERE privacy_request_id = ? LIMIT 1').bind(id).first()
+        if (!correction) return financeJson({ error: 'Complete the verified participant correction through Manage Participants and save its linked audit entry before completing this request.' }, 409)
+      }
       const now = new Date().toISOString()
       const verificationChanged = current.verification_status !== verificationStatus || current.verification_method !== verificationMethod
       const verifiedAt = verificationStatus === 'VERIFIED' ? (verificationChanged ? now : null) : null
@@ -2447,6 +2451,19 @@ if (
         nextAge = String(age)
       }
 
+      const privacyRequestId = String(body.privacyRequestId ?? '').trim().slice(0, 100)
+      if (privacyRequestId) {
+        const linkedRequest = await env.DB.prepare(`
+          SELECT pr.id, pr.request_type, pr.email, pr.status, pr.verification_status, r.email AS registration_email
+          FROM privacy_requests pr
+          JOIN registrations r ON lower(r.email) = lower(pr.email)
+          WHERE pr.id = ? AND r.id = ?
+        `).bind(privacyRequestId, current.registration_id).first<{ id: string; request_type: string; email: string; status: string; verification_status: string; registration_email: string }>()
+        if (!linkedRequest || linkedRequest.request_type !== 'CORRECT' || linkedRequest.verification_status !== 'VERIFIED' || ['COMPLETED','DECLINED'].includes(linkedRequest.status)) {
+          return financeJson({ error: 'Linked privacy request must be an open CORRECT request with verified identity for this registration.' }, 409)
+        }
+      }
+
       const oldValues: Record<string, unknown> = {}
       const newValues: Record<string, unknown> = {}
       for (const [field, value] of Object.entries(updated)) {
@@ -2470,7 +2487,7 @@ if (
         env.DB.prepare(`INSERT INTO participant_change_audit (id, participant_id, registration_id, action, old_values_json, new_values_json, reason, privacy_request_id, actor, request_trace, created_at)
           VALUES (?, ?, ?, 'PARTICIPANT_DATA_CORRECTED', ?, ?, ?, ?, 'main-admin-token', ?, ?)`).bind(
             crypto.randomUUID(), id, current.registration_id, JSON.stringify(oldValues), JSON.stringify(newValues),
-            reason, String(body.privacyRequestId ?? '').trim().slice(0, 100) || null,
+            reason, privacyRequestId || null,
             (request.headers.get('cf-ray') ?? '').slice(0, 100), nowIso
           )
       ])
