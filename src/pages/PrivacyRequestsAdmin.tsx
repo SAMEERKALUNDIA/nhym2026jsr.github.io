@@ -255,6 +255,13 @@ export default function PrivacyRequestsAdmin() {
                   <div><dt className="text-xs text-muted-foreground">Last updated</dt><dd className="mt-1">{dateLabel(selected.updated_at)}</dd></div>
                 </dl>
 
+                {selected.request_type === 'CORRECT' && selected.verification_status === 'VERIFIED' && selected.status !== 'COMPLETED' && (
+                  <div className="rounded-lg border border-primary/30 bg-muted/30 p-4">
+                    <h3 className="font-semibold">Correction action</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Identity verification is recorded. Open Manage Participants to review and correct the matching registration. Saving a correction requires a reason and writes an audit entry; return here to record the outcome before completing the request.</p>
+                    <a className="mt-3 inline-flex rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground" href={`/admin/participants?search=${encodeURIComponent(selected.email)}&privacyRequestId=${encodeURIComponent(selected.id)}`}>Open participant record for correction</a>
+                  </div>
+                )}
                 <div className="space-y-3 border-t pt-4">
                   <h3 className="font-semibold">Review decision</h3>
                   <label className="block space-y-1 text-sm font-medium">Identity verification status
