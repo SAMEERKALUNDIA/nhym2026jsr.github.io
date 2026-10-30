@@ -103,14 +103,14 @@ export default function Privacy() {
               <input id="privacy-request-email" type="email" autoComplete="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" required />
             </div>
             <div className="space-y-1">
-              <label htmlFor="privacy-request-registration" className="text-sm font-medium">Registration ID {requestType === 'DELETE' ? '(required) / अनिवार्य' : '(optional) / वैकल्पिक'}</label>
-              <input id="privacy-request-registration" type="text" maxLength={32} value={registrationId} onChange={(event) => setRegistrationId(event.target.value.toUpperCase())} required={requestType === 'DELETE'} pattern={requestType === 'DELETE' ? 'NHYM26-[0-9]{6}' : undefined} title={requestType === 'DELETE' ? 'Enter a Registration ID such as NHYM26-000123' : undefined} className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. NHYM26-000123" />
+              <label htmlFor="privacy-request-registration" className="text-sm font-medium">Registration ID (required) / अनिवार्य</label>
+              <input id="privacy-request-registration" type="text" maxLength={32} value={registrationId} onChange={(event) => setRegistrationId(event.target.value.toUpperCase())} required pattern="NHYM26-[0-9]{6}" title="Enter a Registration ID such as NHYM26-000123" className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. NHYM26-000123" />
             </div>
-            {requestType === 'DELETE' && <div className="space-y-1">
+            <div className="space-y-1">
               <label htmlFor="privacy-request-participant" className="text-sm font-medium">Participant number / प्रतिभागी क्रमांक (required / अनिवार्य)</label>
-              <input id="privacy-request-participant" type="number" min={1} max={100} step={1} value={participantNo} onChange={(event) => setParticipantNo(event.target.value)} required={requestType === 'DELETE'} className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. 2" />
-              <p className="text-xs text-muted-foreground">Enter the participant number shown in this registration. Only this participant's personal data will be targeted; shared registration and payment records will be retained.</p>
-            </div>}
+              <input id="privacy-request-participant" type="number" min={1} max={100} step={1} value={participantNo} onChange={(event) => setParticipantNo(event.target.value)} required className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. 2" />
+              <p className="text-xs text-muted-foreground">Enter the participant number shown in this registration. This helps the LOC identify the correct participant for every request; no data is changed automatically.</p>
+            </div>
             <div className="space-y-1">
               <label htmlFor="privacy-request-details" className="text-sm font-medium">Details (optional; max 1000 characters) / विवरण (वैकल्पिक)</label>
               <textarea id="privacy-request-details" maxLength={1000} value={details} onChange={(event) => setDetails(event.target.value)} className="min-h-24 w-full rounded-md border bg-background px-3 py-2" />
