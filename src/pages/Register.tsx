@@ -448,7 +448,7 @@ if (!row.dob.trim()) {
       ok = false
       if (!problem) problem = 'Enter a valid transaction reference for each payment group.'
     }
-    const normalizedReferences = paymentGroups.map((group) => group.reference.trim().replace(/\\s+/g, '').toUpperCase())
+    const normalizedReferences = paymentGroups.map((group) => group.reference.trim().replace(/\s+/g, '').toUpperCase())
     if (new Set(normalizedReferences).size !== normalizedReferences.length) {
       ok = false
       if (!problem) problem = 'Each separate payment transaction must have a different transaction reference.'
