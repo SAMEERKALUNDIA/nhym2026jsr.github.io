@@ -250,7 +250,7 @@ jobs:
           const submitted = await fetch(base + '/api/privacy-requests', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ requestType: 'ACCESS', email: 'privacy-ci@example.org', registrationId: 'CI-PRIVACY-TEST', details: 'Automated preview validation; no real personal data.', acknowledgement: true })
+            body: JSON.stringify({ requestType: 'ACCESS', email: 'privacy-ci@example.org', registrationId: 'NHYM26-000123', participantNo: '1', details: 'Automated preview validation; no real personal data.', acknowledgement: true })
           })
           const created = await json(submitted)
           check('valid privacy request accepted', created.status, 201, created.body)
