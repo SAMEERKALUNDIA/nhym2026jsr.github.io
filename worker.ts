@@ -514,9 +514,9 @@ export default {
         if (current.request_type !== 'DELETE') return financeJson({ error: 'Registration ID can only be assigned during a deletion-request review.' }, 400)
         const exactMatch = await env.DB.prepare(`SELECT registration_id FROM registrations WHERE lower(email) = lower(?) AND registration_id = ? LIMIT 2`).bind(current.email, requestedRegistrationId).all<{ registration_id: string }>()
         if ((exactMatch.results ?? []).length !== 1) return financeJson({ error: 'The supplied Registration ID does not uniquely match this request email. No records were changed.' }, 409)
+        // Keep the verified ID in memory only. Persist it after all disposition,
+        // participant-scope, and correction-request validation has succeeded.
         targetRegistrationId = requestedRegistrationId
-        await env.DB.prepare('UPDATE privacy_requests SET registration_id = ?, updated_at = ? WHERE id = ?').bind(targetRegistrationId, new Date().toISOString(), id).run()
-        await env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, created_at) VALUES (?, ?, 'REGISTRATION_ID_MATCHED', ?, ?, ?, ?)`).bind(crypto.randomUUID(), id, current.status, nextStatus, 'Admin supplied Registration ID; exact email + registration match validated.', new Date().toISOString()).run()
       }
       let deletionTargetIds: number[] = []
       let deletionReason = ''
@@ -567,7 +567,14 @@ export default {
           deletedParticipantScoped = participants.length > 1
           // Preserve audit accountability while redacting snapshots and free text that
           // may contain personal data. Delete only the verified participant record.
-          const batch = [
+          const batch = []
+          if (requestedRegistrationId) {
+            batch.push(
+              env.DB.prepare('UPDATE privacy_requests SET registration_id = ?, updated_at = ? WHERE id = ?').bind(targetRegistrationId, nowForDeletion, id),
+              env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, created_at) VALUES (?, ?, 'REGISTRATION_ID_MATCHED', ?, ?, ?, ?)`).bind(crypto.randomUUID(), id, current.status, nextStatus, 'Admin supplied Registration ID; exact email + registration match validated.', nowForDeletion)
+            )
+          }
+          batch.push(
             env.DB.prepare(`UPDATE participant_change_audit
               SET old_values_json = '{"redacted":true,"reason":"privacy deletion"}',
                   new_values_json = '{"redacted":true,"reason":"privacy deletion"}',
@@ -592,7 +599,17 @@ export default {
               WHERE id = ?`).bind(`deleted+${id}@privacy.invalid`, `DISPOSITION: DELETED\nREASON: ${deletionReason.slice(0, 300)}`, nowForDeletion, id),
             env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
               VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', ?, 'main-admin-token', ?)`)
-              .bind(crypto.randomUUID(), id, current.status, deletedParticipantScoped ? 'Verified participant personal details deleted; correction audit events retained with personal snapshots redacted; shared registration and accounting records retained for remaining participants.' : 'Participant personal details deleted; correction audit events retained with personal snapshots redacted; minimal anonymized registration/accounting record retained.', nowForDeletion)
+              .bind(crypto.randomUUID(), id, current.status, deletedParticipantScoped ? 'Verified participant personal details deleted; correction audit events retained with personal snapshots redacted; shared registration and accounting records retained for remaining participants.' : 'Participant personal details deleted; correction audit events retained with personal snapshots redacted; minimal anonymized registration/accounting record retained.', nowForDeletion),
+            // Commit deletion/redaction and request completion together. D1 batch is
+            // transactional: if any statement fails, the batch is rolled back.
+            env.DB.prepare(`
+              UPDATE privacy_requests
+              SET status = 'COMPLETED', resolution_note = ?, verification_status = ?, verification_method = ?,
+                  verified_at = CASE WHEN ? = 'VERIFIED' THEN COALESCE(verified_at, ?) ELSE NULL END,
+                  verified_by = CASE WHEN ? = 'VERIFIED' THEN 'main-admin-token' ELSE NULL END,
+                  updated_at = ?
+              WHERE id = ?
+            `).bind(`DISPOSITION: DELETED\\nREASON: Participant personal data removed; anonymized registration/accounting shell retained.`, verificationStatus, verificationMethod, verificationStatus, nowForDeletion, verificationStatus, nowForDeletion, id)
           )
           await env.DB.batch(batch)
         }
@@ -606,17 +623,27 @@ export default {
       const verificationChanged = current.verification_status !== verificationStatus || current.verification_method !== verificationMethod
       const verifiedAt = verificationStatus === 'VERIFIED' ? (verificationChanged ? now : null) : null
       const verifiedBy = verificationStatus === 'VERIFIED' ? 'main-admin-token' : null
-      await env.DB.prepare(`
-        UPDATE privacy_requests
-        SET status = ?, resolution_note = ?, verification_status = ?, verification_method = ?,
-            verified_at = CASE WHEN ? = 'VERIFIED' AND ? IS NOT NULL THEN ? WHEN ? <> 'VERIFIED' THEN NULL ELSE verified_at END,
-            verified_by = CASE WHEN ? = 'VERIFIED' THEN ? ELSE NULL END,
-            updated_at = ?
-        WHERE id = ?
-      `).bind(
-        nextStatus, deletionTargetIds.length > 0 ? 'DISPOSITION: DELETED\\nREASON: Participant personal data removed; anonymized registration/accounting shell retained.' : resolutionNote, verificationStatus, verificationMethod,
-        verificationStatus, verifiedAt, now, verificationStatus, verificationStatus, verifiedBy, now, id
-      ).run()
+      if (deletionTargetIds.length === 0) {
+        // For non-deletion outcomes, persist the verified registration ID only
+        // after all validation above has passed.
+        if (requestedRegistrationId) {
+          await env.DB.batch([
+            env.DB.prepare('UPDATE privacy_requests SET registration_id = ?, updated_at = ? WHERE id = ?').bind(targetRegistrationId, now, id),
+            env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, created_at) VALUES (?, ?, 'REGISTRATION_ID_MATCHED', ?, ?, ?, ?)`).bind(crypto.randomUUID(), id, current.status, nextStatus, 'Admin supplied Registration ID; exact email + registration match validated.', now)
+          ])
+        }
+        await env.DB.prepare(`
+          UPDATE privacy_requests
+          SET status = ?, resolution_note = ?, verification_status = ?, verification_method = ?,
+              verified_at = CASE WHEN ? = 'VERIFIED' AND ? IS NOT NULL THEN ? WHEN ? <> 'VERIFIED' THEN NULL ELSE verified_at END,
+              verified_by = CASE WHEN ? = 'VERIFIED' THEN ? ELSE NULL END,
+              updated_at = ?
+          WHERE id = ?
+        `).bind(
+          nextStatus, resolutionNote, verificationStatus, verificationMethod,
+          verificationStatus, verifiedAt, now, verificationStatus, verificationStatus, verifiedBy, now, id
+        ).run()
+      }
       if (current.status !== nextStatus || resolutionNote) {
         const isCompletedDeletion = nextStatus === 'COMPLETED' && current.request_type === 'DELETE' && deletionTargetIds.length > 0
         if (!isCompletedDeletion) {
