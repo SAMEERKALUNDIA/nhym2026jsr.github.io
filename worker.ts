@@ -565,10 +565,14 @@ export default {
           const participantIds = selectedParticipants.map(p => Number(p.id))
           const participantPlaceholders = participantIds.map(() => '?').join(', ')
           deletedParticipantScoped = participants.length > 1
-          // Delete only the verified participant row and that person's correction snapshots.
-          // Preserve the shared registration/payment shell when other participants remain.
+          // Preserve audit accountability while redacting snapshots and free text that
+          // may contain personal data. Delete only the verified participant record.
           const batch = [
-            env.DB.prepare(`DELETE FROM participant_change_audit WHERE participant_id IN (${participantPlaceholders})`).bind(...participantIds),
+            env.DB.prepare(`UPDATE participant_change_audit
+              SET old_values_json = '{"redacted":true,"reason":"privacy deletion"}',
+                  new_values_json = '{"redacted":true,"reason":"privacy deletion"}',
+                  reason = 'Redacted following verified privacy deletion'
+              WHERE participant_id IN (${participantPlaceholders})`).bind(...participantIds),
             env.DB.prepare(`DELETE FROM participants WHERE id IN (${participantPlaceholders})`).bind(...participantIds)
           ]
           if (!deletedParticipantScoped) {
@@ -580,13 +584,15 @@ export default {
               WHERE id IN (${placeholders})`).bind(nowForDeletion, ...deletionTargetIds))
           }
           batch.push(
-            env.DB.prepare('DELETE FROM privacy_request_audit WHERE request_id = ?').bind(id),
+            env.DB.prepare(`UPDATE privacy_request_audit
+              SET note = 'Historical note redacted following verified privacy deletion'
+              WHERE request_id = ?`).bind(id),
             env.DB.prepare(`UPDATE privacy_requests
               SET email = ?, registration_id = NULL, details = '', resolution_note = ?, updated_at = ?
               WHERE id = ?`).bind(`deleted+${id}@privacy.invalid`, `DISPOSITION: DELETED\nREASON: ${deletionReason.slice(0, 300)}`, nowForDeletion, id),
             env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
               VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', ?, 'main-admin-token', ?)`)
-              .bind(crypto.randomUUID(), id, current.status, deletedParticipantScoped ? 'Verified participant personal details and that participant correction snapshots deleted; shared registration and accounting records retained for remaining participants.' : 'Participant personal details and correction snapshots deleted; minimal anonymized registration/accounting record retained.', nowForDeletion)
+              .bind(crypto.randomUUID(), id, current.status, deletedParticipantScoped ? 'Verified participant personal details deleted; correction audit events retained with personal snapshots redacted; shared registration and accounting records retained for remaining participants.' : 'Participant personal details deleted; correction audit events retained with personal snapshots redacted; minimal anonymized registration/accounting record retained.', nowForDeletion)
           )
           await env.DB.batch(batch)
         }
