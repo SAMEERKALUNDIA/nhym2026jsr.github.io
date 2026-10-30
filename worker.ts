@@ -2786,6 +2786,34 @@ if (
 
   return financeJson({ registrations })
 }
+    const paymentMatch = url.pathname.match(/^\/api\/admin\/registrations\/(\d+)\/payments\/(\d+)$/)
+    if (paymentMatch && request.method === 'PATCH') {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorised' }, 401)
+      const body = await request.json() as { status?: string }
+      if (!['VERIFIED', 'REJECTED', 'PENDING'].includes(String(body.status))) return financeJson({ error: 'Invalid payment status.' }, 400)
+      const registrationRowId = Number(paymentMatch[1])
+      const paymentId = Number(paymentMatch[2])
+      const payment = await env.DB.prepare('SELECT id, registration_id FROM registration_payments WHERE id = ? AND registration_id = ?')
+        .bind(paymentId, registrationRowId).first<{ id: number; registration_id: number }>()
+      if (!payment) return financeJson({ error: 'Payment transaction not found. Legacy payments must continue to use registration-level verification.' }, 404)
+      const updatedAt = new Date().toISOString()
+      await env.DB.prepare('UPDATE registration_payments SET status = ?, updated_at = ? WHERE id = ?')
+        .bind(body.status, updatedAt, paymentId).run()
+      const summary = await env.DB.prepare(`
+        SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'VERIFIED' THEN 1 ELSE 0 END) AS verified,
+               SUM(CASE WHEN status = 'REJECTED' THEN 1 ELSE 0 END) AS rejected
+        FROM registration_payments WHERE registration_id = ?
+      `).bind(registrationRowId).first<{ total: number; verified: number; rejected: number }>()
+      if (Number(summary?.total ?? 0) > 0 && Number(summary?.verified ?? 0) === Number(summary?.total ?? 0)) {
+        await env.DB.prepare("UPDATE registrations SET status = 'PAYMENT_VERIFIED', updated_at = ? WHERE id = ? AND status = 'PENDING'")
+          .bind(updatedAt, registrationRowId).run()
+      } else if (Number(summary?.rejected ?? 0) > 0) {
+        await env.DB.prepare("UPDATE registrations SET status = 'PENDING', updated_at = ? WHERE id = ? AND status = 'PAYMENT_VERIFIED'")
+          .bind(updatedAt, registrationRowId).run()
+      }
+      return financeJson({ ok: true, paymentId, paymentStatus: body.status, registrationStatus: Number(summary?.total ?? 0) > 0 && Number(summary?.verified ?? 0) === Number(summary?.total ?? 0) ? 'PAYMENT_VERIFIED' : 'PENDING' })
+    }
+
     const match = url.pathname.match(/^\/api\/admin\/registrations\/(\d+)$/)
 
     if (match && request.method === 'PATCH') {
