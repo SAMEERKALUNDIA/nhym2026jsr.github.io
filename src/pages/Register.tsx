@@ -834,8 +834,8 @@ if (!row.dob.trim()) {
                     rows={rows}
                     email={email}
                     registrationId={registrationId}
-                    paymentMode={paymentMode}
-                    paymentReference={paymentReference}
+                    paymentMode={paymentGroups[0]?.mode ?? 'upi'}
+                    paymentReference={paymentGroups[0]?.reference ?? ''}
                     onEdit={() => setSubmitted(false)}
                   />
                 ) : (
@@ -1278,16 +1278,53 @@ if (!row.dob.trim()) {
                       </div>
                     </fieldset>
 
-                    {rows.some((row) => row.category !== 'visitor') && (
-                      <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
-                        <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">Payment reference</legend>
-                        <p className="max-w-lg text-sm text-muted-foreground">Pay the total for the non-visitor participant categories using the bank/UPI details shown on this page, then enter the reference below. The committee will verify it before approval.</p>
-                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                          <div><Label>Payment method</Label><Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent></Select></div>
-                          <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /><p className="mt-2 text-xs text-muted-foreground">Each payment reference can be used for only one registration. Enter it exactly as shown in your payment receipt.</p><Label htmlFor="payment-screenshot" className="mt-4 block">Read from payment screenshot (optional)</Label><Input id="payment-screenshot" type="file" accept="image/*" disabled={ocrBusy} onChange={readPaymentScreenshot} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" /><p className="mt-2 text-xs text-muted-foreground">OCR runs in your browser. The screenshot is not uploaded or saved. Please check the detected reference yourself.</p>{ocrMessage && <p role="status" className="mt-2 text-xs text-muted-foreground">{ocrBusy ? 'Processing… ' : ''}{ocrMessage}</p>}</div>
-                        </div>
-                      </fieldset>
-                    )}
+                    <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
+                      <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">Payment transactions</legend>
+                      <p className="max-w-lg text-sm text-muted-foreground">Har actual transaction ke liye ek group banaiye. Ek payment group mein multiple participants/visitors select kar sakte hain. Har vyakti ko exactly ek group mein hona chahiye; amount fee ke hisaab se calculate hota hai.</p>
+                      <div className="mt-4 space-y-4">
+                        {paymentGroups.map((group, groupIndex) => {
+                          const assignedFee = group.rowKeys.reduce((sum, rowKey) => {
+                            const row = rows.find((item) => item.key === rowKey)
+                            return sum + (row ? (feeOf(row) ?? 0) : 0)
+                          }, 0)
+                          return <section key={group.key} className="rounded-lg border p-3 sm:p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <h4 className="font-semibold">Transaction {groupIndex + 1} — {inr(assignedFee)}</h4>
+                              {paymentGroups.length > 1 && <Button type="button" variant="outline" size="sm" onClick={() => {
+                                setPaymentGroups((prev) => prev.filter((item) => item.key !== group.key))
+                                if (activePaymentKey === group.key) setActivePaymentKey(paymentGroups.find((item) => item.key !== group.key)?.key ?? 1)
+                              }}>Remove</Button>}
+                            </div>
+                            <p className="mt-2 text-sm text-muted-foreground">Is transaction se paid log select karein:</p>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                              {rows.map((row, index) => {
+                                const assignedTo = paymentGroups.find((item) => item.rowKeys.includes(row.key))?.key
+                                return <label key={row.key} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                                  <input type="checkbox" checked={group.rowKeys.includes(row.key)} onChange={(event) => {
+                                    setPaymentGroups((prev) => prev.map((item) => {
+                                      const withoutRow = item.rowKeys.filter((key) => key !== row.key)
+                                      if (item.key === group.key && event.target.checked) return { ...item, rowKeys: [...withoutRow, row.key] }
+                                      if (item.key === group.key || event.target.checked) return { ...item, rowKeys: withoutRow }
+                                      return item
+                                    }))
+                                  }} />
+                                  <span>{index + 1}. {row.name.trim() || 'Unnamed person'} — {inr(feeOf(row) ?? 0)}{assignedTo && assignedTo !== group.key ? ' (another transaction)' : ''}</span>
+                                </label>
+                              })}
+                            </div>
+                            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                              <div><Label>Payment method</Label><Select value={group.mode} onValueChange={(value) => updatePaymentGroup(group.key, { mode: value as PaymentMode })}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((mode) => <SelectItem key={mode.id} value={mode.id}>{mode.label}</SelectItem>)}</SelectContent></Select></div>
+                              <div><Label htmlFor={`payment-reference-${group.key}`}>Transaction / reference number</Label><Input id={`payment-reference-${group.key}`} value={group.reference} onFocus={() => setActivePaymentKey(group.key)} onChange={(event) => updatePaymentGroup(group.key, { reference: event.target.value })} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" />
+                                <Label htmlFor={`payment-screenshot-${group.key}`} className="mt-4 block">Read receipt screenshot (optional)</Label><Input id={`payment-screenshot-${group.key}`} type="file" accept="image/*" disabled={ocrBusy} onFocus={() => setActivePaymentKey(group.key)} onChange={(event) => { setActivePaymentKey(group.key); void readPaymentScreenshot(event) }} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" />
+                              </div>
+                            </div>
+                            {ocrMessage && activePaymentKey === group.key && <p role="status" className="mt-2 text-xs text-muted-foreground">{ocrBusy ? 'Processing… ' : ''}{ocrMessage}</p>}
+                          </section>
+                        })}
+                        <Button type="button" variant="outline" className="w-full" onClick={addPaymentGroup}>Add another transaction</Button>
+                      </div>
+                      <p className="mt-3 text-xs text-muted-foreground">OCR browser mein hi chalta hai; screenshot upload ya save nahi hota. Detected ID ko receipt se milaiye. OCR payment verify nahi karta. Duplicate reference server par reject hoga.</p>
+                    </fieldset>
 
                     <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
                       <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
