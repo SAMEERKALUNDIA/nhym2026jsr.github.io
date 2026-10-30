@@ -633,15 +633,16 @@ export default {
       const verifiedAt = verificationStatus === 'VERIFIED' ? (verificationChanged ? now : null) : null
       const verifiedBy = verificationStatus === 'VERIFIED' ? 'main-admin-token' : null
       if (deletionTargetIds.length === 0) {
-        // For non-deletion outcomes, persist the verified registration ID only
-        // after all validation above has passed.
+        // All validation has passed. Persist the request update and its audit events
+        // atomically so a failed audit insert cannot leave a partial review update.
+        const reviewBatch = []
         if (requestedRegistrationId) {
-          await env.DB.batch([
+          reviewBatch.push(
             env.DB.prepare('UPDATE privacy_requests SET registration_id = ?, updated_at = ? WHERE id = ?').bind(targetRegistrationId, now, id),
             env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, created_at) VALUES (?, ?, 'REGISTRATION_ID_MATCHED', ?, ?, ?, ?)`).bind(crypto.randomUUID(), id, current.status, nextStatus, 'Admin supplied Registration ID; exact email + registration match validated.', now)
-          ])
+          )
         }
-        await env.DB.prepare(`
+        reviewBatch.push(env.DB.prepare(`
           UPDATE privacy_requests
           SET status = ?, resolution_note = ?, verification_status = ?, verification_method = ?,
               verified_at = CASE WHEN ? = 'VERIFIED' AND ? IS NOT NULL THEN ? WHEN ? <> 'VERIFIED' THEN NULL ELSE verified_at END,
@@ -651,22 +652,20 @@ export default {
         `).bind(
           nextStatus, resolutionNote, verificationStatus, verificationMethod,
           verificationStatus, verifiedAt, now, verificationStatus, verificationStatus, verifiedBy, now, id
-        ).run()
-      }
-      if (current.status !== nextStatus || resolutionNote) {
-        const isCompletedDeletion = nextStatus === 'COMPLETED' && current.request_type === 'DELETE' && deletionTargetIds.length > 0
-        if (!isCompletedDeletion) {
-          await env.DB.prepare(`
+        ))
+        if (current.status !== nextStatus || resolutionNote) {
+          reviewBatch.push(env.DB.prepare(`
             INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
             VALUES (?, ?, ?, ?, ?, ?, 'main-admin-token', ?)
-          `).bind(crypto.randomUUID(), id, current.status === nextStatus ? 'REVIEW_NOTE_UPDATED' : 'STATUS_CHANGED', current.status, nextStatus, resolutionNote, now).run()
+          `).bind(crypto.randomUUID(), id, current.status === nextStatus ? 'REVIEW_NOTE_UPDATED' : 'STATUS_CHANGED', current.status, nextStatus, resolutionNote, now))
         }
-      }
-      if (verificationChanged) {
-        await env.DB.prepare(`
-          INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
-          VALUES (?, ?, 'IDENTITY_VERIFICATION_CHANGED', ?, ?, ?, 'main-admin-token', ?)
-        `).bind(crypto.randomUUID(), id, current.verification_status, verificationStatus, verificationStatus === 'VERIFIED' ? `Method: ${verificationMethod}` : 'Verification status updated; no identity document stored.', now).run()
+        if (verificationChanged) {
+          reviewBatch.push(env.DB.prepare(`
+            INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
+            VALUES (?, ?, 'IDENTITY_VERIFICATION_CHANGED', ?, ?, ?, 'main-admin-token', ?)
+          `).bind(crypto.randomUUID(), id, current.verification_status, verificationStatus, verificationStatus === 'VERIFIED' ? `Method: ${verificationMethod}` : 'Verification status updated; no identity document stored.', now))
+        }
+        await env.DB.batch(reviewBatch)
       }
       return financeJson({ ok: true, status: nextStatus, verificationStatus, verificationMethod, verifiedAt: verificationStatus === 'VERIFIED' ? (verifiedAt ?? now) : null, updatedAt: now })
     }
