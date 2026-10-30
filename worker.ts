@@ -414,14 +414,16 @@ export default {
 
     if (url.pathname === '/api/privacy-requests' && request.method === 'POST') {
       const parsed = await readJsonLimited<{
-        requestType?: unknown; email?: unknown; registrationId?: unknown;
+        requestType?: unknown; email?: unknown; registrationId?: unknown; participantNo?: unknown;
         details?: unknown; acknowledgement?: unknown
       }>(request, 8 * 1024)
       if (!parsed.ok) return json({ error: parsed.status === 413 ? 'Request is too large.' : 'Invalid request.' }, parsed.status)
       const body = parsed.value
       const requestType = String(body.requestType ?? '')
       const email = String(body.email ?? '').trim().toLowerCase()
-      const registrationId = String(body.registrationId ?? '').trim().slice(0, 32)
+      const registrationId = String(body.registrationId ?? '').trim().slice(0, 32).toUpperCase()
+      const participantNoRaw = String(body.participantNo ?? '').trim()
+      const participantNo = Number(participantNoRaw)
       const rawDetails = String(body.details ?? '')
       if (rawDetails.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
       const details = rawDetails.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim()
@@ -430,6 +432,12 @@ export default {
       }
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
         return json({ error: 'Enter a valid email address.' }, 400)
+      }
+      if (!/^NHYM26-[0-9]{6}$/.test(registrationId)) {
+        return json({ error: 'Enter a valid Registration ID such as NHYM26-000123.' }, 400)
+      }
+      if (!/^\d+$/.test(participantNoRaw) || !Number.isInteger(participantNo) || participantNo < 1 || participantNo > 100) {
+        return json({ error: 'Enter a valid participant number between 1 and 100.' }, 400)
       }
       if (body.acknowledgement !== true) return json({ error: 'Please acknowledge the privacy request handling notice.' }, 400)
       if (details.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
@@ -453,7 +461,7 @@ export default {
       await env.DB.prepare(`
         INSERT INTO privacy_requests (id, request_type, email, registration_id, details, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, 'RECEIVED', ?, ?)
-      `).bind(id, requestType, email, registrationId || null, details, now, now).run()
+      `).bind(id, requestType, email, registrationId, `Participant number: ${participantNo}${details ? `\nDetails: ${details}` : ''}`, now, now).run()
       await env.DB.prepare(`
         INSERT INTO privacy_request_audit (id, request_id, action, new_status, note, created_at)
         VALUES (?, ?, 'SUBMITTED', 'RECEIVED', '', ?)
