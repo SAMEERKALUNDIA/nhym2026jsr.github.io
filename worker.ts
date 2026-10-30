@@ -2867,6 +2867,23 @@ if (
         return financeJson({ error: 'Registration not found.' }, 404)
       }
 
+      // For registrations using the new ledger, never allow a registration-level
+      // verification/approval while any transaction remains unverified.
+      try {
+        const paymentSummary = await env.DB.prepare(`
+          SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'VERIFIED' THEN 1 ELSE 0 END) AS verified
+          FROM registration_payments WHERE registration_id = ?
+        `).bind(id).first<{ total: number; verified: number }>()
+        if (Number(paymentSummary?.total ?? 0) > 0 &&
+            (body.status === 'PAYMENT_VERIFIED' || body.status === 'APPROVED') &&
+            Number(paymentSummary?.verified ?? 0) !== Number(paymentSummary?.total ?? 0)) {
+          return financeJson({ error: 'Verify every linked payment transaction before marking this registration as payment verified or approved.' }, 400)
+        }
+      } catch (error) {
+        // Existing deployments before migration have only the legacy payment columns.
+        console.warn('Payment ledger check unavailable; preserving legacy registration workflow.')
+      }
+
       if (
         body.status === 'APPROVED' &&
         registration.status !== 'PAYMENT_VERIFIED'
