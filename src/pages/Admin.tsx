@@ -3117,7 +3117,38 @@ if (!authenticated) {
                             <p className="text-sm font-semibold">{entry.action} · {new Date(entry.created_at).toLocaleString('en-IN')}</p>
                             <p className="text-sm">Reason: {entry.reason}</p>
                             {entry.privacy_request_id && <p className="text-xs text-muted-foreground">Privacy request: {entry.privacy_request_id}</p>}
-                            <details className="mt-1 text-xs"><summary className="cursor-pointer">Changed fields (before / after)</summary><pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words">{JSON.stringify({ before: JSON.parse(entry.old_values_json || '{}'), after: JSON.parse(entry.new_values_json || '{}') }, null, 2)}</pre></details>
+                            <details className="mt-1 text-xs">
+                              <summary className="cursor-pointer">Changed fields (before / after)</summary>
+                              <div className="mt-2 space-y-2">
+                                {(() => {
+                                  const parseSnapshot = (raw: string) => {
+                                    try {
+                                      const value = JSON.parse(raw || '{}')
+                                      return value && typeof value === 'object' && !Array.isArray(value)
+                                        ? value as Record<string, unknown>
+                                        : {}
+                                    } catch {
+                                      return {}
+                                    }
+                                  }
+                                  const before = parseSnapshot(entry.old_values_json)
+                                  const after = parseSnapshot(entry.new_values_json)
+                                  if (before.redacted === true || after.redacted === true) {
+                                    return <p className="rounded-md bg-muted p-3 text-muted-foreground">Personal data values have been redacted under the privacy-deletion process. Audit event and timestamp are retained.</p>
+                                  }
+                                  const fields = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]))
+                                  if (!fields.length) return <p className="text-muted-foreground">No field-level details are available.</p>
+                                  const displayValue = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value)
+                                  return fields.map(field => (
+                                    <div key={field} className="grid gap-1 rounded-md border p-2 sm:grid-cols-3">
+                                      <span className="font-semibold">{field.replace(/_/g, ' ').replace(/\\b\\w/g, letter => letter.toUpperCase())}</span>
+                                      <span><span className="text-muted-foreground">Before: </span>{displayValue(before[field])}</span>
+                                      <span><span className="text-muted-foreground">After: </span>{displayValue(after[field])}</span>
+                                    </div>
+                                  ))
+                                })()}
+                              </div>
+                            </details>
                           </div>
                         ))}
                       </div>
