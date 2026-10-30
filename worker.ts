@@ -581,7 +581,7 @@ export default {
                   reason = 'Redacted following verified privacy deletion'
               WHERE participant_id IN (${participantPlaceholders})`).bind(...participantIds),
             env.DB.prepare(`DELETE FROM participants WHERE id IN (${participantPlaceholders})`).bind(...participantIds)
-          ]
+          )
           if (!deletedParticipantScoped) {
             batch.push(env.DB.prepare(`UPDATE registrations
               SET email = 'deleted+' || id || '@privacy.invalid',
