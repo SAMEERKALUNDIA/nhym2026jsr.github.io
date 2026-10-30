@@ -106,6 +106,8 @@ type Draft = {
 }
 
 type PaymentMode = 'upi' | 'bank' | 'cash' | 'other'
+type PaymentGroup = { key: number; mode: PaymentMode; reference: string; rowKeys: number[] }
+let nextPaymentKey = 2
 
 /* The three declarations the organiser's form asks for, asked once for the whole
    submission rather than per person: they are about the person filling the form,
@@ -274,8 +276,8 @@ export default function Register() {
   /* The address the approval message is sent to. It belongs to the submission
      rather than to a row, because the desk writes once for the whole list. */
   const [email, setEmail] = useState('')
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('upi')
-  const [paymentReference, setPaymentReference] = useState('')
+  const [paymentGroups, setPaymentGroups] = useState<PaymentGroup[]>([{ key: 1, mode: 'upi', reference: '', rowKeys: [1] }])
+  const [activePaymentKey, setActivePaymentKey] = useState(1)
   const [registrationId, setRegistrationId] = useState('')
   const [sending, setSending] = useState(false)
   const [ocrBusy, setOcrBusy] = useState(false)
@@ -310,11 +312,25 @@ export default function Register() {
 
   function addRow() {
     nextKey += 1
-    setRows((prev) => [...prev, blank(nextKey)])
+    const newKey = nextKey
+    setRows((prev) => [...prev, blank(newKey)])
+    setPaymentGroups((prev) => prev.map((group, index) => index === 0 ? { ...group, rowKeys: [...group.rowKeys, newKey] } : group))
   }
 
   function removeRow(key: number) {
     setRows((prev) => (prev.length === 1 ? prev : prev.filter((row) => row.key !== key)))
+    setPaymentGroups((prev) => prev.map((group) => ({ ...group, rowKeys: group.rowKeys.filter((rowKey) => rowKey !== key) })).filter((group) => group.rowKeys.length > 0 || group.key === 1))
+  }
+
+  function addPaymentGroup() {
+    nextPaymentKey += 1
+    const nextGroup = { key: nextPaymentKey, mode: 'upi' as PaymentMode, reference: '', rowKeys: [] as number[] }
+    setPaymentGroups((prev) => [...prev, nextGroup])
+    setActivePaymentKey(nextGroup.key)
+  }
+
+  function updatePaymentGroup(key: number, patch: Partial<PaymentGroup>) {
+    setPaymentGroups((prev) => prev.map((group) => group.key === key ? { ...group, ...patch } : group))
   }
 
   function validate() {
@@ -427,12 +443,14 @@ if (!row.dob.trim()) {
       if (!email.trim()) problem = 'Email address is required so the approval message can reach you.'
       else problem = 'Enter a valid email address so the approval message can reach you.'
     }
-    // Visitor-only registrations collect their payment reference per participant.
-    // The shared registration-level reference is required only when at least one
-    // non-visitor participant is included.
-    if (rows.some((row) => row.category !== 'visitor') && !referenceOk(paymentReference)) {
+    const selectedKeys = paymentGroups.flatMap((group) => group.rowKeys)
+    if (rows.some((row) => !selectedKeys.includes(row.key)) || selectedKeys.length !== rows.length || new Set(selectedKeys).size !== selectedKeys.length) {
       ok = false
-      if (!problem) problem = 'Enter the UPI transaction ID, bank reference or receipt number for this registration.'
+      if (!problem) problem = 'Assign every participant and visitor to exactly one payment transaction.'
+    }
+    if (paymentGroups.some((group) => group.rowKeys.length > 0 && !referenceOk(group.reference))) {
+      ok = false
+      if (!problem) problem = 'Enter a valid transaction reference for each payment group.'
     }
     if (ok) setFormError('')
     else if (problem) setFormError(problem)
@@ -653,7 +671,7 @@ if (!row.dob.trim()) {
         /\d/.test(value) && !/^(PAYMENT|TRANSACTION|SUCCESSFUL|REFERENCE|GOOGLEPAY|PHONEPE|PAYTM|AMAZONPAY)$/.test(value)
       )
       if (candidate) {
-        setPaymentReference(candidate.replace(/\s+/g, '').toUpperCase())
+        setPaymentGroups((prev) => prev.map((group) => group.key === activePaymentKey ? { ...group, reference: candidate.replace(/\s+/g, '').toUpperCase() } : group))
         setOcrMessage('Transaction reference detected. Please verify it against your payment receipt before submitting.')
       } else {
         setOcrMessage('Could not confidently identify a transaction ID. Please enter it manually from the receipt.')
@@ -678,8 +696,17 @@ if (!row.dob.trim()) {
         body: JSON.stringify({
           email: email.trim(),
           total,
-          paymentMode: rows.some((row) => row.category !== 'visitor') ? paymentMode : (rows[0]?.mode ?? paymentMode),
-          paymentReference: (rows.some((row) => row.category !== 'visitor') ? paymentReference : (rows[0]?.reference || paymentReference)).trim().replace(/\s+/g, '').toUpperCase(),
+          paymentMode: paymentGroups[0]?.mode.toUpperCase() ?? 'UPI',
+          paymentReference: paymentGroups[0]?.reference.trim().replace(/\s+/g, '').toUpperCase() ?? '',
+          payments: paymentGroups.map((group) => ({
+            paymentMode: group.mode.toUpperCase(),
+            paymentReference: group.reference.trim().replace(/\s+/g, '').toUpperCase(),
+            amount: group.rowKeys.reduce((sum, rowKey) => {
+              const row = rows.find((item) => item.key === rowKey)
+              return sum + (row ? (feeOf(row) ?? 0) : 0)
+            }, 0),
+            participantIndexes: group.rowKeys.map((rowKey) => rows.findIndex((row) => row.key === rowKey)).filter((index) => index >= 0),
+          })),
           agreed,
           declarations: agreed,
           privacyConsent: privacyAccepted,
