@@ -563,9 +563,18 @@ export default {
           const participantPlaceholders = deletionTargetIds.map(() => '?').join(', ')
           const nowForDeletion = new Date().toISOString()
           await env.DB.batch([
-            env.DB.prepare(`DELETE FROM participant_change_audit WHERE participant_id IN (${participantPlaceholders})`).bind(...deletionTargetIds),
+            // Preserve the audit trail while redacting participant snapshots and free-text
+            // reasons that may contain personal data. Do not delete historical audit rows.
+            env.DB.prepare(`UPDATE participant_change_audit
+              SET old_values_json = '{"redacted":true,"reason":"privacy deletion"}',
+                  new_values_json = '{"redacted":true,"reason":"privacy deletion"}',
+                  reason = 'Redacted following verified privacy deletion'
+              WHERE participant_id IN (${participantPlaceholders})`).bind(...deletionTargetIds),
             env.DB.prepare(`DELETE FROM participants WHERE id IN (${participantPlaceholders})`).bind(...deletionTargetIds),
-            env.DB.prepare('DELETE FROM privacy_request_audit WHERE request_id = ?').bind(id),
+            // Keep prior status/action/timestamp accountability but redact historical free text.
+            env.DB.prepare(`UPDATE privacy_request_audit
+              SET note = 'Historical note redacted following verified privacy deletion'
+              WHERE request_id = ?`).bind(id),
             env.DB.prepare(`UPDATE privacy_requests
               SET email = ?, registration_id = NULL, participant_no = NULL, details = '', resolution_note = ?, updated_at = ?
               WHERE id = ?`).bind(`deleted+${id}@privacy.invalid`, `DISPOSITION: DELETED\nREASON: ${deletionReason.slice(0, 300)}`, nowForDeletion, id),
