@@ -2793,9 +2793,21 @@ if (
       if (!['VERIFIED', 'REJECTED', 'PENDING'].includes(String(body.status))) return financeJson({ error: 'Invalid payment status.' }, 400)
       const registrationRowId = Number(paymentMatch[1])
       const paymentId = Number(paymentMatch[2])
-      const payment = await env.DB.prepare('SELECT id, registration_id FROM registration_payments WHERE id = ? AND registration_id = ?')
-        .bind(paymentId, registrationRowId).first<{ id: number; registration_id: number }>()
+      const payment = await env.DB.prepare(`
+        SELECT p.id, p.registration_id, r.status AS registration_status
+        FROM registration_payments p
+        JOIN registrations r ON r.id = p.registration_id
+        WHERE p.id = ? AND p.registration_id = ?
+      `)
+        .bind(paymentId, registrationRowId)
+        .first<{ id: number; registration_id: number; registration_status: string }>()
       if (!payment) return financeJson({ error: 'Payment transaction not found. Legacy payments must continue to use registration-level verification.' }, 404)
+      // Do not silently invalidate an already approved registration by changing its
+      // underlying transaction. A deliberate post-approval correction needs a
+      // separate audited administrative workflow.
+      if (payment.registration_status === 'APPROVED') {
+        return financeJson({ error: 'This registration is already approved. Payment transactions cannot be changed after approval; use the authorised correction process.' }, 409)
+      }
       const updatedAt = new Date().toISOString()
       await env.DB.prepare('UPDATE registration_payments SET status = ?, updated_at = ? WHERE id = ?')
         .bind(body.status, updatedAt, paymentId).run()
