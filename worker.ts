@@ -1358,17 +1358,19 @@ if (
       }
 
       const assigned = new Set<number>()
+      let allocationError = ''
       const normalizedPayments = paymentGroups.map((payment) => {
         const indexes = payment.participantIndexes.map(Number)
-        if (indexes.some((index) => !Number.isInteger(index) || index < 0 || index >= body.participants.length)) throw new Error('INVALID_PAYMENT_ALLOCATION')
-        if (indexes.some((index) => assigned.has(index))) throw new Error('DUPLICATE_PAYMENT_ALLOCATION')
+        if (indexes.some((index) => !Number.isInteger(index) || index < 0 || index >= body.participants.length)) allocationError = 'Payment allocation contains an invalid person.'
+        if (indexes.some((index) => assigned.has(index))) allocationError = 'Each person must be assigned to only one payment transaction.'
         indexes.forEach((index) => assigned.add(index))
-        const expectedAmount = indexes.reduce((sum, index) => sum + expectedFees[index], 0)
+        const expectedAmount = indexes.reduce((sum, index) => sum + (expectedFees[index] ?? 0), 0)
         const reference = String(payment.paymentReference).trim().replace(/\s+/g, '').toUpperCase()
-        if (Number(payment.amount) !== expectedAmount) throw new Error('PAYMENT_AMOUNT_MISMATCH')
-        if (reference.length < 2) throw new Error('INVALID_PAYMENT_REFERENCE')
+        if (Number(payment.amount) !== expectedAmount) allocationError = 'Each payment amount must equal the fees of the people assigned to it.'
+        if (reference.length < 2) allocationError = 'Enter a valid transaction reference for every payment.'
         return { paymentMode: String(payment.paymentMode).toUpperCase(), paymentReference: reference, amount: expectedAmount, participantIndexes: indexes }
       })
+      if (allocationError) return json({ error: allocationError }, 400)
       if (assigned.size !== body.participants.length) return json({ error: 'Every participant and visitor must be assigned to exactly one payment transaction.' }, 400)
       if (normalizedPayments.reduce((sum, payment) => sum + payment.amount, 0) !== expectedTotal) return json({ error: 'Payment totals do not match the registration total.' }, 400)
       const refs = normalizedPayments.map((payment) => payment.paymentReference)
