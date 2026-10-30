@@ -9,11 +9,18 @@ export interface Env {
   FINANCE_PREVIEW_MODE?: string
 }
 
+type RegistrationPaymentPayload = {
+  paymentMode: string
+  paymentReference: string
+  amount: number
+  participantIndexes: number[]
+}
 type RegistrationPayload = {
   email: string
   total: number
   paymentMode: string
   paymentReference: string
+  payments?: RegistrationPaymentPayload[]
   declarations: Record<string, boolean>
   privacyConsent?: boolean
   participants: Array<Record<string, unknown> & { name?: string; category?: string; fee?: number }>
@@ -1293,7 +1300,16 @@ if (
       body = uppercaseRegistrationValues(body) as RegistrationPayload
       if (!body.email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(body.email.trim())) return json({ error: 'A valid email address is required.' }, 400)
       if (!Array.isArray(body.participants) || body.participants.length < 1 || body.participants.length > 100) return json({ error: 'Add between 1 and 100 participants per registration.' }, 400)
-      if (!['UPI', 'BANK', 'CASH', 'OTHER'].includes(body.paymentMode) || !body.paymentReference || body.paymentReference.trim().length < 2 || body.paymentReference.length > 200) return json({ error: 'A valid payment method and transaction/reference number are required.' }, 400)
+      const paymentGroups: RegistrationPaymentPayload[] = Array.isArray(body.payments) && body.payments.length
+        ? body.payments
+        : [{ paymentMode: body.paymentMode, paymentReference: body.paymentReference, amount: Number(body.total), participantIndexes: body.participants.map((_, index) => index) }]
+      if (paymentGroups.length > body.participants.length) return json({ error: 'Too many payment transactions were supplied.' }, 400)
+      if (!paymentGroups.every((payment) => ['UPI', 'BANK', 'CASH', 'OTHER'].includes(String(payment.paymentMode).toUpperCase()) &&
+        typeof payment.paymentReference === 'string' && payment.paymentReference.trim().length >= 2 && payment.paymentReference.length <= 200 &&
+        Number.isSafeInteger(Number(payment.amount)) && Number(payment.amount) > 0 &&
+        Array.isArray(payment.participantIndexes) && payment.participantIndexes.length > 0)) {
+        return json({ error: 'Each payment must include a valid method, reference, positive amount and at least one linked person.' }, 400)
+      }
       if (!body.declarations || !['INFO', 'PAYMENT', 'FINAL'].every((key) => body.declarations[key.toLowerCase()] === true)) return json({ error: 'All declarations are required.' }, 400)
       if (body.privacyConsent !== true) return json({ error: 'Please acknowledge the Privacy Notice before submitting.' }, 400)
 
@@ -1341,16 +1357,32 @@ if (
         return json({ error: 'Registration total does not match the participant fees.' }, 400)
       }
 
-      // Treat references consistently so spacing/case changes cannot bypass duplicate protection.
-      const normalizedReference = body.paymentReference.trim().replace(/\s+/g, '').toUpperCase()
-      if (normalizedReference.length < 2) return json({ error: 'Enter a valid payment transaction/reference number.' }, 400)
-      const duplicate = await env.DB.prepare(`
-        SELECT id FROM registrations
-        WHERE UPPER(REPLACE(REPLACE(REPLACE(TRIM(payment_reference), ' ', ''), char(9), ''), char(10), '')) = ?
-        LIMIT 1
-      `).bind(normalizedReference).first<{ id: number }>()
-      if (duplicate) {
-        return json({ error: 'This transaction ID/payment reference has already been submitted. Please check your payment details.' }, 409)
+      const assigned = new Set<number>()
+      const normalizedPayments = paymentGroups.map((payment) => {
+        const indexes = payment.participantIndexes.map(Number)
+        if (indexes.some((index) => !Number.isInteger(index) || index < 0 || index >= body.participants.length)) throw new Error('INVALID_PAYMENT_ALLOCATION')
+        if (indexes.some((index) => assigned.has(index))) throw new Error('DUPLICATE_PAYMENT_ALLOCATION')
+        indexes.forEach((index) => assigned.add(index))
+        const expectedAmount = indexes.reduce((sum, index) => sum + expectedFees[index], 0)
+        const reference = String(payment.paymentReference).trim().replace(/\s+/g, '').toUpperCase()
+        if (Number(payment.amount) !== expectedAmount) throw new Error('PAYMENT_AMOUNT_MISMATCH')
+        if (reference.length < 2) throw new Error('INVALID_PAYMENT_REFERENCE')
+        return { paymentMode: String(payment.paymentMode).toUpperCase(), paymentReference: reference, amount: expectedAmount, participantIndexes: indexes }
+      })
+      if (assigned.size !== body.participants.length) return json({ error: 'Every participant and visitor must be assigned to exactly one payment transaction.' }, 400)
+      if (normalizedPayments.reduce((sum, payment) => sum + payment.amount, 0) !== expectedTotal) return json({ error: 'Payment totals do not match the registration total.' }, 400)
+      const refs = normalizedPayments.map((payment) => payment.paymentReference)
+      if (new Set(refs).size !== refs.length) return json({ error: 'Each separate transaction must have its own unique reference.' }, 409)
+      for (const reference of refs) {
+        const duplicate = await env.DB.prepare(`
+          SELECT id FROM registrations
+          WHERE UPPER(REPLACE(REPLACE(REPLACE(TRIM(payment_reference), ' ', ''), char(9), ''), char(10), '')) = ?
+          UNION ALL
+          SELECT id FROM registration_payments
+          WHERE UPPER(REPLACE(REPLACE(REPLACE(TRIM(payment_reference), ' ', ''), char(9), ''), char(10), '')) = ?
+          LIMIT 1
+        `).bind(reference, reference).first()
+        if (duplicate) return json({ error: 'This transaction ID/payment reference has already been submitted. Please check your payment details.' }, 409)
       }
 
       const createdAt = new Date().toISOString()
@@ -1359,7 +1391,7 @@ if (
         result = await env.DB.prepare(`INSERT INTO registrations
           (email, total_amount, payment_mode, payment_reference, status, declarations_json, created_at)
           VALUES (?, ?, ?, ?, 'PENDING', ?, ?)`)
-          .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), body.paymentMode, normalizedReference, JSON.stringify({ ...body.declarations, privacyConsent: true, privacyNoticeVersion: '2026-10-28', privacyAcknowledgedAt: createdAt }), createdAt)
+          .bind(body.email.trim().toUpperCase(), Math.round(Number(body.total) || 0), normalizedPayments[0].paymentMode, normalizedPayments[0].paymentReference, JSON.stringify({ ...body.declarations, privacyConsent: true, privacyNoticeVersion: '2026-10-28', privacyAcknowledgedAt: createdAt }), createdAt)
           .run()
       } catch (error) {
         // The unique index is the final guard against simultaneous duplicate submissions.
@@ -1380,6 +1412,33 @@ if (
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
           .bind(id, i + 1, String(p.name ?? '').trim().toUpperCase(), String(p.dob ?? ''), String(p.gender ?? ''), String(p.address ?? ''), String(p.district ?? ''), String(p.state ?? ''), String(p.pin ?? ''), String(p.age ?? ''), String(p.category ?? ''), Math.round(Number(p.fee) || 0), JSON.stringify(p.activities ?? []), String(p.cultural ?? ''), String(p.sports ?? ''), String(p.fromOutside ?? ''), String(p.accommodation ?? ''), String(p.note ?? ''), JSON.stringify({ ...p, name: String(p.name ?? '').trim().toUpperCase() })))
         if (statements.length) await env.DB.batch(statements)
+
+        // Keep the legacy columns populated from the first transaction for older
+        // reports, while the ledger records every real transaction separately.
+        const savedPeople = await env.DB.prepare('SELECT id, participant_no FROM participants WHERE registration_id = ? ORDER BY participant_no').bind(id).all<{id:number;participant_no:number}>()
+        const participantIds = new Map(savedPeople.results.map((person) => [person.participant_no - 1, person.id]))
+        const paymentStatements: D1PreparedStatement[] = []
+        for (let paymentIndex = 0; paymentIndex < normalizedPayments.length; paymentIndex++) {
+          const payment = normalizedPayments[paymentIndex]
+          paymentStatements.push(env.DB.prepare(`INSERT INTO registration_payments
+            (registration_id, payment_no, payment_mode, payment_reference, amount, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'PENDING', ?)`)
+            .bind(id, paymentIndex + 1, payment.paymentMode, payment.paymentReference, payment.amount, createdAt))
+        }
+        await env.DB.batch(paymentStatements)
+        const savedPayments = await env.DB.prepare('SELECT id, payment_no FROM registration_payments WHERE registration_id = ? ORDER BY payment_no').bind(id).all<{id:number;payment_no:number}>()
+        const paymentIds = new Map(savedPayments.results.map((payment) => [payment.payment_no - 1, payment.id]))
+        const allocationStatements: D1PreparedStatement[] = []
+        normalizedPayments.forEach((payment, paymentIndex) => {
+          for (const participantIndex of payment.participantIndexes) {
+            const participantId = participantIds.get(participantIndex)
+            const paymentId = paymentIds.get(paymentIndex)
+            if (!participantId || !paymentId) throw new Error('Payment allocation could not be linked to saved participant records.')
+            allocationStatements.push(env.DB.prepare('INSERT INTO registration_payment_allocations (payment_id, participant_id, amount) VALUES (?, ?, ?)')
+              .bind(paymentId, participantId, expectedFees[participantIndex]))
+          }
+        })
+        if (allocationStatements.length) await env.DB.batch(allocationStatements)
       } catch (error) {
         // D1 cannot wrap the initial ID-generating insert and subsequent participant
         // batch in one transaction here. Best-effort cleanup prevents an orphaned
