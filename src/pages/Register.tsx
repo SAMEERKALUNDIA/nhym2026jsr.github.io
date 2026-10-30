@@ -427,14 +427,6 @@ if (!row.dob.trim()) {
             }
           }
         }
-        if (row.category === 'visitor' && !referenceOk(row.reference)) {
-          ok = false
-          return {
-            ...row,
-            error:
-              'Enter the UTR, transaction ID or receipt number of the contribution you have paid.',
-          }
-        }
         return { ...row, error: undefined }
       }),
     )
@@ -1175,55 +1167,8 @@ if (!row.dob.trim()) {
                             )}
 
                             <p className="mt-4 text-sm text-muted-foreground">
-                              Pay the displayed amount and enter the payment reference below.
+                              Contribution ko upar “Payment transactions” section mein us transaction group ke saath link karein jisse iska payment hua hai.
                             </p>
-
-                            <div className="mt-4 grid gap-4">
-                              <div>
-                                <Label htmlFor={`mode-${row.key}`}>Payment mode</Label>
-                                <Select
-                                  value={row.mode}
-                                  onValueChange={(value) =>
-                                    update(row.key, {
-                                      mode: value as PaymentMode,
-                                      error: undefined,
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger id={`mode-${row.key}`} className="mt-2 h-11 w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {PAYMENT_MODES.map((mode) => (
-                                      <SelectItem key={mode.id} value={mode.id}>
-                                        {mode.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="max-w-sm">
-                                <Label htmlFor={`reference-${row.key}`}>Payment reference</Label>
-                                <Input
-                                  id={`reference-${row.key}`}
-                                  value={row.reference}
-                                  onChange={(e) =>
-                                    update(row.key, {
-                                      reference: e.target.value,
-                                      error: undefined,
-                                    })
-                                  }
-                                  aria-invalid={Boolean(row.error)}
-                                  placeholder="UTR / transaction ID / receipt number"
-                                  className="mt-2 h-11"
-                                />
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                  The desk matches this against the payment before the pass is
-                                  handed over. Cash taken at an authorised counter gets a receipt
-                                  number instead.
-                                </p>
-                              </div>
-                            </div>
                           </div>
                         )}
 
