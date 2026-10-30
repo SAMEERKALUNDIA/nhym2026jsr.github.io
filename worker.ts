@@ -2746,9 +2746,40 @@ if (
         .bind(row.id)
         .all()
 
+      let payments: Array<Record<string, unknown>> = []
+      try {
+        const paymentRows = await env.DB.prepare(`
+          SELECT id, payment_no, payment_mode, payment_reference, amount, status, created_at, updated_at
+          FROM registration_payments WHERE registration_id = ? ORDER BY payment_no
+        `).bind(row.id).all()
+        payments = await Promise.all(paymentRows.results.map(async (payment: any) => {
+          const allocations = await env.DB.prepare(`
+            SELECT p.id AS participant_id, p.name, p.category, p.fee, a.amount
+            FROM registration_payment_allocations a
+            JOIN participants p ON p.id = a.participant_id
+            WHERE a.payment_id = ? ORDER BY p.participant_no
+          `).bind(payment.id).all()
+          return { ...payment, allocations: allocations.results }
+        }))
+      } catch (error) {
+        // Legacy database deployments without the additive migration still
+        // expose registrations through their original payment columns.
+        console.warn('Combined payment ledger is not available for this registration read.')
+      }
+      if (payments.length === 0) {
+        payments = [{
+          id: null, payment_no: 1, payment_mode: row.payment_mode,
+          payment_reference: row.payment_reference, amount: row.total_amount,
+          status: row.status === 'PAYMENT_VERIFIED' || row.status === 'APPROVED' ? 'VERIFIED' : row.status === 'REJECTED' ? 'REJECTED' : 'PENDING',
+          legacy: true, allocations: participants.results.map((person: any) => ({
+            participant_id: person.id, name: person.name, category: person.category, fee: person.fee, amount: person.fee
+          }))
+        }]
+      }
       return {
         ...row,
-        participants: participants.results
+        participants: participants.results,
+        payments
       }
     })
   )
