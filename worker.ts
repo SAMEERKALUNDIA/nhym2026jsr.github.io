@@ -618,7 +618,7 @@ export default {
                   verified_by = CASE WHEN ? = 'VERIFIED' THEN 'main-admin-token' ELSE NULL END,
                   updated_at = ?
               WHERE id = ?
-            `).bind(`DISPOSITION: DELETED\\nREASON: Participant personal data removed; anonymized registration/accounting shell retained.`, verificationStatus, verificationMethod, verificationStatus, nowForDeletion, verificationStatus, nowForDeletion, id)
+            `).bind(`DISPOSITION: DELETED\nREASON: Participant personal data removed; anonymized registration/accounting shell retained.`, verificationStatus, verificationMethod, verificationStatus, nowForDeletion, verificationStatus, nowForDeletion, id)
           )
           await env.DB.batch(batch)
         }
