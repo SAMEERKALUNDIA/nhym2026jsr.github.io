@@ -519,7 +519,8 @@ export default {
       }
       let targetRegistrationId = current.registration_id
       if (requestedRegistrationId) {
-        if (current.request_type !== 'DELETE') return financeJson({ error: 'Registration ID can only be assigned during a deletion-request review.' }, 400)
+        // Registration IDs are required for every privacy request type, so the admin review
+        // must validate and accept the supplied ID for access, correction, consent and complaint requests too.
         const exactMatch = await env.DB.prepare(`SELECT registration_id FROM registrations WHERE lower(email) = lower(?) AND registration_id = ? LIMIT 2`).bind(current.email, requestedRegistrationId).all<{ registration_id: string }>()
         if ((exactMatch.results ?? []).length !== 1) return financeJson({ error: 'The supplied Registration ID does not uniquely match this request email. No records were changed.' }, 409)
         // Keep the verified ID in memory only. Persist it after all disposition,
