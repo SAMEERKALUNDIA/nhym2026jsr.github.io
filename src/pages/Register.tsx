@@ -440,9 +440,18 @@ if (!row.dob.trim()) {
       ok = false
       if (!problem) problem = 'Assign every participant and visitor to exactly one payment transaction.'
     }
-    if (paymentGroups.some((group) => group.rowKeys.length > 0 && !referenceOk(group.reference))) {
+    if (paymentGroups.some((group) => group.rowKeys.length === 0)) {
+      ok = false
+      if (!problem) problem = 'Assign at least one participant or visitor to every payment transaction, or remove the unused transaction.'
+    }
+    if (paymentGroups.some((group) => !referenceOk(group.reference))) {
       ok = false
       if (!problem) problem = 'Enter a valid transaction reference for each payment group.'
+    }
+    const normalizedReferences = paymentGroups.map((group) => group.reference.trim().replace(/\\s+/g, '').toUpperCase())
+    if (new Set(normalizedReferences).size !== normalizedReferences.length) {
+      ok = false
+      if (!problem) problem = 'Each separate payment transaction must have a different transaction reference.'
     }
     if (ok) setFormError('')
     else if (problem) setFormError(problem)
