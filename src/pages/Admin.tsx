@@ -124,6 +124,16 @@ type Participant = {
   details_json: string
 }
 
+type PaymentRecord = {
+  id: number | null
+  payment_no: number
+  payment_mode: string
+  payment_reference: string
+  amount: number
+  status: string
+  legacy?: boolean
+  allocations?: Array<{ participant_id: number; name: string; category: string; fee: number; amount: number }>
+}
 type Row = {
   id: number
   registration_id: string
@@ -137,6 +147,7 @@ type Row = {
   updated_at?: string
   approval_email_sent_at?: string | null
   participants?: Participant[]
+  payments?: PaymentRecord[]
 }
 
 export default function Admin() {
@@ -3081,6 +3092,25 @@ if (!authenticated) {
               </div>
 
               {actionButtons(selected)}
+            </div>
+
+            <h3 className="mt-8 text-xl font-semibold">Payment Transactions</h3>
+            <div className="mt-4 space-y-3">
+              {(selected.payments || []).map((payment) => (
+                <section key={payment.id ?? `legacy-${payment.payment_no}`} className="rounded-lg border p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">Transaction {payment.payment_no} · ₹{Number(payment.amount).toLocaleString('en-IN')}</div>
+                      <div className="mt-1 text-sm">Mode: {payment.payment_mode} · Reference: <span className="font-mono break-all">{payment.payment_reference}</span></div>
+                    </div>
+                    <div className="text-sm font-medium">{payment.status}{payment.legacy ? ' (legacy record)' : ''}</div>
+                  </div>
+                  <div className="mt-3 text-sm text-muted-foreground">
+                    Linked people: {(payment.allocations || []).map((person) => `${person.name} (₹${Number(person.amount).toLocaleString('en-IN')})`).join(', ') || 'Allocation details unavailable'}
+                  </div>
+                </section>
+              ))}
+              {(!selected.payments || selected.payments.length === 0) && <p className="text-sm text-muted-foreground">No transaction ledger details returned.</p>}
             </div>
 
             <h3 className="mt-8 text-xl font-semibold">
