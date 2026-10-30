@@ -686,7 +686,14 @@ if (!row.dob.trim()) {
           participants: rows.map((row) => ({ ...row, fee: feeOf(row) ?? 0 })),
         }),
       })
-      const result = await response.json() as { registrationId?: string; error?: string }
+      const responseText = await response.text()
+      let result: { registrationId?: string; error?: string } = {}
+      try {
+        result = JSON.parse(responseText) as { registrationId?: string; error?: string }
+      } catch {
+        // A preview Worker missing the API route can return the app's HTML page instead of JSON.
+        throw new Error('Registration server returned a webpage instead of an API response. This Preview may be connected to the wrong Worker or missing the registration API route. Please notify the site administrator; do not submit payment again.')
+      }
       if (!response.ok || !result.registrationId) throw new Error(result.error || 'Registration could not be saved.')
       setRegistrationId(result.registrationId)
       setSubmitted(true)

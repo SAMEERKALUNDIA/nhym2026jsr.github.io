@@ -8,6 +8,7 @@ export default function Privacy() {
   const [requestType, setRequestType] = useState('ACCESS')
   const [email, setEmail] = useState('')
   const [registrationId, setRegistrationId] = useState('')
+  const [participantNo, setParticipantNo] = useState('')
   const [details, setDetails] = useState('')
   const [acknowledgement, setAcknowledgement] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -23,13 +24,14 @@ export default function Privacy() {
       const response = await fetch('/api/privacy-requests', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ requestType, email, registrationId, details, acknowledgement }),
+        body: JSON.stringify({ requestType, email, registrationId, participantNo, details, acknowledgement }),
       })
       const result = await response.json() as { ok?: boolean; requestId?: string; message?: string; error?: string }
       if (!response.ok || !result.ok) throw new Error(result.error || 'Request could not be submitted. Please try again.')
       setRequestMessage(`Request received. Reference: ${result.requestId}. The LOC will review it manually; no data is changed automatically.`)
       setEmail('')
       setRegistrationId('')
+      setParticipantNo('')
       setDetails('')
       setAcknowledgement(false)
     } catch (error) {
@@ -85,7 +87,8 @@ export default function Privacy() {
           <p lang="hi">ईमेल का विषय “Privacy Request” रखें। जब तक LOC किसी उचित माध्यम से न माँगे, संवेदनशील दस्तावेज़ ईमेल से न भेजें।</p>
           <form onSubmit={submitPrivacyRequest} className="mt-4 space-y-4 rounded-xl border p-4" aria-label="Privacy request form">
             <h3 className="text-lg font-semibold">Submit a privacy request / गोपनीयता अनुरोध भेजें</h3>
-            <p className="text-sm text-muted-foreground">Use this form to request access, correction, deletion, consent withdrawal, or submit a privacy complaint. Do not enter passwords, identity-document numbers, bank details, or other sensitive information. The LOC will verify the request before taking action.</p>
+            <p className="text-sm text-muted-foreground">Use this form to request access to additional personal data, correction, deletion, consent withdrawal, or submit a privacy complaint. Your Participant Portal already lets you view your registration and download its PDF; use “Access my data” when you need other personal-data information that is not available there. The LOC will verify your identity and review the request manually before taking action. Do not enter passwords, identity-document numbers, bank details, or other sensitive information.</p>
+            <p lang="hi" className="text-sm text-muted-foreground">Participant Portal में आप अपना पंजीकरण विवरण देख सकते हैं और PDF डाउनलोड कर सकते हैं। “Access my data” का उपयोग तब करें जब आपको वहाँ उपलब्ध न होने वाली अतिरिक्त व्यक्तिगत जानकारी चाहिए। LOC पहचान की पुष्टि करके अनुरोध की मैन्युअल समीक्षा करेगी। पासवर्ड, पहचान-पत्र संख्या, बैंक विवरण या अन्य संवेदनशील जानकारी न भरें।</p>
             <div className="space-y-1">
               <label htmlFor="privacy-request-type" className="text-sm font-medium">Request type / अनुरोध का प्रकार</label>
               <select id="privacy-request-type" value={requestType} onChange={(event) => setRequestType(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" required>
@@ -101,8 +104,13 @@ export default function Privacy() {
               <input id="privacy-request-email" type="email" autoComplete="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" required />
             </div>
             <div className="space-y-1">
-              <label htmlFor="privacy-request-registration" className="text-sm font-medium">Registration ID (optional) / पंजीकरण संख्या (वैकल्पिक)</label>
-              <input id="privacy-request-registration" type="text" maxLength={32} value={registrationId} onChange={(event) => setRegistrationId(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. NHYM26-000123" />
+              <label htmlFor="privacy-request-registration" className="text-sm font-medium">Registration ID (required) / अनिवार्य</label>
+              <input id="privacy-request-registration" type="text" maxLength={32} value={registrationId} onChange={(event) => setRegistrationId(event.target.value.toUpperCase())} required pattern="NHYM26-[0-9]{6}" title="Enter a Registration ID such as NHYM26-000123" className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. NHYM26-000123" />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="privacy-request-participant" className="text-sm font-medium">Participant number / प्रतिभागी क्रमांक (required / अनिवार्य)</label>
+              <input id="privacy-request-participant" type="number" min={1} max={100} step={1} value={participantNo} onChange={(event) => setParticipantNo(event.target.value)} required className="w-full rounded-md border bg-background px-3 py-2" placeholder="e.g. 2" />
+              <p className="text-xs text-muted-foreground">Enter the participant number shown in this registration. This helps the LOC identify the correct participant for every request; no data is changed automatically.</p>
             </div>
             <div className="space-y-1">
               <label htmlFor="privacy-request-details" className="text-sm font-medium">Details (optional; max 1000 characters) / विवरण (वैकल्पिक)</label>

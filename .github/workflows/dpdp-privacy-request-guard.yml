@@ -33,7 +33,13 @@ jobs:
             ['Identity verification statuses are constrained', "['UNVERIFIED','PENDING','VERIFIED','FAILED']"],
             ['Completion requires identity to have been verified in an earlier step', "nextStatus === 'COMPLETED' && current.verification_status !== 'VERIFIED'"],
             ['Completion also requires identity to remain verified', "nextStatus === 'COMPLETED' && verificationStatus !== 'VERIFIED'"],
-            ['Deletion completion requires retention/deletion outcome note', "current.request_type === 'DELETE'"],
+            ['Deletion completion requires a structured disposition', 'DISPOSITION:'],
+            ['DELETED disposition deletes matching registration and participant data', 'PERSONAL_DATA_DELETED'],
+            ['Deletion is scoped to verified request email and optional registration ID', 'lower(email) = lower(?)'],
+            ['Deletion anonymizes the completed privacy request', 'deleted+'],
+            ['Deletion disposition is limited to DELETED or RETAINED_EXCEPTION', 'DELETED|RETAINED_EXCEPTION'],
+            ['Deletion disposition requires a reason of at least 10 characters', '.{10,})$/i'],
+            ['Retained-data exception requires a retention/legal rationale', 'applicable retention/legal obligation'],
             ['Identity verification changes are audited', "'IDENTITY_VERIFICATION_CHANGED'"],
             ['Request status and notes are audited', "'STATUS_CHANGED'"],
             ['Sensitive registration-data reads are logged', "'REGISTRATION_REPORT_DATA_READ'"],
@@ -42,6 +48,12 @@ jobs:
             ['Sensitive access audit endpoint requires Admin token', "url.pathname === '/api/admin/privacy-access-audit'"],
             ['Access audit stores only hashed IP', 'privacy-access|2026|'],
             ['Finance preview and Finance APIs remain separate', "if (!authorised(request, env))"],
+            ['Participant correction endpoint is present', "const participantCorrectionMatch = url.pathname.match(/^\\/api\\/admin\\/participants\\/(\\d+)(?:\\/audit)?$/)"],
+            ['Participant correction requires a documented reason', 'Correction reason is required'],
+            ['Participant correction records before/after audit', 'participant_change_audit'],
+            ['Linked correction request must be verified and open', 'Linked privacy request must be an open CORRECT request with verified identity'],
+            ['Correction request cannot complete without linked correction audit', 'Complete the verified participant correction through Manage Participants'],
+
           ]
           for (const [label, fragment] of checks) {
             assert.ok(worker.includes(fragment), 'Missing Worker guard: ' + label)
@@ -62,14 +74,27 @@ jobs:
             ['Admin UI requires a verification method', 'Verification method'],
             ['Admin UI shows sensitive-data access audit', 'Sensitive-data access audit'],
             ['Admin UI warns not to upload identity documents', 'Do not upload or paste identity documents'],
+            ['DELETE resolution UI shows structured disposition instructions', 'RETAINED_EXCEPTION'],
+            ['DELETE resolution UI explains destructive deletion confirmation', 'FINAL CONFIRMATION'],
+
           ]
           for (const [label, fragment] of uiChecks) {
             assert.ok(ui.includes(fragment), 'Missing Admin UI control: ' + label)
             console.log('PASS', label)
           }
+          const participantAdminChecks = [
+            ['Manage Participants has an Edit Participant action', 'Edit Participant'],
+            ['Participant correction audit history is viewable', 'Correction Audit History'],
+          ]
+          for (const [label, fragment] of participantAdminChecks) {
+            assert.ok(admin.includes(fragment), 'Missing participant Admin UI control: ' + label)
+            console.log('PASS', label)
+          }
           assert.ok(admin.includes("window.location.href = '/admin/privacy-requests'"), 'Admin dashboard must link to privacy request workspace')
           console.log('PASS Admin dashboard links to restricted privacy request workspace')
           assert.ok(privacy.includes('/api/privacy-requests'), 'Public Privacy page must submit privacy requests')
+          assert.ok(ui.includes('Open participant record for correction'), 'Verified correction request must link to participant editor')
+          console.log('PASS verified correction request links to participant editor')
           assert.ok(privacy.includes('does not automatically access, change, withdraw, or delete data'), 'Public form must disclose manual review')
           console.log('PASS public privacy request form is connected and explains manual handling')
           NODE

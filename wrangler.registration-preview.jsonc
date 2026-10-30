@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nhymindia-registration-preview",
+  "main": "worker.ts",
+  "account_id": "1d5d70a7ee45b7c0c9b1f04aeb025924",
+  "compatibility_date": "2026-09-30",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nhym2026-registration-preview",
+      "database_id": "d952e14f-1803-44c5-af6f-b7650338ff0c"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "GALLERY",
+      "bucket_name": "nhym-gallery-preview"
+    }
+  ],
+  "vars": {
+    "EMAIL_SERVICE_URL": "https://example.invalid"
+  },
+  "secrets": {
+    "required": ["ADMIN_TOKEN", "NHYM_EMAIL_SECRET"]
+  }
+}

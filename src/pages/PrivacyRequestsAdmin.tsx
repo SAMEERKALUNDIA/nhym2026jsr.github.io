@@ -57,6 +57,7 @@ export default function PrivacyRequestsAdmin() {
   const [nextVerificationStatus, setNextVerificationStatus] = useState('UNVERIFIED')
   const [nextVerificationMethod, setNextVerificationMethod] = useState('')
   const [resolutionNote, setResolutionNote] = useState('')
+  const [nextRegistrationId, setNextRegistrationId] = useState('')
   const [accessAudit, setAccessAudit] = useState<AccessAuditEntry[]>([])
   const [accessAuditLoading, setAccessAuditLoading] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -126,11 +127,16 @@ export default function PrivacyRequestsAdmin() {
     setNextVerificationStatus(item?.verification_status || 'UNVERIFIED')
     setNextVerificationMethod(item?.verification_method || '')
     setResolutionNote(item?.resolution_note || '')
+    setNextRegistrationId(item?.registration_id || '')
     await loadAudit(id)
   }
 
   async function updateRequest() {
     if (!selected || !token.trim()) return
+    if (selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\s*DELETED\b/im.test(resolutionNote)) {
+      const confirmed = window.confirm('FINAL CONFIRMATION: This will permanently delete the participant data identified by this verified request from the Preview database. For a multi-participant registration, include PARTICIPANT_NO: [number] in the resolution note; shared registration/payment records will be retained. This action cannot be undone. Continue only after verifying the requester and checking retention obligations.')
+      if (!confirmed) return
+    }
     setSaving(true)
     setError('')
     setNotice('')
@@ -146,6 +152,7 @@ export default function PrivacyRequestsAdmin() {
           resolutionNote,
           verificationStatus: nextVerificationStatus,
           verificationMethod: nextVerificationStatus === 'VERIFIED' ? nextVerificationMethod : '',
+          registrationId: nextRegistrationId.trim(),
         }),
       })
       const result = await response.json() as { ok?: boolean; error?: string; status?: string; verificationStatus?: string; verificationMethod?: string; verifiedAt?: string | null }
@@ -155,13 +162,17 @@ export default function PrivacyRequestsAdmin() {
             ...row,
             status: nextStatus,
             resolution_note: resolutionNote,
+            registration_id: nextRegistrationId.trim() || row.registration_id,
             verification_status: result.verificationStatus || nextVerificationStatus,
             verification_method: result.verificationMethod || (nextVerificationStatus === 'VERIFIED' ? nextVerificationMethod : ''),
             verified_at: result.verifiedAt ?? row.verified_at,
             updated_at: new Date().toISOString(),
           }
         : row))
-      setNotice('अनुरोध की स्थिति अपडेट हुई और audit history में दर्ज की गई.')
+      setNotice(selected.request_type === 'DELETE' && nextStatus === 'COMPLETED' && /^DISPOSITION:\s*DELETED\b/im.test(resolutionNote)
+        ? 'डेटा deletion पूरा हुआ; अनुरोध anonymize किया गया और संबंधित participant का व्यक्तिगत डेटा हटाया गया।'
+        : 'अनुरोध की स्थिति अपडेट हुई और audit history में दर्ज की गई.')
+      await loadRequests()
       await loadAudit(selected.id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Request status update नहीं हुआ.')
@@ -255,8 +266,19 @@ export default function PrivacyRequestsAdmin() {
                   <div><dt className="text-xs text-muted-foreground">Last updated</dt><dd className="mt-1">{dateLabel(selected.updated_at)}</dd></div>
                 </dl>
 
+                {selected.request_type === 'CORRECT' && selected.verification_status === 'VERIFIED' && selected.status !== 'COMPLETED' && (
+                  <div className="rounded-lg border border-primary/30 bg-muted/30 p-4">
+                    <h3 className="font-semibold">Correction action</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Identity verification is recorded. Open Manage Participants to review and correct the matching registration. Saving a correction requires a reason and writes an audit entry; return here to record the outcome before completing the request.</p>
+                    <a className="mt-3 inline-flex rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground" href={`/admin/participants?search=${encodeURIComponent(selected.email)}&privacyRequestId=${encodeURIComponent(selected.id)}`}>Open participant record for correction</a>
+                  </div>
+                )}
                 <div className="space-y-3 border-t pt-4">
                   <h3 className="font-semibold">Review decision</h3>
+                  {selected.request_type === 'DELETE' && <label className="block space-y-1 text-sm font-medium">Exact Registration ID (required if email matches multiple registrations)
+                    <input className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextRegistrationId} onChange={(event) => setNextRegistrationId(event.target.value.trimStart().slice(0, 32))} maxLength={32} placeholder="e.g. NHYM26-000005" />
+                    <span className="block text-xs text-muted-foreground">The system validates this ID against the request email before deleting anything. Do not use the request reference number here.</span>
+                  </label>}
                   <label className="block space-y-1 text-sm font-medium">Identity verification status
                     <select className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextVerificationStatus} onChange={(event) => {
                       const value = event.target.value
@@ -278,14 +300,14 @@ export default function PrivacyRequestsAdmin() {
                       <option value="OTHER">Other proportionate method</option>
                     </select>
                   </label>}
-                  <p className="text-xs text-muted-foreground">Do not upload or paste identity documents into this system. Record only the verification method and outcome. Completion is blocked until identity is marked VERIFIED; deletion/correction still has to be carried out manually after retention review.</p>
+                  <p className="text-xs text-muted-foreground">Do not upload or paste identity documents into this system. Record only the verification method and outcome. DELETE कार्रवाई केवल VERIFIED पहचान, सही Registration ID और retention review के बाद ही करें। Status COMPLETED और DISPOSITION: DELETED सेव करने पर matching personal data हटाने की कार्रवाई चलेगी। वैध disposition के लिए DISPOSITION: DELETED या DISPOSITION: RETAINED_EXCEPTION लिखें और REASON: में कम-से-कम 10 अक्षरों का कारण दें। Multi-participant registration में केवल एक PARTICIPANT_NO: [number] चुनें; हर प्रतिभागी के लिए अलग सत्यापित अनुरोध आवश्यक है। साझा registration/payment रिकॉर्ड सुरक्षित रखे जाते हैं।</p>
                   <label className="block space-y-1 text-sm font-medium">Status
                     <select className="w-full rounded-lg border bg-background px-3 py-2 font-normal" value={nextStatus} onChange={(event) => setNextStatus(event.target.value)}>
                       {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
                     </select>
                   </label>
                   <label className="block space-y-1 text-sm font-medium">Resolution / internal note
-                    <textarea className="min-h-24 w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={1000} value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder="Record verification outcome, action taken, or reason for decline. Do not enter unnecessary sensitive data." />
+                    <textarea className="min-h-24 w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={1000} value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} placeholder={selected.request_type === 'DELETE' ? 'DELETE पूरा करने के लिए लिखें: DISPOSITION: DELETED\nPARTICIPANT_NO: [number] (केवल multi-participant registration के लिए)\nREASON: कार्रवाई/retention review का कारण, कम से कम 10 अक्षर। Single participant registration में PARTICIPANT_NO की जरूरत नहीं है।' : 'Record verification outcome, action taken, or reason for decline. Do not enter unnecessary sensitive data.'} />
                   </label>
                   <button type="button" className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-foreground disabled:opacity-50" disabled={saving} onClick={() => void updateRequest()}>{saving ? 'Saving…' : 'Save status & audit note'}</button>
                 </div>

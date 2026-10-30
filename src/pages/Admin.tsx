@@ -192,8 +192,14 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [updatingId, setUpdatingId] = useState<number | null>(null)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('search') || '')
   const [selected, setSelected] = useState<Row | null>(null)
+  const [editingParticipantId, setEditingParticipantId] = useState<number | null>(null)
+  const [participantDraft, setParticipantDraft] = useState({ name: '', dob: '', gender: '', address: '', district: '', state: '', pin: '', reason: '', privacyRequestId: '' })
+  const [participantSaving, setParticipantSaving] = useState(false)
+  const [participantAudit, setParticipantAudit] = useState<Array<{action:string;old_values_json:string;new_values_json:string;reason:string;privacy_request_id:string|null;actor:string;created_at:string}>>([])
+  const [participantAuditId, setParticipantAuditId] = useState<number | null>(null)
+  const [participantAuditLoading, setParticipantAuditLoading] = useState(false)
   const [adminFinanceUsers, setAdminFinanceUsers] = useState<Array<{id:string;display_name:string;login_id:string;role:string;is_active:number;last_login_at:string|null}>>([])
   const [showAdminFinanceUsers, setShowAdminFinanceUsers] = useState(false)
   const [adminFinanceLoading, setAdminFinanceLoading] = useState(false)
@@ -703,6 +709,60 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [])
 				
+  function beginParticipantEdit(participant: Participant) {
+    setEditingParticipantId(participant.id)
+    setParticipantDraft({
+      name: participant.name || '', dob: participant.dob || '', gender: participant.gender || '',
+      address: participant.address || '', district: participant.district || '', state: participant.state || '',
+      pin: participant.pin || '', reason: '', privacyRequestId: new URLSearchParams(window.location.search).get('privacyRequestId') || ''
+    })
+    setError('')
+    setSuccess('')
+  }
+
+  async function loadParticipantAudit(participant: Participant) {
+    setParticipantAuditLoading(true); setError('')
+    try {
+      const response = await fetch(`/api/admin/participants/${participant.id}/audit`, { headers: { authorization: `Bearer ${token}` }, cache: 'no-store' })
+      const result = await response.json() as { entries?: typeof participantAudit; error?: string }
+      if (!response.ok) throw new Error(result.error || 'Correction audit history could not be loaded.')
+      setParticipantAudit(Array.isArray(result.entries) ? result.entries : [])
+      setParticipantAuditId(participant.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Correction audit history could not be loaded.')
+      setParticipantAudit([])
+      setParticipantAuditId(participant.id)
+    } finally { setParticipantAuditLoading(false) }
+  }
+
+  async function saveParticipantCorrection(participant: Participant) {
+    if (!token || participantDraft.reason.trim().length < 5) {
+      setError('Correction reason is required (at least 5 characters).')
+      return
+    }
+    if (!window.confirm(`Save the reviewed corrections for ${participant.name || 'this participant'}? This change will be recorded in the audit history.`)) return
+    setParticipantSaving(true); setError(''); setSuccess('')
+    try {
+      const response = await fetch(`/api/admin/participants/${participant.id}`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: participantDraft.name, dob: participantDraft.dob, gender: participantDraft.gender,
+          address: participantDraft.address, district: participantDraft.district, state: participantDraft.state,
+          pin: participantDraft.pin, reason: participantDraft.reason,
+          privacyRequestId: participantDraft.privacyRequestId || undefined
+        })
+      })
+      const result = await response.json() as { ok?: boolean; error?: string; updatedFields?: string[] }
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Participant correction could not be saved.')
+      await load()
+      setEditingParticipantId(null)
+      setSuccess(`Participant data corrected. Updated fields: ${(result.updatedFields || []).join(', ')}. Audit history recorded.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Participant correction could not be saved.')
+    } finally { setParticipantSaving(false) }
+  }
+
   async function changeStatus(
     row: Row,
     value: 'PAYMENT_VERIFIED' | 'APPROVED' | 'REJECTED'
@@ -3041,6 +3101,93 @@ if (!authenticated) {
                     {' — '}
                     {participant.name.toUpperCase()}
                   </div>
+                  <div className="mb-4">
+                    <Button type="button" variant="outline" onClick={() => beginParticipantEdit(participant)}>
+                      Edit Participant / जानकारी सुधारें
+                    </Button>
+                  </div>
+                  <div className="mb-4">
+                    <Button type="button" variant="outline" disabled={participantAuditLoading} onClick={() => void loadParticipantAudit(participant)}>
+                      {participantAuditLoading && participantAuditId === participant.id ? 'Loading audit…' : 'Correction Audit History'}
+                    </Button>
+                    {participantAuditId === participant.id && (
+                      <div className="mt-3 space-y-2 rounded-lg border p-3">
+                        {participantAudit.length === 0 ? <p className="text-sm text-muted-foreground">No correction audit entries found.</p> : participantAudit.map((entry, index) => (
+                          <div key={`${participant.id}-audit-${index}`} className="border-b pb-2 last:border-0">
+                            <p className="text-sm font-semibold">{entry.action} · {new Date(entry.created_at).toLocaleString('en-IN')}</p>
+                            <p className="text-sm">Reason: {entry.reason}</p>
+                            {entry.privacy_request_id && <p className="text-xs text-muted-foreground">Privacy request: {entry.privacy_request_id}</p>}
+                            <details className="mt-1 text-xs">
+                              <summary className="cursor-pointer">Changed fields (before / after)</summary>
+                              <div className="mt-2 space-y-2">
+                                {(() => {
+                                  const parseSnapshot = (raw: string) => {
+                                    try {
+                                      const value = JSON.parse(raw || '{}')
+                                      return value && typeof value === 'object' && !Array.isArray(value)
+                                        ? value as Record<string, unknown>
+                                        : {}
+                                    } catch {
+                                      return {}
+                                    }
+                                  }
+                                  const before = parseSnapshot(entry.old_values_json)
+                                  const after = parseSnapshot(entry.new_values_json)
+                                  if (before.redacted === true || after.redacted === true) {
+                                    return <p className="rounded-md bg-muted p-3 text-muted-foreground">Personal data values have been redacted under the privacy-deletion process. Audit event and timestamp are retained.</p>
+                                  }
+                                  const fields = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]))
+                                  if (!fields.length) return <p className="text-muted-foreground">No field-level details are available.</p>
+                                  const displayValue = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value)
+                                  return fields.map(field => (
+                                    <div key={field} className="grid gap-1 rounded-md border p-2 sm:grid-cols-3">
+                                      <span className="font-semibold">{field.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}</span>
+                                      <span><span className="text-muted-foreground">Before: </span>{displayValue(before[field])}</span>
+                                      <span><span className="text-muted-foreground">After: </span>{displayValue(after[field])}</span>
+                                    </div>
+                                  ))
+                                })()}
+                              </div>
+                            </details>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {editingParticipantId === participant.id && (
+                    <div className="mb-5 space-y-3 rounded-lg border border-primary/40 bg-muted/30 p-4">
+                      <h3 className="font-semibold">Correct participant data</h3>
+                      <p className="text-xs text-muted-foreground">पहचान सत्यापित करने और सही जानकारी की पुष्टि के बाद ही बदलाव सेव करें। DOB बदलने पर आयु दोबारा निकाली जाएगी; 18 वर्ष से कम आयु का रिकॉर्ड इस registration policy के अनुसार सेव नहीं होगा।</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {([
+                          ['name', 'Name'],
+                          ['dob', 'Date of birth'],
+                          ['gender', 'Gender'],
+                          ['district', 'District'],
+                          ['state', 'State'],
+                          ['pin', 'PIN'],
+                          ['address', 'Address'],
+                        ] as const).map(([field, label]) => (
+                          <label key={field} className={field === 'address' ? 'space-y-1 text-sm sm:col-span-2' : 'space-y-1 text-sm'}>
+                            <span className="font-medium">{label}</span>
+                            {field === 'address' ? (
+                              <textarea className="w-full rounded-lg border bg-background px-3 py-2" maxLength={500} value={participantDraft[field]} onChange={event => setParticipantDraft(current => ({ ...current, [field]: event.target.value }))} />
+                            ) : (
+                              <Input type={field === 'dob' ? 'date' : 'text'} maxLength={field === 'name' ? 150 : field === 'pin' ? 10 : 100} value={participantDraft[field]} onChange={event => setParticipantDraft(current => ({ ...current, [field]: event.target.value }))} />
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                      <label className="block space-y-1 text-sm font-medium">Reason for correction (required)
+                        <textarea className="w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={500} minLength={5} value={participantDraft.reason} onChange={event => setParticipantDraft(current => ({ ...current, reason: event.target.value }))} placeholder="e.g. Verified correction requested by participant" required />
+                      </label>
+                      {participantDraft.privacyRequestId && <p className="text-xs text-muted-foreground">Linked privacy request: {participantDraft.privacyRequestId}</p>}
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" disabled={participantSaving} onClick={() => void saveParticipantCorrection(participant)}>{participantSaving ? 'Saving…' : 'Save correction'}</Button>
+                        <Button type="button" variant="outline" disabled={participantSaving} onClick={() => setEditingParticipantId(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 

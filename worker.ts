@@ -414,14 +414,16 @@ export default {
 
     if (url.pathname === '/api/privacy-requests' && request.method === 'POST') {
       const parsed = await readJsonLimited<{
-        requestType?: unknown; email?: unknown; registrationId?: unknown;
+        requestType?: unknown; email?: unknown; registrationId?: unknown; participantNo?: unknown;
         details?: unknown; acknowledgement?: unknown
       }>(request, 8 * 1024)
       if (!parsed.ok) return json({ error: parsed.status === 413 ? 'Request is too large.' : 'Invalid request.' }, parsed.status)
       const body = parsed.value
       const requestType = String(body.requestType ?? '')
       const email = String(body.email ?? '').trim().toLowerCase()
-      const registrationId = String(body.registrationId ?? '').trim().slice(0, 32)
+      const registrationId = String(body.registrationId ?? '').trim().slice(0, 32).toUpperCase()
+      const participantNoRaw = String(body.participantNo ?? '').trim()
+      const participantNo = Number(participantNoRaw)
       const rawDetails = String(body.details ?? '')
       if (rawDetails.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
       const details = rawDetails.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim()
@@ -430,6 +432,12 @@ export default {
       }
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
         return json({ error: 'Enter a valid email address.' }, 400)
+      }
+      if (!/^NHYM26-[0-9]{6}$/.test(registrationId)) {
+        return json({ error: 'Enter a valid Registration ID such as NHYM26-000123.' }, 400)
+      }
+      if (!/^\d+$/.test(participantNoRaw) || !Number.isInteger(participantNo) || participantNo < 1 || participantNo > 100) {
+        return json({ error: 'Enter a valid participant number between 1 and 100.' }, 400)
       }
       if (body.acknowledgement !== true) return json({ error: 'Please acknowledge the privacy request handling notice.' }, 400)
       if (details.length > 1000) return json({ error: 'Details must be 1000 characters or fewer.' }, 400)
@@ -453,7 +461,7 @@ export default {
       await env.DB.prepare(`
         INSERT INTO privacy_requests (id, request_type, email, registration_id, details, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, 'RECEIVED', ?, ?)
-      `).bind(id, requestType, email, registrationId || null, details, now, now).run()
+      `).bind(id, requestType, email, registrationId, `Participant number: ${participantNo}${details ? `\nDetails: ${details}` : ''}`, now, now).run()
       await env.DB.prepare(`
         INSERT INTO privacy_request_audit (id, request_id, action, new_status, note, created_at)
         VALUES (?, ?, 'SUBMITTED', 'RECEIVED', '', ?)
@@ -476,7 +484,7 @@ export default {
     if (privacyRequestMatch && request.method === 'PATCH') {
       if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
       const parsed = await readJsonLimited<{
-        status?: unknown; resolutionNote?: unknown; verificationStatus?: unknown; verificationMethod?: unknown
+        status?: unknown; resolutionNote?: unknown; verificationStatus?: unknown; verificationMethod?: unknown; registrationId?: unknown
       }>(request, 4 * 1024)
       if (!parsed.ok) return financeJson({ error: parsed.status === 413 ? 'Request is too large.' : 'Invalid request.' }, parsed.status)
       const nextStatus = String(parsed.value.status ?? '')
@@ -485,6 +493,7 @@ export default {
       const resolutionNote = String(parsed.value.resolutionNote ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, 1000)
       const verificationStatus = String(parsed.value.verificationStatus ?? 'UNVERIFIED')
       const verificationMethod = String(parsed.value.verificationMethod ?? '').trim()
+      const requestedRegistrationId = String(parsed.value.registrationId ?? '').trim().slice(0, 32)
       const allowedVerificationStatuses = ['UNVERIFIED','PENDING','VERIFIED','FAILED']
       const allowedVerificationMethods = ['REGISTRATION_DETAILS','CALLBACK_KNOWN_CONTACT','IN_PERSON','OTHER']
       if (!allowedVerificationStatuses.includes(verificationStatus)) return financeJson({ error: 'Invalid identity verification status.' }, 400)
@@ -499,8 +508,8 @@ export default {
       }
       await ensurePrivacyRequestTables()
       const id = privacyRequestMatch[1]
-      const current = await env.DB.prepare('SELECT status, request_type, verification_status, verification_method FROM privacy_requests WHERE id = ?')
-        .bind(id).first<{ status: string; request_type: string; verification_status: string; verification_method: string }>()
+      const current = await env.DB.prepare('SELECT status, request_type, email, registration_id, details, verification_status, verification_method FROM privacy_requests WHERE id = ?')
+        .bind(id).first<{ status: string; request_type: string; email: string; registration_id: string | null; details: string; verification_status: string; verification_method: string }>()
       if (!current) return financeJson({ error: 'Privacy request not found.' }, 404)
       if (nextStatus === 'COMPLETED' && current.verification_status !== 'VERIFIED') {
         return financeJson({ error: 'Save identity verification as VERIFIED in a separate review step before completing this request.' }, 409)
@@ -508,35 +517,155 @@ export default {
       if (nextStatus === 'COMPLETED' && verificationStatus !== 'VERIFIED') {
         return financeJson({ error: 'Identity must remain VERIFIED before a privacy request can be marked completed.' }, 409)
       }
-      if (nextStatus === 'COMPLETED' && current.request_type === 'DELETE' && !/retention|deleted|deletion|removed|removal|kept|retained/i.test(resolutionNote)) {
-        return financeJson({ error: 'For deletion requests, record whether data was deleted or retained under a documented retention exception.' }, 400)
+      let targetRegistrationId = current.registration_id
+      if (requestedRegistrationId) {
+        // Registration IDs are required for every privacy request type, so the admin review
+        // must validate and accept the supplied ID for access, correction, consent and complaint requests too.
+        const exactMatch = await env.DB.prepare(`SELECT registration_id FROM registrations WHERE lower(email) = lower(?) AND registration_id = ? LIMIT 2`).bind(current.email, requestedRegistrationId).all<{ registration_id: string }>()
+        if ((exactMatch.results ?? []).length !== 1) return financeJson({ error: 'The supplied Registration ID does not uniquely match this request email. No records were changed.' }, 409)
+        // Keep the verified ID in memory only. Persist it after all disposition,
+        // participant-scope, and correction-request validation has succeeded.
+        targetRegistrationId = requestedRegistrationId
+      }
+      let deletionTargetIds: number[] = []
+      let deletionReason = ''
+      let deletedParticipantScoped = false
+      if (nextStatus === 'COMPLETED' && current.request_type === 'DELETE') {
+        const deletionDisposition = resolutionNote.match(/^DISPOSITION:\s*(DELETED|RETAINED_EXCEPTION)\s*\n(?:PARTICIPANT_NO:\s*(\d+)\s*\n)?REASON:\s*(.{10,})$/i)
+        if (!deletionDisposition) {
+          return financeJson({ error: 'Use: DISPOSITION: DELETED, optional PARTICIPANT_NO: [number] for a multi-participant registration, then REASON: with at least 10 characters.' }, 400)
+        }
+        deletionReason = deletionDisposition[3].trim()
+        const participantNo = deletionDisposition[2] ? Number(deletionDisposition[2]) : null
+        if (deletionDisposition[1].toUpperCase() === 'RETAINED_EXCEPTION' && !/retention|legal|law|obligation|exception/i.test(deletionReason)) {
+          return financeJson({ error: 'A retained-data exception must explain the applicable retention/legal obligation.' }, 400)
+        }
+        if (deletionDisposition[1].toUpperCase() === 'DELETED') {
+          const targetRows = await env.DB.prepare(`
+            SELECT id, registration_id FROM registrations
+            WHERE lower(email) = lower(?)
+              AND (? IS NULL OR registration_id = ?)
+            ORDER BY id
+          `).bind(current.email, targetRegistrationId || null, targetRegistrationId || null).all<{ id: number; registration_id: string | null }>()
+          deletionTargetIds = (targetRows.results ?? []).map(row => Number(row.id)).filter(Number.isFinite)
+          if (deletionTargetIds.length === 0) {
+            return financeJson({ error: 'No matching registration was found for this verified email/registration ID. Nothing was deleted; check the request details before retrying.' }, 404)
+          }
+          if (!current.registration_id && deletionTargetIds.length > 1) {
+            return financeJson({ error: 'This email matches multiple registrations. Add the exact registration ID to the verified request before deleting anything; no records were changed.' }, 409)
+          }
+          const placeholders = deletionTargetIds.map(() => '?').join(', ')
+          const participantRows = await env.DB.prepare(
+            `SELECT id, participant_no FROM participants WHERE registration_id IN (${placeholders}) ORDER BY participant_no`
+          ).bind(...deletionTargetIds).all<{ id: number; participant_no: number }>()
+          const participants = participantRows.results ?? []
+          if (participants.length > 1 && participantNo === null) {
+            return financeJson({ error: 'This registration contains multiple participants. Specify the verified participant using PARTICIPANT_NO: [number]. No data was deleted.' }, 409)
+          }
+          if (participantNo !== null && (!Number.isInteger(participantNo) || !participants.some(p => Number(p.participant_no) === participantNo))) {
+            return financeJson({ error: 'PARTICIPANT_NO does not match a participant in this registration. No data was deleted.' }, 409)
+          }
+          const selectedParticipants = participantNo === null ? participants : participants.filter(p => Number(p.participant_no) === participantNo)
+          if (selectedParticipants.length === 0) {
+            return financeJson({ error: 'No matching participant was found. No data was deleted.' }, 404)
+          }
+          await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
+          const nowForDeletion = new Date().toISOString()
+          const participantIds = selectedParticipants.map(p => Number(p.id))
+          const participantPlaceholders = participantIds.map(() => '?').join(', ')
+          deletedParticipantScoped = participants.length > 1
+          // Preserve audit accountability while redacting snapshots and free text that
+          // may contain personal data. Delete only the verified participant record.
+          const batch = []
+          if (requestedRegistrationId) {
+            batch.push(
+              env.DB.prepare('UPDATE privacy_requests SET registration_id = ?, updated_at = ? WHERE id = ?').bind(targetRegistrationId, nowForDeletion, id),
+              env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, created_at) VALUES (?, ?, 'REGISTRATION_ID_MATCHED', ?, ?, ?, ?)`).bind(crypto.randomUUID(), id, current.status, nextStatus, 'Admin supplied Registration ID; exact email + registration match validated.', nowForDeletion)
+            )
+          }
+          batch.push(
+            env.DB.prepare(`UPDATE participant_change_audit
+              SET old_values_json = '{"redacted":true,"reason":"privacy deletion"}',
+                  new_values_json = '{"redacted":true,"reason":"privacy deletion"}',
+                  reason = 'Redacted following verified privacy deletion'
+              WHERE participant_id IN (${participantPlaceholders})`).bind(...participantIds),
+            env.DB.prepare(`DELETE FROM participants WHERE id IN (${participantPlaceholders})`).bind(...participantIds)
+          )
+          if (!deletedParticipantScoped) {
+            batch.push(env.DB.prepare(`UPDATE registrations
+              SET email = 'deleted+' || id || '@privacy.invalid',
+                  payment_reference = 'REDACTED-' || id,
+                  declarations_json = '{}',
+                  updated_at = ?
+              WHERE id IN (${placeholders})`).bind(nowForDeletion, ...deletionTargetIds))
+          }
+          batch.push(
+            env.DB.prepare(`UPDATE privacy_request_audit
+              SET note = 'Historical note redacted following verified privacy deletion'
+              WHERE request_id = ?`).bind(id),
+            env.DB.prepare(`UPDATE privacy_requests
+              SET email = ?, registration_id = NULL, details = '', resolution_note = ?, updated_at = ?
+              WHERE id = ?`).bind(`deleted+${id}@privacy.invalid`, `DISPOSITION: DELETED\nREASON: ${deletionReason.slice(0, 300)}`, nowForDeletion, id),
+            env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
+              VALUES (?, ?, 'PERSONAL_DATA_DELETED', ?, 'COMPLETED', ?, 'main-admin-token', ?)`)
+              .bind(crypto.randomUUID(), id, current.status, deletedParticipantScoped ? 'Verified participant personal details deleted; correction audit events retained with personal snapshots redacted; shared registration and accounting records retained for remaining participants.' : 'Participant personal details deleted; correction audit events retained with personal snapshots redacted; minimal anonymized registration/accounting record retained.', nowForDeletion),
+            // Commit deletion/redaction and request completion together. D1 batch is
+            // transactional: if any statement fails, the batch is rolled back.
+            env.DB.prepare(`
+              UPDATE privacy_requests
+              SET status = 'COMPLETED', resolution_note = ?, verification_status = ?, verification_method = ?,
+                  verified_at = CASE WHEN ? = 'VERIFIED' THEN COALESCE(verified_at, ?) ELSE NULL END,
+                  verified_by = CASE WHEN ? = 'VERIFIED' THEN 'main-admin-token' ELSE NULL END,
+                  updated_at = ?
+              WHERE id = ?
+            `).bind(`DISPOSITION: DELETED\nREASON: Participant personal data removed; anonymized registration/accounting shell retained.`, verificationStatus, verificationMethod, verificationStatus, nowForDeletion, verificationStatus, nowForDeletion, id)
+          )
+          await env.DB.batch(batch)
+        }
+      }
+      if (nextStatus === 'COMPLETED' && current.request_type === 'CORRECT') {
+        await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
+        const correction = await env.DB.prepare('SELECT id FROM participant_change_audit WHERE privacy_request_id = ? LIMIT 1').bind(id).first()
+        if (!correction) return financeJson({ error: 'Complete the verified participant correction through Manage Participants and save its linked audit entry before completing this request.' }, 409)
       }
       const now = new Date().toISOString()
       const verificationChanged = current.verification_status !== verificationStatus || current.verification_method !== verificationMethod
       const verifiedAt = verificationStatus === 'VERIFIED' ? (verificationChanged ? now : null) : null
       const verifiedBy = verificationStatus === 'VERIFIED' ? 'main-admin-token' : null
-      await env.DB.prepare(`
-        UPDATE privacy_requests
-        SET status = ?, resolution_note = ?, verification_status = ?, verification_method = ?,
-            verified_at = CASE WHEN ? = 'VERIFIED' AND ? IS NOT NULL THEN ? WHEN ? <> 'VERIFIED' THEN NULL ELSE verified_at END,
-            verified_by = CASE WHEN ? = 'VERIFIED' THEN ? ELSE NULL END,
-            updated_at = ?
-        WHERE id = ?
-      `).bind(
-        nextStatus, resolutionNote, verificationStatus, verificationMethod,
-        verificationStatus, verifiedAt, now, verificationStatus, verificationStatus, verifiedBy, now, id
-      ).run()
-      if (current.status !== nextStatus || resolutionNote) {
-        await env.DB.prepare(`
-          INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'main-admin-token', ?)
-        `).bind(crypto.randomUUID(), id, current.status === nextStatus ? 'REVIEW_NOTE_UPDATED' : 'STATUS_CHANGED', current.status, nextStatus, resolutionNote, now).run()
-      }
-      if (verificationChanged) {
-        await env.DB.prepare(`
-          INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
-          VALUES (?, ?, 'IDENTITY_VERIFICATION_CHANGED', ?, ?, ?, 'main-admin-token', ?)
-        `).bind(crypto.randomUUID(), id, current.verification_status, verificationStatus, verificationStatus === 'VERIFIED' ? `Method: ${verificationMethod}` : 'Verification status updated; no identity document stored.', now).run()
+      if (deletionTargetIds.length === 0) {
+        // All validation has passed. Persist the request update and its audit events
+        // atomically so a failed audit insert cannot leave a partial review update.
+        const reviewBatch = []
+        if (requestedRegistrationId) {
+          reviewBatch.push(
+            env.DB.prepare('UPDATE privacy_requests SET registration_id = ?, updated_at = ? WHERE id = ?').bind(targetRegistrationId, now, id),
+            env.DB.prepare(`INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, created_at) VALUES (?, ?, 'REGISTRATION_ID_MATCHED', ?, ?, ?, ?)`).bind(crypto.randomUUID(), id, current.status, nextStatus, 'Admin supplied Registration ID; exact email + registration match validated.', now)
+          )
+        }
+        reviewBatch.push(env.DB.prepare(`
+          UPDATE privacy_requests
+          SET status = ?, resolution_note = ?, verification_status = ?, verification_method = ?,
+              verified_at = CASE WHEN ? = 'VERIFIED' AND ? IS NOT NULL THEN ? WHEN ? <> 'VERIFIED' THEN NULL ELSE verified_at END,
+              verified_by = CASE WHEN ? = 'VERIFIED' THEN ? ELSE NULL END,
+              updated_at = ?
+          WHERE id = ?
+        `).bind(
+          nextStatus, resolutionNote, verificationStatus, verificationMethod,
+          verificationStatus, verifiedAt, now, verificationStatus, verificationStatus, verifiedBy, now, id
+        ))
+        if (current.status !== nextStatus || resolutionNote) {
+          reviewBatch.push(env.DB.prepare(`
+            INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'main-admin-token', ?)
+          `).bind(crypto.randomUUID(), id, current.status === nextStatus ? 'REVIEW_NOTE_UPDATED' : 'STATUS_CHANGED', current.status, nextStatus, resolutionNote, now))
+        }
+        if (verificationChanged) {
+          reviewBatch.push(env.DB.prepare(`
+            INSERT INTO privacy_request_audit (id, request_id, action, old_status, new_status, note, actor, created_at)
+            VALUES (?, ?, 'IDENTITY_VERIFICATION_CHANGED', ?, ?, ?, 'main-admin-token', ?)
+          `).bind(crypto.randomUUID(), id, current.verification_status, verificationStatus, verificationStatus === 'VERIFIED' ? `Method: ${verificationMethod}` : 'Verification status updated; no identity document stored.', now))
+        }
+        await env.DB.batch(reviewBatch)
       }
       return financeJson({ ok: true, status: nextStatus, verificationStatus, verificationMethod, verifiedAt: verificationStatus === 'VERIFIED' ? (verifiedAt ?? now) : null, updatedAt: now })
     }
@@ -2371,6 +2500,123 @@ if (
       }
 
       return financeJson({ error: 'Finance endpoint not found.' }, 404)
+    }
+
+    // PARTICIPANT CORRECTION — Main Admin only; never expose this through Finance sessions.
+    const participantCorrectionMatch = url.pathname.match(/^\/api\/admin\/participants\/(\d+)(?:\/audit)?$/)
+    if (participantCorrectionMatch && request.method === 'GET' && url.pathname.endsWith('/audit')) {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      if (env.FINANCE_PREVIEW_MODE === 'true') return financeJson({ entries: [] })
+      await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
+      const auditId = Number(participantCorrectionMatch[1])
+      const participant = await env.DB.prepare('SELECT id FROM participants WHERE id = ?').bind(auditId).first()
+      if (!participant) return financeJson({ error: 'Participant not found.' }, 404)
+      const result = await env.DB.prepare('SELECT action, old_values_json, new_values_json, reason, privacy_request_id, actor, request_trace, created_at FROM participant_change_audit WHERE participant_id = ? ORDER BY created_at DESC LIMIT 50').bind(auditId).all()
+      return financeJson({ entries: result.results ?? [] })
+    }
+
+    if (participantCorrectionMatch && request.method === 'PATCH' && !url.pathname.endsWith('/audit')) {
+      if (!authorised(request, env)) return financeJson({ error: 'Unauthorized' }, 401)
+      if (env.FINANCE_PREVIEW_MODE === 'true') return financeJson({ error: 'Participant editing is unavailable in Finance Preview.' }, 403)
+
+      let body: {
+        name?: unknown; dob?: unknown; gender?: unknown; address?: unknown;
+        district?: unknown; state?: unknown; pin?: unknown; activities?: unknown;
+        cultural?: unknown; sports?: unknown; fromOutside?: unknown;
+        accommodation?: unknown; note?: unknown; reason?: unknown;
+        privacyRequestId?: unknown
+      }
+      try { body = await request.json() } catch { return financeJson({ error: 'Invalid JSON body.' }, 400) }
+      const reason = String(body.reason ?? '').trim().slice(0, 500)
+      if (reason.length < 5) return financeJson({ error: 'Correction reason is required (at least 5 characters).' }, 400)
+
+      const id = Number(participantCorrectionMatch[1])
+      const current = await env.DB.prepare(`
+        SELECT id, registration_id, participant_no, name, dob, gender, address, district, state, pin,
+          age, activities_json, cultural, sports, from_outside, accommodation, note
+        FROM participants WHERE id = ?
+      `).bind(id).first<any>()
+      if (!current) return financeJson({ error: 'Participant not found.' }, 404)
+
+      const fields: Record<string, unknown> = {
+        name: body.name, dob: body.dob, gender: body.gender, address: body.address,
+        district: body.district, state: body.state, pin: body.pin,
+        activities_json: body.activities, cultural: body.cultural, sports: body.sports,
+        from_outside: body.fromOutside, accommodation: body.accommodation, note: body.note
+      }
+      const limits: Record<string, number> = {
+        name: 150, dob: 10, gender: 40, address: 500, district: 100, state: 100,
+        pin: 10, activities_json: 2000, cultural: 200, sports: 200,
+        from_outside: 20, accommodation: 100, note: 1000
+      }
+      const updated: Record<string, string> = {}
+      for (const [field, value] of Object.entries(fields)) {
+        if (value === undefined) continue
+        const normalized = String(value ?? '').trim()
+        if (normalized.length > limits[field]) return financeJson({ error: `Field ${field} exceeds the allowed length.` }, 400)
+        if (field === 'name' && normalized.length < 2) return financeJson({ error: 'Participant name must contain at least 2 characters.' }, 400)
+        if (field === 'dob' && normalized && !/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return financeJson({ error: 'Date of birth must use YYYY-MM-DD format.' }, 400)
+        if (field === 'pin' && normalized && !/^\d{4,10}$/.test(normalized)) return financeJson({ error: 'PIN must contain 4–10 digits.' }, 400)
+        if (field === 'activities_json' && normalized) {
+          try { if (!Array.isArray(JSON.parse(normalized))) throw new Error() } catch { return financeJson({ error: 'Activities must be a JSON array.' }, 400) }
+        }
+        updated[field] = normalized
+      }
+      if (Object.keys(updated).length === 0) return financeJson({ error: 'No participant fields were supplied for correction.' }, 400)
+
+      const nextDob = updated.dob ?? String(current.dob ?? '')
+      let nextAge = String(current.age ?? '')
+      if (nextDob) {
+        const dobDate = new Date(`${nextDob}T00:00:00.000Z`)
+        if (Number.isNaN(dobDate.getTime()) || dobDate.toISOString().slice(0, 10) !== nextDob || dobDate.getTime() > Date.now()) return financeJson({ error: 'Date of birth is invalid or in the future.' }, 400)
+        const now = new Date()
+        let age = now.getUTCFullYear() - dobDate.getUTCFullYear()
+        if (now.getUTCMonth() < dobDate.getUTCMonth() || (now.getUTCMonth() === dobDate.getUTCMonth() && now.getUTCDate() < dobDate.getUTCDate())) age--
+        if (age < 18) return financeJson({ error: 'Participant must be at least 18 years old under the current registration policy.' }, 400)
+        nextAge = String(age)
+      }
+
+      const privacyRequestId = String(body.privacyRequestId ?? '').trim().slice(0, 100)
+      if (privacyRequestId) {
+        const linkedRequest = await env.DB.prepare(`
+          SELECT pr.id, pr.request_type, pr.email, pr.status, pr.verification_status, r.email AS registration_email
+          FROM privacy_requests pr
+          JOIN registrations r ON lower(r.email) = lower(pr.email)
+          WHERE pr.id = ? AND r.id = ?
+        `).bind(privacyRequestId, current.registration_id).first<{ id: string; request_type: string; email: string; status: string; verification_status: string; registration_email: string }>()
+        if (!linkedRequest || linkedRequest.request_type !== 'CORRECT' || linkedRequest.verification_status !== 'VERIFIED' || ['COMPLETED','DECLINED'].includes(linkedRequest.status)) {
+          return financeJson({ error: 'Linked privacy request must be an open CORRECT request with verified identity for this registration.' }, 409)
+        }
+      }
+
+      const oldValues: Record<string, unknown> = {}
+      const newValues: Record<string, unknown> = {}
+      for (const [field, value] of Object.entries(updated)) {
+        oldValues[field] = current[field]
+        newValues[field] = value
+      }
+      if (updated.dob !== undefined) {
+        oldValues.age = current.age
+        newValues.age = nextAge
+      }
+
+      const setParts = Object.keys(updated).map(field => `${field} = ?`)
+      const bindValues: Array<string | number | null> = Object.values(updated)
+      if (updated.dob !== undefined) { setParts.push('age = ?'); bindValues.push(nextAge) }
+      bindValues.push(id)
+      const nowIso = new Date().toISOString()
+
+      await env.DB.prepare('CREATE TABLE IF NOT EXISTS participant_change_audit (id TEXT PRIMARY KEY, participant_id INTEGER NOT NULL, registration_id INTEGER NOT NULL, action TEXT NOT NULL, old_values_json TEXT NOT NULL, new_values_json TEXT NOT NULL, reason TEXT NOT NULL, privacy_request_id TEXT, actor TEXT NOT NULL, request_trace TEXT, created_at TEXT NOT NULL)').run()
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE participants SET ${setParts.join(', ')} WHERE id = ?`).bind(...bindValues),
+        env.DB.prepare(`INSERT INTO participant_change_audit (id, participant_id, registration_id, action, old_values_json, new_values_json, reason, privacy_request_id, actor, request_trace, created_at)
+          VALUES (?, ?, ?, 'PARTICIPANT_DATA_CORRECTED', ?, ?, ?, ?, 'main-admin-token', ?, ?)`).bind(
+            crypto.randomUUID(), id, current.registration_id, JSON.stringify(oldValues), JSON.stringify(newValues),
+            reason, privacyRequestId || null,
+            (request.headers.get('cf-ray') ?? '').slice(0, 100), nowIso
+          )
+      ])
+      return financeJson({ ok: true, participantId: id, updatedFields: Object.keys(updated), age: nextAge, updatedAt: nowIso })
     }
 
     if (url.pathname === '/api/admin/registrations' && request.method === 'GET') {
