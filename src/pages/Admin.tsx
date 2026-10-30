@@ -774,6 +774,33 @@ useEffect(() => {
     } finally { setParticipantSaving(false) }
   }
 
+  async function changePaymentStatus(row: Row, payment: PaymentRecord, status: 'VERIFIED' | 'REJECTED' | 'PENDING') {
+    if (!payment.id) {
+      setError('This is a legacy payment record. Use the existing registration-level verification action.')
+      return
+    }
+    const prompt = status === 'VERIFIED' ? 'Confirm that this transaction has been checked against the bank/UPI/cash receipt?' : status === 'REJECTED' ? 'Reject this payment transaction?' : 'Reset this transaction to pending verification?'
+    if (!window.confirm(`${prompt}\n\nRegistration: ${row.registration_id}\nReference: ${payment.payment_reference}\nAmount: ₹${Number(payment.amount).toLocaleString('en-IN')}`)) return
+    setUpdatingId(row.id)
+    setError('')
+    setSuccess('')
+    try {
+      const response = await fetch(`/api/admin/registrations/${row.id}/payments/${payment.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      })
+      const result = await response.json() as { ok?: boolean; error?: string }
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Payment status could not be updated.')
+      await load()
+      setSuccess(`Transaction ${payment.payment_no} marked ${status}.`)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Payment status could not be updated.')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
   async function changeStatus(
     row: Row,
     value: 'PAYMENT_VERIFIED' | 'APPROVED' | 'REJECTED'
@@ -3105,6 +3132,11 @@ if (!authenticated) {
                     </div>
                     <div className="text-sm font-medium">{payment.status}{payment.legacy ? ' (legacy record)' : ''}</div>
                   </div>
+                  {!payment.legacy && payment.id !== null && <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" disabled={updatingId === selected.id || payment.status === 'VERIFIED'} onClick={() => void changePaymentStatus(selected, payment, 'VERIFIED')}>Verify transaction</Button>
+                    <Button type="button" size="sm" variant="outline" disabled={updatingId === selected.id || payment.status === 'REJECTED'} onClick={() => void changePaymentStatus(selected, payment, 'REJECTED')}>Reject transaction</Button>
+                    <Button type="button" size="sm" variant="outline" disabled={updatingId === selected.id || payment.status === 'PENDING'} onClick={() => void changePaymentStatus(selected, payment, 'PENDING')}>Reset to pending</Button>
+                  </div>}
                   <div className="mt-3 text-sm text-muted-foreground">
                     Linked people: {(payment.allocations || []).map((person) => `${person.name} (₹${Number(person.amount).toLocaleString('en-IN')})`).join(', ') || 'Allocation details unavailable'}
                   </div>
