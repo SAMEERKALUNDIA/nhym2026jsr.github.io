@@ -236,9 +236,9 @@ jobs:
 
           const invalidCases = [
             ['invalid email rejected', { requestType: 'ACCESS', email: 'not-an-email', acknowledgement: true }, /valid email/i],
-            ['missing acknowledgement rejected', { requestType: 'ACCESS', email: 'privacy-ci@example.org', acknowledgement: false }, /acknowledge/i],
+            ['missing acknowledgement rejected', { requestType: 'ACCESS', email: 'privacy-ci@example.org', registrationId: 'NHYM26-000123', participantNo: '1', acknowledgement: false }, /acknowledge/i],
             ['invalid request type rejected', { requestType: 'ADMIN', email: 'privacy-ci@example.org', acknowledgement: true }, /valid privacy request type/i],
-            ['overlong details rejected', { requestType: 'ACCESS', email: 'privacy-ci@example.org', acknowledgement: true, details: 'x'.repeat(1001) }, /1000 characters/i]
+            ['overlong details rejected', { requestType: 'ACCESS', email: 'privacy-ci@example.org', registrationId: 'NHYM26-000123', participantNo: '1', acknowledgement: true, details: 'x'.repeat(1001) }, /1000 characters/i]
           ]
           for (const [name, payload, expectedError] of invalidCases) {
             const response = await fetch(base + '/api/privacy-requests', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
