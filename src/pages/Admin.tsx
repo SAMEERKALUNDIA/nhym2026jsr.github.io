@@ -813,11 +813,28 @@ useEffect(() => {
         }
       )
 
-      const j = await r.json() as {
+      const responseText = await r.text()
+      let j: {
         ok?: boolean
         status?: string
         emailSent?: boolean
         error?: string
+      }
+
+      try {
+        j = JSON.parse(responseText) as typeof j
+      } catch {
+        const contentType = r.headers.get('content-type') || 'unknown'
+        console.error('Registration status API returned a non-JSON response', {
+          status: r.status,
+          contentType,
+          path: new URL(r.url).pathname,
+        })
+        throw new Error(
+          contentType.includes('text/html')
+            ? 'Server ne API JSON ke badle HTML page bheja. Page refresh karke dobara koshish karein; agar samasya bani rahe to technical support ko batayein.'
+            : `Server ka response JSON format mein nahi hai (HTTP ${r.status}). Kripya dobara koshish karein.`
+        )
       }
 
       if (!r.ok) {
