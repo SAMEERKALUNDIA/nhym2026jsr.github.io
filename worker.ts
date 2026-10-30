@@ -2807,7 +2807,10 @@ if (
       if (Number(summary?.total ?? 0) > 0 && Number(summary?.verified ?? 0) === Number(summary?.total ?? 0)) {
         await env.DB.prepare("UPDATE registrations SET status = 'PAYMENT_VERIFIED', updated_at = ? WHERE id = ? AND status = 'PENDING'")
           .bind(updatedAt, registrationRowId).run()
-      } else if (Number(summary?.rejected ?? 0) > 0) {
+      } else if (Number(summary?.total ?? 0) > 0) {
+        // If any transaction is reset to PENDING or REJECTED, the parent registration
+        // must not remain PAYMENT_VERIFIED. Otherwise the admin UI can show a stale
+        // verified status even though not every transaction is currently verified.
         await env.DB.prepare("UPDATE registrations SET status = 'PENDING', updated_at = ? WHERE id = ? AND status = 'PAYMENT_VERIFIED'")
           .bind(updatedAt, registrationRowId).run()
       }
