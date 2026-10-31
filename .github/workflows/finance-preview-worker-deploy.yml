@@ -7,7 +7,6 @@ on:
   push:
     branches:
       - feature/admin-finance-password-recovery
-      - feature/finance-income-utr-ocr-20261031
     paths:
       - "worker.ts"
       - "src/**"
