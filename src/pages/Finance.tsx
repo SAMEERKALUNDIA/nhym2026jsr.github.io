@@ -45,10 +45,10 @@ function loadFinanceTesseract(): Promise<FinanceTesseractApi> {
 }
 function extractFinanceTransactionReference(rawText: string): string | null {
   const text = rawText.toUpperCase()
-  const labelled = text.match(/(?:UTR|UPI\\s*(?:REF(?:ERENCE)?|TXN|TRANSACTION)?\\s*(?:ID|NO)?|TRANSACTION\\s*(?:ID|NO|REF(?:ERENCE)?))[^A-Z0-9]{0,30}([A-Z0-9]{8,35})/i)
-  const candidates = text.match(/\\b[A-Z0-9]{8,35}\\b/g) ?? []
-  const candidate = labelled?.[1] ?? candidates.find(value => /\\d/.test(value) && !/^(PAYMENT|TRANSACTION|SUCCESSFUL|REFERENCE|GOOGLEPAY|PHONEPE|PAYTM|AMAZONPAY)$/.test(value))
-  return candidate?.replace(/\\s+/g, '').toUpperCase() ?? null
+  const labelled = text.match(/(?:UTR|UPI\s*(?:REF(?:ERENCE)?|TXN|TRANSACTION)?\s*(?:ID|NO)?|TRANSACTION\s*(?:ID|NO|REF(?:ERENCE)?))[^A-Z0-9]{0,30}([A-Z0-9]{8,35})/i)
+  const candidates = text.match(/\b[A-Z0-9]{8,35}\b/g) ?? []
+  const candidate = labelled?.[1] ?? candidates.find(value => /\d/.test(value) && !/^(PAYMENT|TRANSACTION|SUCCESSFUL|REFERENCE|GOOGLEPAY|PHONEPE|PAYTM|AMAZONPAY)$/.test(value))
+  return candidate?.replace(/\s+/g, '').toUpperCase() ?? null
 }
 
 const auditFieldLabel = (key: string) => key.replace(/([A-Z])/g, ' $1').replace(/[_-]/g, ' ').replace(/^./, value => value.toUpperCase())
