@@ -692,7 +692,7 @@ export default function Finance() {
         y += baseRowHeight
       }
       drawTableHeader()
-      rows.forEach((row, rowIndex) => {
+      for (const [rowIndex, row] of rows.entries()) {
         doc.setFont('helvetica', 'normal')
         doc.setFontSize(7)
         const wrapped = await Promise.all(row.map(async (value, i) => {
@@ -739,7 +739,7 @@ export default function Finance() {
           x += widths[i]
         })
         y += rowHeight
-      })
+      }
       y += 3
     }
 
