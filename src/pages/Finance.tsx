@@ -606,8 +606,9 @@ export default function Finance() {
       doc.text(title.toUpperCase(), pageWidth / 2, y - 0.2, { align: 'center', maxWidth: contentWidth - 8 })
       y += 6
     }
-    // Render Devanagari purpose text through the browser's Unicode shaping engine.
+    // Render Devanagari table text through the browser's Unicode shaping engine.
     // jsPDF's built-in Helvetica font has no Devanagari glyphs or conjunct shaping.
+    // High-resolution raster output (~300 DPI) reduces blur when zooming or printing.
     async function renderHindiPurpose(value: string, widthMm: number, fontSizePt: number) {
       const fontFamily = 'Noto Sans Devanagari'
       try {
@@ -627,7 +628,8 @@ export default function Finance() {
       } catch {
         // Retain browser-provided Devanagari fallback fonts if the web font is unavailable.
       }
-      const scale = 3.2
+      // Render at approximately 300 DPI so Hindi remains crisp at normal print/zoom levels.
+      const scale = 12
       const padding = 3
       const widthPx = Math.max(60, Math.floor((widthMm - 4) * scale))
       const fontPx = fontSizePt * 25.4 / 72 * scale
@@ -696,7 +698,7 @@ export default function Finance() {
         doc.setFont('helvetica', 'normal')
         doc.setFontSize(7)
         const wrapped = await Promise.all(row.map(async (value, i) => {
-          if (headers[i] === 'Purpose') {
+          if (headers[i] === 'Purpose' || headers[i] === 'Vendor / Payee') {
             const rendered = await renderHindiPurpose(String(value ?? '—'), widths[i], 7)
             return { lines: [] as string[], image: rendered.dataUrl, heightMm: rendered.heightMm }
           }
