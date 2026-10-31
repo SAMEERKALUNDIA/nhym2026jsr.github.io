@@ -606,7 +606,61 @@ export default function Finance() {
       doc.text(title.toUpperCase(), pageWidth / 2, y - 0.2, { align: 'center', maxWidth: contentWidth - 8 })
       y += 6
     }
-    const drawTable = (headers: string[], rows: string[][], widths: number[], aligns: Array<'left' | 'right' | 'center'> = []) => {
+    // Render Devanagari purpose text through the browser's Unicode shaping engine.
+    // jsPDF's built-in Helvetica font has no Devanagari glyphs or conjunct shaping.
+    async function renderHindiPurpose(value: string, widthMm: number, fontSizePt: number) {
+      const fontFamily = 'Noto Sans Devanagari'
+      try {
+        if (!document.querySelector('link[data-nhym-devanagari-font]')) {
+          const link = document.createElement('link')
+          link.rel = 'stylesheet'
+          link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap'
+          link.dataset.nhymDevanagariFont = 'true'
+          document.head.appendChild(link)
+        }
+        await document.fonts.load(\`400 \${fontSizePt * 96 / 72}px "\${fontFamily}"\`)
+      } catch {
+        // Retain browser-provided Devanagari fallback fonts if the web font is unavailable.
+      }
+      const scale = 3.2
+      const padding = 3
+      const widthPx = Math.max(60, Math.floor((widthMm - 4) * scale))
+      const fontPx = fontSizePt * 96 / 72 * scale
+      const lineHeight = fontPx * 1.42
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Hindi text renderer is unavailable.')
+      context.font = \`400 \${fontPx}px "\${fontFamily}", "Nirmala UI", "Arial", sans-serif\`
+      const maxTextWidth = widthPx - padding * 2
+      const lines: string[] = []
+      for (const paragraph of String(value ?? '—').replace(/\r/g, '').split('\n')) {
+        const words = paragraph.split(/\s+/).filter(Boolean)
+        if (!words.length) { lines.push(''); continue }
+        let line = ''
+        for (const word of words) {
+          const candidate = line ? \`\${line} \${word}\` : word
+          if (line && context.measureText(candidate).width > maxTextWidth) {
+            lines.push(line)
+            line = word
+          } else {
+            line = candidate
+          }
+        }
+        if (line) lines.push(line)
+      }
+      const heightPx = Math.max(lineHeight + padding * 2, lines.length * lineHeight + padding * 2)
+      canvas.width = widthPx
+      canvas.height = Math.ceil(heightPx)
+      const draw = canvas.getContext('2d')
+      if (!draw) throw new Error('Hindi text renderer is unavailable.')
+      draw.font = \`400 \${fontPx}px "\${fontFamily}", "Nirmala UI", "Arial", sans-serif\`
+      draw.fillStyle = '#2a312c'
+      draw.textBaseline = 'top'
+      lines.forEach((line, index) => draw.fillText(line, padding, padding + index * lineHeight))
+      return { dataUrl: canvas.toDataURL('image/png'), heightMm: canvas.height / scale }
+    }
+
+    const drawTable = async (headers: string[], rows: string[][], widths: number[], aligns: Array<'left' | 'right' | 'center'> = []) => {
       // Scale every table to the available landscape page width to prevent
       // long descriptions, payee names and IDs from colliding across columns.
       const baseWidth = widths.reduce((sum, width) => sum + width, 0)
@@ -636,9 +690,15 @@ export default function Finance() {
       rows.forEach((row, rowIndex) => {
         doc.setFont('helvetica', 'normal')
         doc.setFontSize(7)
-        const wrapped = row.map((value, i) => i === 0 ? [String(value ?? '—')] : doc.splitTextToSize(String(value ?? '—').replace(/\s+/g, ' ').trim(), Math.max(8, widths[i] - 4)) as string[])
-        const maxLines = Math.max(1, ...wrapped.map(lines => lines.length))
-        const rowHeight = Math.max(baseRowHeight, maxLines * 3.6 + 3)
+        const wrapped = await Promise.all(row.map(async (value, i) => {
+          if (headers[i] === 'Purpose') {
+            const rendered = await renderHindiPurpose(String(value ?? '—'), widths[i], 7)
+            return { lines: [] as string[], image: rendered.dataUrl, heightMm: rendered.heightMm }
+          }
+          return { lines: i === 0 ? [String(value ?? '—')] : doc.splitTextToSize(String(value ?? '—').replace(/\s+/g, ' ').trim(), Math.max(8, widths[i] - 4)) as string[], image: null as string | null, heightMm: 0 }
+        }))
+        const maxLines = Math.max(1, ...wrapped.map(cell => cell.lines.length))
+        const rowHeight = Math.max(baseRowHeight, maxLines * 3.6 + 3, ...wrapped.map(cell => cell.heightMm + 2))
         if (y + rowHeight > pageHeight - 18) {
           newPage()
           drawTableHeader()
@@ -652,22 +712,24 @@ export default function Finance() {
         doc.line(left, y + rowHeight, right, y + rowHeight)
         doc.setTextColor(42, 49, 44)
         let x = left
-        wrapped.forEach((lines, i) => {
+        wrapped.forEach((cell, i) => {
           const align = aligns[i] || 'left'
           const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
-          if (i === 0) {
-            // Keep the record ID on one line; shrink only its font to fit its own column.
+          if (cell.image) {
+            // Rasterized at high resolution to preserve Hindi matras and mixed-script shaping.
+            doc.addImage(cell.image, 'PNG', x + 2, y + 1, widths[i] - 4, cell.heightMm)
+          } else if (i === 0) {
             const originalSize = 7
             let size = originalSize
             doc.setFontSize(size)
-            while (size > 5 && doc.getTextWidth(lines[0]) > widths[i] - 4) {
+            while (size > 5 && doc.getTextWidth(cell.lines[0]) > widths[i] - 4) {
               size -= 0.25
               doc.setFontSize(size)
             }
-            doc.text(lines[0], tx, y + 5, { align: 'left', maxWidth: widths[i] - 4 })
+            doc.text(cell.lines[0], tx, y + 5, { align: 'left', maxWidth: widths[i] - 4 })
             doc.setFontSize(originalSize)
           } else {
-            doc.text(lines, tx, y + 4.5, { align, lineHeightFactor: 1.05, maxWidth: widths[i] - 3 })
+            doc.text(cell.lines, tx, y + 4.5, { align, lineHeightFactor: 1.05, maxWidth: widths[i] - 3 })
           }
           x += widths[i]
         })
@@ -714,7 +776,7 @@ export default function Finance() {
     y += 5
 
     drawSection('Expense Register')
-    drawTable(
+    await drawTable(
       ['S. No.', 'Expense ID', 'Date', 'Category', 'Vendor / Payee', 'Purpose', 'Requested', 'Approved', 'Paid', 'Approval', 'Payment'],
       data.expenses.map((x, i) => [
         String(i + 1), x.expense_no, formatDate(x.expense_date), x.category_name, x.vendor_name, x.description,
@@ -726,7 +788,7 @@ export default function Finance() {
     )
 
     drawSection('Income Register')
-    drawTable(
+    await drawTable(
       ['S. No.', 'Income ID', 'Received Date', 'Income Type', 'Received From', 'Amount', 'Mode', 'Reference / Receipt'],
       data.incomes.map((x, i) => [
         String(i + 1), String(x.income_no ?? ''), formatDate(x.received_at), String(x.income_type ?? ''),
@@ -738,7 +800,7 @@ export default function Finance() {
     )
 
     drawSection('Budget Register')
-    drawTable(
+    await drawTable(
       ['S. No.', 'Budget Period', 'Category', 'Planned / Approved Amount', 'Status', 'Revision'],
       data.budgets.map((x, i) => [
         String(i + 1), String(x.budget_period ?? ''), String(x.category_name ?? ''),
