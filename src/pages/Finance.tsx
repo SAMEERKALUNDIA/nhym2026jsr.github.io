@@ -26,15 +26,15 @@ type FinanceOcrWorker = {
   terminate: () => Promise<unknown>
 }
 type FinanceTesseractApi = { createWorker: (language: string) => Promise<FinanceOcrWorker> }
-declare global { interface Window { Tesseract?: FinanceTesseractApi } }
 function loadFinanceTesseract(): Promise<FinanceTesseractApi> {
-  if (window.Tesseract) return Promise.resolve(window.Tesseract)
+  const browserWindow = window as Window & { Tesseract?: FinanceTesseractApi }
+  if (browserWindow.Tesseract) return Promise.resolve(browserWindow.Tesseract)
   return new Promise((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>('script[data-nhym-tesseract]')
     const script = existing ?? document.createElement('script')
     const fail = () => reject(new Error('OCR engine could not be loaded. Please enter the transaction ID manually.'))
     script.addEventListener('error', fail, { once: true })
-    script.addEventListener('load', () => window.Tesseract ? resolve(window.Tesseract) : fail(), { once: true })
+    script.addEventListener('load', () => browserWindow.Tesseract ? resolve(browserWindow.Tesseract) : fail(), { once: true })
     if (!existing) {
       script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'
       script.async = true
