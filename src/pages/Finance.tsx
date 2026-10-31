@@ -21,6 +21,36 @@ const safeAuditJson = (value: unknown) => {
   if (typeof value !== 'string' || !value) return null
   try { return JSON.parse(value) as unknown } catch { return value }
 }
+type FinanceOcrWorker = {
+  recognize: (image: File) => Promise<{ data: { text: string } }>
+  terminate: () => Promise<unknown>
+}
+type FinanceTesseractApi = { createWorker: (language: string) => Promise<FinanceOcrWorker> }
+declare global { interface Window { Tesseract?: FinanceTesseractApi } }
+function loadFinanceTesseract(): Promise<FinanceTesseractApi> {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract)
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-nhym-tesseract]')
+    const script = existing ?? document.createElement('script')
+    const fail = () => reject(new Error('OCR engine could not be loaded. Please enter the transaction ID manually.'))
+    script.addEventListener('error', fail, { once: true })
+    script.addEventListener('load', () => window.Tesseract ? resolve(window.Tesseract) : fail(), { once: true })
+    if (!existing) {
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'
+      script.async = true
+      script.dataset.nhymTesseract = 'true'
+      document.head.appendChild(script)
+    }
+  })
+}
+function extractFinanceTransactionReference(rawText: string): string | null {
+  const text = rawText.toUpperCase()
+  const labelled = text.match(/(?:UTR|UPI\\s*(?:REF(?:ERENCE)?|TXN|TRANSACTION)?\\s*(?:ID|NO)?|TRANSACTION\\s*(?:ID|NO|REF(?:ERENCE)?))[^A-Z0-9]{0,30}([A-Z0-9]{8,35})/i)
+  const candidates = text.match(/\\b[A-Z0-9]{8,35}\\b/g) ?? []
+  const candidate = labelled?.[1] ?? candidates.find(value => /\\d/.test(value) && !/^(PAYMENT|TRANSACTION|SUCCESSFUL|REFERENCE|GOOGLEPAY|PHONEPE|PAYTM|AMAZONPAY)$/.test(value))
+  return candidate?.replace(/\\s+/g, '').toUpperCase() ?? null
+}
+
 const auditFieldLabel = (key: string) => key.replace(/([A-Z])/g, ' $1').replace(/[_-]/g, ' ').replace(/^./, value => value.toUpperCase())
 const auditReadableEntries = (value: unknown): Array<{ label: string; value: string }> => {
   if (value === null || value === undefined) return [{ label: 'Change', value: 'No previous value recorded' }]
@@ -95,6 +125,8 @@ export default function Finance() {
   const [receivedAt, setReceivedAt] = useState(today)
   const [incomeMode, setIncomeMode] = useState('UPI')
   const [incomeReference, setIncomeReference] = useState('')
+  const [incomeOcrBusy, setIncomeOcrBusy] = useState(false)
+  const [incomeOcrMessage, setIncomeOcrMessage] = useState('')
   const [receiptNo, setReceiptNo] = useState('')
   const [incomeRemarks, setIncomeRemarks] = useState('')
   const [vendor, setVendor] = useState('')
@@ -271,6 +303,33 @@ export default function Finance() {
       setNotice(`Budget status: ${decision}`); await load()
     } catch (e) { setError(e instanceof Error ? e.message : 'Budget status update nahi hua.') }
     finally { setBusy(false) }
+  }
+
+  async function readIncomeScreenshot(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setIncomeOcrMessage('Please select an image file.'); return }
+    if (file.size > 15 * 1024 * 1024) { setIncomeOcrMessage('Choose an image smaller than 15 MB.'); return }
+    setIncomeOcrBusy(true); setIncomeOcrMessage('Reading screenshot in this browser…')
+    let worker: FinanceOcrWorker | undefined
+    try {
+      const tesseract = await loadFinanceTesseract()
+      worker = await tesseract.createWorker('eng')
+      const result = await worker.recognize(file)
+      const reference = extractFinanceTransactionReference(result.data.text)
+      if (reference) {
+        setIncomeReference(reference)
+        setIncomeOcrMessage('Transaction reference detected. Verify it against the original receipt before saving.')
+      } else {
+        setIncomeOcrMessage('Could not confidently identify a transaction ID. Please enter it manually.')
+      }
+    } catch (error) {
+      setIncomeOcrMessage(error instanceof Error ? error.message : 'OCR failed. Please enter the transaction ID manually.')
+    } finally {
+      if (worker) await worker.terminate().catch(() => undefined)
+      setIncomeOcrBusy(false)
+    }
   }
 
   async function submitIncome(e: React.FormEvent) {
@@ -735,7 +794,7 @@ export default function Finance() {
       <label className="space-y-1 text-sm"><span>Received From</span><input value={receivedFrom} onChange={e=>setReceivedFrom(e.target.value)} className="w-full rounded-lg border bg-background p-3" maxLength={160} required/></label>
       <label className="space-y-1 text-sm"><span>Amount (₹)</span><input type="number" min="0.01" step="0.01" value={incomeAmount} onChange={e=>setIncomeAmount(e.target.value)} className="w-full rounded-lg border bg-background p-3" required/></label>
       <label className="space-y-1 text-sm"><span>Payment Mode</span><select value={incomeMode} onChange={e=>setIncomeMode(e.target.value)} className="w-full rounded-lg border bg-background p-3">{['UPI','BANK_TRANSFER','CASH'].map(x=><option key={x} value={x}>{x==='BANK_TRANSFER'?'Bank Transfer':x}</option>)}</select></label>
-      <label className="space-y-1 text-sm"><span>Transaction Reference {incomeMode!=='CASH'?'(required)':'(optional)'}</span><input value={incomeReference} onChange={e=>setIncomeReference(e.target.value)} className="w-full rounded-lg border bg-background p-3" maxLength={160} required={incomeMode!=='CASH'}/></label>
+      <div className="space-y-2 text-sm"><label className="block" htmlFor="finance-income-reference">Transaction Reference {incomeMode!=='CASH'?'(required)':'(optional)'}</label><input id="finance-income-reference" value={incomeReference} onChange={e=>setIncomeReference(e.target.value)} className="w-full rounded-lg border bg-background p-3" maxLength={160} required={incomeMode!=='CASH'}/><label className="mt-2 block" htmlFor="finance-income-ocr">Read transaction ID from payment screenshot (optional)</label><input id="finance-income-ocr" type="file" accept="image/*" disabled={incomeOcrBusy} onChange={readIncomeScreenshot} className="w-full cursor-pointer rounded-lg border bg-background p-2 file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1"/>{incomeOcrMessage && <p role="status" aria-live="polite" className="text-xs text-muted-foreground">{incomeOcrBusy?'Processing… ':''}{incomeOcrMessage}</p>}<p className="text-xs text-muted-foreground">OCR runs in this browser. Please verify the extracted ID; you can edit it manually.</p></div>
       <label className="space-y-1 text-sm"><span>Receipt Number (optional)</span><input value={receiptNo} onChange={e=>setReceiptNo(e.target.value)} className="w-full rounded-lg border bg-background p-3" maxLength={100}/></label>
       <label className="space-y-1 text-sm"><span>Remarks (optional)</span><input value={incomeRemarks} onChange={e=>setIncomeRemarks(e.target.value)} className="w-full rounded-lg border bg-background p-3" maxLength={500}/></label>
       <div className="flex flex-wrap gap-2 md:col-span-2"><button disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-primary-foreground">{busy?'Saving…':'Save Income'}</button><button type="button" onClick={()=>setShowIncomeForm(false)} className="rounded-lg border px-4 py-2">Cancel</button></div>
