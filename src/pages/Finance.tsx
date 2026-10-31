@@ -611,12 +611,17 @@ export default function Finance() {
     async function renderHindiPurpose(value: string, widthMm: number, fontSizePt: number) {
       const fontFamily = 'Noto Sans Devanagari'
       try {
-        if (!document.querySelector('link[data-nhym-devanagari-font]')) {
-          const link = document.createElement('link')
-          link.rel = 'stylesheet'
-          link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap'
-          link.dataset.nhymDevanagariFont = 'true'
-          document.head.appendChild(link)
+        let fontStylesheet = document.querySelector<HTMLLinkElement>('link[data-nhym-devanagari-font]')
+        if (!fontStylesheet) {
+          fontStylesheet = document.createElement('link')
+          fontStylesheet.rel = 'stylesheet'
+          fontStylesheet.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap'
+          fontStylesheet.dataset.nhymDevanagariFont = 'true'
+          await new Promise<void>(resolve => {
+            fontStylesheet!.addEventListener('load', () => resolve(), { once: true })
+            fontStylesheet!.addEventListener('error', () => resolve(), { once: true })
+            document.head.appendChild(fontStylesheet!)
+          })
         }
         await document.fonts.load(`400 ${fontSizePt * 96 / 72}px "${fontFamily}"`)
       } catch {
@@ -625,7 +630,7 @@ export default function Finance() {
       const scale = 3.2
       const padding = 3
       const widthPx = Math.max(60, Math.floor((widthMm - 4) * scale))
-      const fontPx = fontSizePt * 96 / 72 * scale
+      const fontPx = fontSizePt * 25.4 / 72 * scale
       const lineHeight = fontPx * 1.42
       const canvas = document.createElement('canvas')
       const context = canvas.getContext('2d')
