@@ -106,6 +106,8 @@ type Draft = {
 }
 
 type PaymentMode = 'upi' | 'bank' | 'cash' | 'other'
+type PaymentGroup = { key: number; mode: PaymentMode; reference: string; rowKeys: number[] }
+let nextPaymentKey = 2
 
 /* The three declarations the organiser's form asks for, asked once for the whole
    submission rather than per person: they are about the person filling the form,
@@ -274,8 +276,8 @@ export default function Register() {
   /* The address the approval message is sent to. It belongs to the submission
      rather than to a row, because the desk writes once for the whole list. */
   const [email, setEmail] = useState('')
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('upi')
-  const [paymentReference, setPaymentReference] = useState('')
+  const [paymentGroups, setPaymentGroups] = useState<PaymentGroup[]>([{ key: 1, mode: 'upi', reference: '', rowKeys: [1] }])
+  const [activePaymentKey, setActivePaymentKey] = useState(1)
   const [registrationId, setRegistrationId] = useState('')
   const [sending, setSending] = useState(false)
   const [ocrBusy, setOcrBusy] = useState(false)
@@ -310,11 +312,25 @@ export default function Register() {
 
   function addRow() {
     nextKey += 1
-    setRows((prev) => [...prev, blank(nextKey)])
+    const newKey = nextKey
+    setRows((prev) => [...prev, blank(newKey)])
+    setPaymentGroups((prev) => prev.map((group, index) => index === 0 ? { ...group, rowKeys: [...group.rowKeys, newKey] } : group))
   }
 
   function removeRow(key: number) {
     setRows((prev) => (prev.length === 1 ? prev : prev.filter((row) => row.key !== key)))
+    setPaymentGroups((prev) => prev.map((group) => ({ ...group, rowKeys: group.rowKeys.filter((rowKey) => rowKey !== key) })).filter((group) => group.rowKeys.length > 0 || group.key === 1))
+  }
+
+  function addPaymentGroup() {
+    nextPaymentKey += 1
+    const nextGroup = { key: nextPaymentKey, mode: 'upi' as PaymentMode, reference: '', rowKeys: [] as number[] }
+    setPaymentGroups((prev) => [...prev, nextGroup])
+    setActivePaymentKey(nextGroup.key)
+  }
+
+  function updatePaymentGroup(key: number, patch: Partial<PaymentGroup>) {
+    setPaymentGroups((prev) => prev.map((group) => group.key === key ? { ...group, ...patch } : group))
   }
 
   function validate() {
@@ -411,14 +427,6 @@ if (!row.dob.trim()) {
             }
           }
         }
-        if (row.category === 'visitor' && !referenceOk(row.reference)) {
-          ok = false
-          return {
-            ...row,
-            error:
-              'Enter the UTR, transaction ID or receipt number of the contribution you have paid.',
-          }
-        }
         return { ...row, error: undefined }
       }),
     )
@@ -427,12 +435,23 @@ if (!row.dob.trim()) {
       if (!email.trim()) problem = 'Email address is required so the approval message can reach you.'
       else problem = 'Enter a valid email address so the approval message can reach you.'
     }
-    // Visitor-only registrations collect their payment reference per participant.
-    // The shared registration-level reference is required only when at least one
-    // non-visitor participant is included.
-    if (rows.some((row) => row.category !== 'visitor') && !referenceOk(paymentReference)) {
+    const selectedKeys = paymentGroups.flatMap((group) => group.rowKeys)
+    if (rows.some((row) => !selectedKeys.includes(row.key)) || selectedKeys.length !== rows.length || new Set(selectedKeys).size !== selectedKeys.length) {
       ok = false
-      if (!problem) problem = 'Enter the UPI transaction ID, bank reference or receipt number for this registration.'
+      if (!problem) problem = 'Assign every participant and visitor to exactly one payment transaction.'
+    }
+    if (paymentGroups.some((group) => group.rowKeys.length === 0)) {
+      ok = false
+      if (!problem) problem = 'Assign at least one participant or visitor to every payment transaction, or remove the unused transaction.'
+    }
+    if (paymentGroups.some((group) => !referenceOk(group.reference))) {
+      ok = false
+      if (!problem) problem = 'Enter a valid transaction reference for each payment group.'
+    }
+    const normalizedReferences = paymentGroups.map((group) => group.reference.trim().replace(/\s+/g, '').toUpperCase())
+    if (new Set(normalizedReferences).size !== normalizedReferences.length) {
+      ok = false
+      if (!problem) problem = 'Each separate payment transaction must have a different transaction reference.'
     }
     if (ok) setFormError('')
     else if (problem) setFormError(problem)
@@ -653,7 +672,7 @@ if (!row.dob.trim()) {
         /\d/.test(value) && !/^(PAYMENT|TRANSACTION|SUCCESSFUL|REFERENCE|GOOGLEPAY|PHONEPE|PAYTM|AMAZONPAY)$/.test(value)
       )
       if (candidate) {
-        setPaymentReference(candidate.replace(/\s+/g, '').toUpperCase())
+        setPaymentGroups((prev) => prev.map((group) => group.key === activePaymentKey ? { ...group, reference: candidate.replace(/\s+/g, '').toUpperCase() } : group))
         setOcrMessage('Transaction reference detected. Please verify it against your payment receipt before submitting.')
       } else {
         setOcrMessage('Could not confidently identify a transaction ID. Please enter it manually from the receipt.')
@@ -678,8 +697,17 @@ if (!row.dob.trim()) {
         body: JSON.stringify({
           email: email.trim(),
           total,
-          paymentMode: rows.some((row) => row.category !== 'visitor') ? paymentMode : (rows[0]?.mode ?? paymentMode),
-          paymentReference: (rows.some((row) => row.category !== 'visitor') ? paymentReference : (rows[0]?.reference || paymentReference)).trim().replace(/\s+/g, '').toUpperCase(),
+          paymentMode: paymentGroups[0]?.mode.toUpperCase() ?? 'UPI',
+          paymentReference: paymentGroups[0]?.reference.trim().replace(/\s+/g, '').toUpperCase() ?? '',
+          payments: paymentGroups.map((group) => ({
+            paymentMode: group.mode.toUpperCase(),
+            paymentReference: group.reference.trim().replace(/\s+/g, '').toUpperCase(),
+            amount: group.rowKeys.reduce((sum, rowKey) => {
+              const row = rows.find((item) => item.key === rowKey)
+              return sum + (row ? (feeOf(row) ?? 0) : 0)
+            }, 0),
+            participantIndexes: group.rowKeys.map((rowKey) => rows.findIndex((row) => row.key === rowKey)).filter((index) => index >= 0),
+          })),
           agreed,
           declarations: agreed,
           privacyConsent: privacyAccepted,
@@ -807,8 +835,8 @@ if (!row.dob.trim()) {
                     rows={rows}
                     email={email}
                     registrationId={registrationId}
-                    paymentMode={paymentMode}
-                    paymentReference={paymentReference}
+                    paymentMode={paymentGroups[0]?.mode ?? 'upi'}
+                    paymentReference={paymentGroups[0]?.reference ?? ''}
                     onEdit={() => setSubmitted(false)}
                   />
                 ) : (
@@ -1148,55 +1176,8 @@ if (!row.dob.trim()) {
                             )}
 
                             <p className="mt-4 text-sm text-muted-foreground">
-                              Pay the displayed amount and enter the payment reference below.
+                              Contribution ko upar “Payment transactions” section mein us transaction group ke saath link karein jisse iska payment hua hai.
                             </p>
-
-                            <div className="mt-4 grid gap-4">
-                              <div>
-                                <Label htmlFor={`mode-${row.key}`}>Payment mode</Label>
-                                <Select
-                                  value={row.mode}
-                                  onValueChange={(value) =>
-                                    update(row.key, {
-                                      mode: value as PaymentMode,
-                                      error: undefined,
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger id={`mode-${row.key}`} className="mt-2 h-11 w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {PAYMENT_MODES.map((mode) => (
-                                      <SelectItem key={mode.id} value={mode.id}>
-                                        {mode.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="max-w-sm">
-                                <Label htmlFor={`reference-${row.key}`}>Payment reference</Label>
-                                <Input
-                                  id={`reference-${row.key}`}
-                                  value={row.reference}
-                                  onChange={(e) =>
-                                    update(row.key, {
-                                      reference: e.target.value,
-                                      error: undefined,
-                                    })
-                                  }
-                                  aria-invalid={Boolean(row.error)}
-                                  placeholder="UTR / transaction ID / receipt number"
-                                  className="mt-2 h-11"
-                                />
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                  The desk matches this against the payment before the pass is
-                                  handed over. Cash taken at an authorised counter gets a receipt
-                                  number instead.
-                                </p>
-                              </div>
-                            </div>
                           </div>
                         )}
 
@@ -1251,16 +1232,53 @@ if (!row.dob.trim()) {
                       </div>
                     </fieldset>
 
-                    {rows.some((row) => row.category !== 'visitor') && (
-                      <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
-                        <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">Payment reference</legend>
-                        <p className="max-w-lg text-sm text-muted-foreground">Pay the total for the non-visitor participant categories using the bank/UPI details shown on this page, then enter the reference below. The committee will verify it before approval.</p>
-                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                          <div><Label>Payment method</Label><Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as PaymentMode)}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent></Select></div>
-                          <div><Label htmlFor="payment-reference">Transaction / reference number</Label><Input id="payment-reference" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" /><p className="mt-2 text-xs text-muted-foreground">Each payment reference can be used for only one registration. Enter it exactly as shown in your payment receipt.</p><Label htmlFor="payment-screenshot" className="mt-4 block">Read from payment screenshot (optional)</Label><Input id="payment-screenshot" type="file" accept="image/*" disabled={ocrBusy} onChange={readPaymentScreenshot} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" /><p className="mt-2 text-xs text-muted-foreground">OCR runs in your browser. The screenshot is not uploaded or saved. Please check the detected reference yourself.</p>{ocrMessage && <p role="status" className="mt-2 text-xs text-muted-foreground">{ocrBusy ? 'Processing… ' : ''}{ocrMessage}</p>}</div>
-                        </div>
-                      </fieldset>
-                    )}
+                    <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
+                      <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">Payment transactions</legend>
+                      <p className="max-w-lg text-sm text-muted-foreground">Har actual transaction ke liye ek group banaiye. Ek payment group mein multiple participants/visitors select kar sakte hain. Har vyakti ko exactly ek group mein hona chahiye; amount fee ke hisaab se calculate hota hai.</p>
+                      <div className="mt-4 space-y-4">
+                        {paymentGroups.map((group, groupIndex) => {
+                          const assignedFee = group.rowKeys.reduce((sum, rowKey) => {
+                            const row = rows.find((item) => item.key === rowKey)
+                            return sum + (row ? (feeOf(row) ?? 0) : 0)
+                          }, 0)
+                          return <section key={group.key} className="rounded-lg border p-3 sm:p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <h4 className="font-semibold">Transaction {groupIndex + 1} — {inr(assignedFee)}</h4>
+                              {paymentGroups.length > 1 && <Button type="button" variant="outline" size="sm" onClick={() => {
+                                setPaymentGroups((prev) => prev.filter((item) => item.key !== group.key))
+                                if (activePaymentKey === group.key) setActivePaymentKey(paymentGroups.find((item) => item.key !== group.key)?.key ?? 1)
+                              }}>Remove</Button>}
+                            </div>
+                            <p className="mt-2 text-sm text-muted-foreground">Is transaction se paid log select karein:</p>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                              {rows.map((row, index) => {
+                                const assignedTo = paymentGroups.find((item) => item.rowKeys.includes(row.key))?.key
+                                return <label key={row.key} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                                  <input type="checkbox" checked={group.rowKeys.includes(row.key)} onChange={(event) => {
+                                    setPaymentGroups((prev) => prev.map((item) => {
+                                      const withoutRow = item.rowKeys.filter((key) => key !== row.key)
+                                      if (item.key === group.key && event.target.checked) return { ...item, rowKeys: [...withoutRow, row.key] }
+                                      if (item.key === group.key || event.target.checked) return { ...item, rowKeys: withoutRow }
+                                      return item
+                                    }))
+                                  }} />
+                                  <span>{index + 1}. {row.name.trim() || 'Unnamed person'} — {inr(feeOf(row) ?? 0)}{assignedTo && assignedTo !== group.key ? ' (another transaction)' : ''}</span>
+                                </label>
+                              })}
+                            </div>
+                            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                              <div><Label>Payment method</Label><Select value={group.mode} onValueChange={(value) => updatePaymentGroup(group.key, { mode: value as PaymentMode })}><SelectTrigger className="mt-2 h-11"><SelectValue /></SelectTrigger><SelectContent>{PAYMENT_MODES.map((mode) => <SelectItem key={mode.id} value={mode.id}>{mode.label}</SelectItem>)}</SelectContent></Select></div>
+                              <div><Label htmlFor={`payment-reference-${group.key}`}>Transaction / reference number</Label><Input id={`payment-reference-${group.key}`} value={group.reference} onFocus={() => setActivePaymentKey(group.key)} onChange={(event) => updatePaymentGroup(group.key, { reference: event.target.value })} placeholder="UPI UTR / bank reference / receipt no." className="mt-2 h-11" />
+                                <Label htmlFor={`payment-screenshot-${group.key}`} className="mt-4 block">Read receipt screenshot (optional)</Label><Input id={`payment-screenshot-${group.key}`} type="file" accept="image/*" disabled={ocrBusy} onFocus={() => setActivePaymentKey(group.key)} onChange={(event) => { setActivePaymentKey(group.key); void readPaymentScreenshot(event) }} className="mt-2 cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1" />
+                              </div>
+                            </div>
+                            {ocrMessage && activePaymentKey === group.key && <p role="status" className="mt-2 text-xs text-muted-foreground">{ocrBusy ? 'Processing… ' : ''}{ocrMessage}</p>}
+                          </section>
+                        })}
+                        <Button type="button" variant="outline" className="w-full" onClick={addPaymentGroup}>Add another transaction</Button>
+                      </div>
+                      <p className="mt-3 text-xs text-muted-foreground">OCR browser mein hi chalta hai; screenshot upload ya save nahi hota. Detected ID ko receipt se milaiye. OCR payment verify nahi karta. Duplicate reference server par reject hoga.</p>
+                    </fieldset>
 
                     <fieldset className="rounded-lg border border-border bg-card p-4 sm:p-5">
                       <legend className="px-1 font-label text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
