@@ -144,6 +144,16 @@ type Participant = {
   details_json: string
 }
 
+type PaymentRecord = {
+  id: number | null
+  payment_no: number
+  payment_mode: string
+  payment_reference: string
+  amount: number
+  status: string
+  legacy?: boolean
+  allocations?: Array<{ participant_id: number; name: string; category: string; fee: number; amount: number }>
+}
 type Row = {
   id: number
   registration_id: string
@@ -157,6 +167,7 @@ type Row = {
   updated_at?: string
   approval_email_sent_at?: string | null
   participants?: Participant[]
+  payments?: PaymentRecord[]
 }
 
 export default function Admin() {
@@ -783,6 +794,33 @@ useEffect(() => {
     } finally { setParticipantSaving(false) }
   }
 
+  async function changePaymentStatus(row: Row, payment: PaymentRecord, status: 'VERIFIED' | 'REJECTED' | 'PENDING') {
+    if (!payment.id) {
+      setError('This is a legacy payment record. Use the existing registration-level verification action.')
+      return
+    }
+    const prompt = status === 'VERIFIED' ? 'Confirm that this transaction has been checked against the bank/UPI/cash receipt?' : status === 'REJECTED' ? 'Reject this payment transaction?' : 'Reset this transaction to pending verification?'
+    if (!window.confirm(`${prompt}\n\nRegistration: ${row.registration_id}\nReference: ${payment.payment_reference}\nAmount: ₹${Number(payment.amount).toLocaleString('en-IN')}`)) return
+    setUpdatingId(row.id)
+    setError('')
+    setSuccess('')
+    try {
+      const response = await fetch(`/api/admin/registrations/${row.id}/payments/${payment.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      })
+      const result = await readAdminApiJson<{ ok?: boolean; error?: string }>(response, 'Payment verification')
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Payment status could not be updated.')
+      await load()
+      setSuccess(`Transaction ${payment.payment_no} marked ${status}.`)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Payment status could not be updated.')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
   async function changeStatus(
     row: Row,
     value: 'PAYMENT_VERIFIED' | 'APPROVED' | 'REJECTED'
@@ -833,29 +871,12 @@ useEffect(() => {
         }
       )
 
-      const responseText = await r.text()
-      let j: {
+      const j = await readAdminApiJson<{
         ok?: boolean
         status?: string
         emailSent?: boolean
         error?: string
-      }
-
-      try {
-        j = JSON.parse(responseText) as typeof j
-      } catch {
-        const contentType = r.headers.get('content-type') || 'unknown'
-        console.error('Registration status API returned a non-JSON response', {
-          status: r.status,
-          contentType,
-          path: new URL(r.url).pathname,
-        })
-        throw new Error(
-          contentType.includes('text/html')
-            ? 'Server ne API JSON ke badle HTML page bheja. Page refresh karke dobara koshish karein; agar samasya bani rahe to technical support ko batayein.'
-            : `Server ka response JSON format mein nahi hai (HTTP ${r.status}). Kripya dobara koshish karein.`
-        )
-      }
+      }>(r, 'Registration status')
 
       if (!r.ok) {
         throw new Error(
@@ -2134,6 +2155,15 @@ async function exportParticipantsPdf() {
 
   function actionButtons(row: Row) {
     const busy = updatingId === row.id
+    const hasTransactionLedger = (row.payments || []).some(payment => !payment.legacy && payment.id !== null)
+
+    if (row.status === 'PENDING' && hasTransactionLedger) {
+      return (
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
+          View / Verify Transactions
+        </Button>
+      )
+    }
 
     if (row.status === 'PENDING') {
       return (
@@ -3118,6 +3148,30 @@ if (!authenticated) {
               </div>
 
               {actionButtons(selected)}
+            </div>
+
+            <h3 className="mt-8 text-xl font-semibold">Payment Transactions</h3>
+            <div className="mt-4 space-y-3">
+              {(selected.payments || []).map((payment) => (
+                <section key={payment.id ?? `legacy-${payment.payment_no}`} className="rounded-lg border p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">Transaction {payment.payment_no} · ₹{Number(payment.amount).toLocaleString('en-IN')}</div>
+                      <div className="mt-1 text-sm">Mode: {payment.payment_mode} · Reference: <span className="font-mono break-all">{payment.payment_reference}</span></div>
+                    </div>
+                    <div className="text-sm font-medium">{payment.status}{payment.legacy ? ' (legacy record)' : ''}</div>
+                  </div>
+                  {!payment.legacy && payment.id !== null && <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" disabled={updatingId === selected.id || payment.status === 'VERIFIED'} onClick={() => void changePaymentStatus(selected, payment, 'VERIFIED')}>Verify transaction</Button>
+                    <Button type="button" size="sm" variant="outline" disabled={updatingId === selected.id || payment.status === 'REJECTED'} onClick={() => void changePaymentStatus(selected, payment, 'REJECTED')}>Reject transaction</Button>
+                    <Button type="button" size="sm" variant="outline" disabled={updatingId === selected.id || payment.status === 'PENDING'} onClick={() => void changePaymentStatus(selected, payment, 'PENDING')}>Reset to pending</Button>
+                  </div>}
+                  <div className="mt-3 text-sm text-muted-foreground">
+                    Linked people: {(payment.allocations || []).map((person) => `${person.name} (₹${Number(person.amount).toLocaleString('en-IN')})`).join(', ') || 'Allocation details unavailable'}
+                  </div>
+                </section>
+              ))}
+              {(!selected.payments || selected.payments.length === 0) && <p className="text-sm text-muted-foreground">No transaction ledger details returned.</p>}
             </div>
 
             <h3 className="mt-8 text-xl font-semibold">
