@@ -15,7 +15,7 @@ export function printSearchableHindiPdf(options: {
   footer?: string
 }) {
   const { title, subtitle = '', orientation = 'portrait', sections = [], tables = [], footer = '' } = options
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer')
+  const printWindow = window.open('', '_blank')
   if (!printWindow) {
     window.alert('PDF print window was blocked. Please allow pop-ups and try again.')
     return
