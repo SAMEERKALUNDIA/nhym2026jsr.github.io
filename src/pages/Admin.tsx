@@ -2,6 +2,26 @@ import { DeveloperCredit } from '@/components/DeveloperCredit'
 import { useEffect, useMemo, useState } from 'react'
 import { jsPDF } from 'jspdf'
 
+async function readAdminApiJson<T>(response: Response, context: string): Promise<T> {
+  const responseText = await response.text()
+  try {
+    return JSON.parse(responseText) as T
+  } catch {
+    const contentType = response.headers.get('content-type') || 'unknown'
+    console.error('Admin API returned a non-JSON response', {
+      context,
+      status: response.status,
+      contentType,
+      path: new URL(response.url).pathname,
+    })
+    throw new Error(
+      contentType.includes('text/html')
+        ? `Server ne ${context} API ke JSON ke badle HTML page bheja. Page refresh karke dobara koshish karein.`
+        : `${context} API ka response JSON format mein nahi hai (HTTP ${response.status}).`
+    )
+  }
+}
+
 async function registerWarangCitiFont(pdf: jsPDF) {
   try {
     const response = await fetch('/NotoSansWarangCiti-Regular.ttf')
@@ -328,10 +348,10 @@ const [checkingSession, setCheckingSession] = useState(true)
       },
     })
 
-    const j = await r.json() as {
+    const j = await readAdminApiJson<{
       registrations?: Row[]
       error?: string
-    }
+    }>(r, 'Registration list')
 
     if (!r.ok) {
       throw new Error(
@@ -790,7 +810,7 @@ useEffect(() => {
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ status }),
       })
-      const result = await response.json() as { ok?: boolean; error?: string }
+      const result = await readAdminApiJson<{ ok?: boolean; error?: string }>(response, 'Payment verification')
       if (!response.ok || !result.ok) throw new Error(result.error || 'Payment status could not be updated.')
       await load()
       setSuccess(`Transaction ${payment.payment_no} marked ${status}.`)
@@ -851,12 +871,12 @@ useEffect(() => {
         }
       )
 
-      const j = await r.json() as {
+      const j = await readAdminApiJson<{
         ok?: boolean
         status?: string
         emailSent?: boolean
         error?: string
-      }
+      }>(r, 'Registration status')
 
       if (!r.ok) {
         throw new Error(
@@ -2135,6 +2155,15 @@ async function exportParticipantsPdf() {
 
   function actionButtons(row: Row) {
     const busy = updatingId === row.id
+    const hasTransactionLedger = (row.payments || []).some(payment => !payment.legacy && payment.id !== null)
+
+    if (row.status === 'PENDING' && hasTransactionLedger) {
+      return (
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
+          View / Verify Transactions
+        </Button>
+      )
+    }
 
     if (row.status === 'PENDING') {
       return (
