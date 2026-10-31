@@ -1651,6 +1651,7 @@ function YesNoRow({
                 id={`${id}-${choice}`}
                 value={choice}
                 checked={selected}
+                required
                 onChange={() => onChange(choice)}
                 className="size-4 shrink-0 accent-[var(--brand)]"
               />
