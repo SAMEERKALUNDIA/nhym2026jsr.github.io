@@ -1,6 +1,7 @@
 name: Registration Preview Worker Deployment and Smoke Tests
 
 on:
+  # Run the isolated registration preview checks for the combined-payment PR as well.
   pull_request:
     branches: [main, fix/combined-registration-payments]
     paths:
