@@ -618,7 +618,7 @@ export default function Finance() {
           link.dataset.nhymDevanagariFont = 'true'
           document.head.appendChild(link)
         }
-        await document.fonts.load(\`400 \${fontSizePt * 96 / 72}px "\${fontFamily}"\`)
+        await document.fonts.load(`400 ${fontSizePt * 96 / 72}px "${fontFamily}"`)
       } catch {
         // Retain browser-provided Devanagari fallback fonts if the web font is unavailable.
       }
@@ -630,7 +630,7 @@ export default function Finance() {
       const canvas = document.createElement('canvas')
       const context = canvas.getContext('2d')
       if (!context) throw new Error('Hindi text renderer is unavailable.')
-      context.font = \`400 \${fontPx}px "\${fontFamily}", "Nirmala UI", "Arial", sans-serif\`
+      context.font = `400 ${fontPx}px "${fontFamily}", "Nirmala UI", "Arial", sans-serif`
       const maxTextWidth = widthPx - padding * 2
       const lines: string[] = []
       for (const paragraph of String(value ?? '—').replace(/\r/g, '').split('\n')) {
@@ -638,7 +638,7 @@ export default function Finance() {
         if (!words.length) { lines.push(''); continue }
         let line = ''
         for (const word of words) {
-          const candidate = line ? \`\${line} \${word}\` : word
+          const candidate = line ? `${line} ${word}` : word
           if (line && context.measureText(candidate).width > maxTextWidth) {
             lines.push(line)
             line = word
@@ -653,7 +653,7 @@ export default function Finance() {
       canvas.height = Math.ceil(heightPx)
       const draw = canvas.getContext('2d')
       if (!draw) throw new Error('Hindi text renderer is unavailable.')
-      draw.font = \`400 \${fontPx}px "\${fontFamily}", "Nirmala UI", "Arial", sans-serif\`
+      draw.font = `400 ${fontPx}px "${fontFamily}", "Nirmala UI", "Arial", sans-serif`
       draw.fillStyle = '#2a312c'
       draw.textBaseline = 'top'
       lines.forEach((line, index) => draw.fillText(line, padding, padding + index * lineHeight))
