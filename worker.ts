@@ -1317,6 +1317,25 @@ if (
       // the amount or fee values supplied by the browser.
       const expectedFees: number[] = []
       for (const participant of body.participants) {
+        // These four desk-sheet responses are mandatory. Enforce them on the
+        // server as well as in the browser so crafted or stale clients cannot
+        // create incomplete participant records.
+        const cultural = String(participant.cultural ?? '').trim()
+        const sports = String(participant.sports ?? '').trim()
+        const fromOutside = String(participant.fromOutside ?? '').trim()
+        const accommodation = String(participant.accommodation ?? '').trim()
+        if (!['YES', 'NO', 'MAYBE'].includes(cultural)) {
+          return json({ error: `Participant ${expectedFees.length + 1}: choose an answer for Cultural Participation (Yes, No or Maybe).` }, 400)
+        }
+        if (!['YES', 'NO', 'MAYBE'].includes(sports)) {
+          return json({ error: `Participant ${expectedFees.length + 1}: choose an answer for Sports Participation (Yes, No or Maybe).` }, 400)
+        }
+        if (!['YES', 'NO'].includes(fromOutside)) {
+          return json({ error: `Participant ${expectedFees.length + 1}: choose Yes or No for travelling from outside Jamshedpur.` }, 400)
+        }
+        if (!['YES', 'NO'].includes(accommodation)) {
+          return json({ error: `Participant ${expectedFees.length + 1}: choose Yes or No for Accommodation Required.` }, 400)
+        }
         const dob = String(participant.dob ?? '')
         if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return json({ error: 'A valid date of birth is required for each participant.' }, 400)
         const birthDate = new Date(dob + 'T00:00:00Z')
