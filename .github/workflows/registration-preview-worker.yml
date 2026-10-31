@@ -2,7 +2,7 @@ name: Registration Preview Worker Deployment and Smoke Tests
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, fix/combined-registration-payments]
     paths:
       - "worker.ts"
       - "src/**"
