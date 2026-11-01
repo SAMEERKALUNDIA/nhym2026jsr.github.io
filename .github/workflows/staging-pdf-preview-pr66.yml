@@ -1,0 +1,140 @@
+name: PR 66 Hindi PDF Preview - Staging Only
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nhym-staging-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy-pr66-to-staging:
+    if: github.ref == 'refs/heads/fix/hindi-pdf-searchable-text-20261101'
+    runs-on: ubuntu-24.04
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm exact PR 66 branch and Staging-only config
+        run: |
+          test "${GITHUB_REF_NAME}" = "fix/hindi-pdf-searchable-text-20261101" || (echo "Refusing deployment: this workflow is restricted to the PR 66 branch." && exit 1)
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const staging = JSON.parse(readFileSync('wrangler.staging.jsonc', 'utf8'))
+          const production = JSON.parse(readFileSync('wrangler.jsonc', 'utf8'))
+          const fail = message => { console.error('FAIL ' + message); process.exit(1) }
+          if (staging.name !== 'nhymindia-staging') fail('Unexpected Staging Worker name')
+          if (staging.d1_databases?.[0]?.database_id !== 'b182bce5-14e5-4006-9d87-7d3fe28b5165') fail('Staging must use its dedicated D1 database')
+          if (staging.d1_databases?.[0]?.database_id === production.d1_databases?.[0]?.database_id) fail('Staging must not use Production D1')
+          if (staging.r2_buckets?.[0]?.bucket_name !== 'nhym-gallery-staging') fail('Staging must use its dedicated R2 bucket')
+          if (staging.r2_buckets?.[0]?.bucket_name === production.r2_buckets?.[0]?.bucket_name) fail('Staging must not use Production R2')
+          if (staging.vars?.STAGING_MODE !== 'true') fail('STAGING_MODE must be enabled')
+          if (staging.vars?.EMAIL_SERVICE_URL !== 'https://example.invalid') fail('Staging email service must remain disabled')
+          console.log('PASS PR 66 branch and isolated Staging Worker/D1/R2 config')
+          NODE
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - run: pnpm install --frozen-lockfile
+      - name: Build PR 66
+        run: pnpm build
+      - name: Validate Staging-only credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ADMIN_TOKEN: ${{ secrets.STAGING_ADMIN_TOKEN }}
+          NHYM_EMAIL_SECRET: ${{ secrets.STAGING_NHYM_EMAIL_SECRET }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing staging CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$ADMIN_TOKEN" || (echo "Missing STAGING_ADMIN_TOKEN" && exit 1)
+          test -n "$NHYM_EMAIL_SECRET" || (echo "Missing STAGING_NHYM_EMAIL_SECRET" && exit 1)
+      - name: Set Staging-only Worker secrets and deploy PR 66
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ADMIN_TOKEN: ${{ secrets.STAGING_ADMIN_TOKEN }}
+          NHYM_EMAIL_SECRET: ${{ secrets.STAGING_NHYM_EMAIL_SECRET }}
+        run: |
+          printf '%s' "$ADMIN_TOKEN" | pnpm dlx wrangler@4 secret put ADMIN_TOKEN --config wrangler.staging.jsonc
+          printf '%s' "$NHYM_EMAIL_SECRET" | pnpm dlx wrangler@4 secret put NHYM_EMAIL_SECRET --config wrangler.staging.jsonc
+          pnpm dlx wrangler@4 deploy --config wrangler.staging.jsonc
+      - name: Apply missing registration email columns to isolated Staging D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const stagingConfig = JSON.parse(readFileSync('wrangler.staging.jsonc', 'utf8'))
+          const accountId = stagingConfig.account_id
+          const databaseId = 'b182bce5-14e5-4006-9d87-7d3fe28b5165'
+          const token = process.env.CLOUDFLARE_API_TOKEN
+          if (!accountId || !token) throw new Error('Missing Staging D1 API credentials')
+          const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`
+          async function query(sql) {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+              body: JSON.stringify({ sql })
+            })
+            const payload = await response.json()
+            if (!response.ok || !payload.success || payload.errors?.length) {
+              throw new Error('Staging D1 query failed: ' + JSON.stringify(payload.errors || payload))
+            }
+            return payload.result?.[0]?.results || []
+          }
+          const columns = await query('PRAGMA table_info(registrations)')
+          if (!columns.length) throw new Error('Staging registrations table is missing; refusing to continue')
+          const names = new Set(columns.map(column => column.name))
+          for (const column of ['approval_email_sent_at', 'rejection_email_sent_at']) {
+            if (names.has(column)) console.log('PASS registrations.' + column + ' already exists')
+            else {
+              await query('ALTER TABLE registrations ADD COLUMN ' + column + ' TEXT')
+              console.log('PASS added missing registrations.' + column)
+            }
+          }
+          console.log('PASS Staging D1 schema ready; no Production database was accessed.')
+          NODE
+      - name: Verify Staging Worker APIs and security headers
+        run: |
+          node --input-type=module <<'NODE'
+          const base = 'https://nhymindia-staging.2026jsr.workers.dev'
+          const deadline = Date.now() + 180000
+          let ready = false
+          while (Date.now() < deadline) {
+            try {
+              const response = await fetch(base + '/api/registration-status', { cache: 'no-store' })
+              if (response.status === 200 && (response.headers.get('content-type') || '').includes('application/json')) { ready = true; break }
+            } catch {}
+            await new Promise(resolve => setTimeout(resolve, 5000))
+          }
+          if (!ready) throw new Error('Staging Worker did not become ready with JSON registration-status API')
+          const checks = [
+            ['/api/registration-status', 'GET', undefined, 200],
+            ['/api/participant/lookup', 'POST', JSON.stringify({ registrationId: 'NHYM26-STAGING-NOT-FOUND', email: 'staging-smoke-test@example.invalid' }), 404],
+            ['/api/registrations', 'POST', '{}', 400],
+            ['/api/admin/registrations', 'GET', undefined, 401],
+            ['/api/admin/privacy-requests', 'GET', undefined, 401],
+            ['/api/finance/setup-status', 'GET', undefined, 200],
+            ['/api/daily-updates', 'GET', undefined, 200],
+            ['/api/visitor-count', 'GET', undefined, 200],
+            ['/api/public-feedback', 'GET', undefined, 200]
+          ]
+          for (const [path, method, body, expected] of checks) {
+            const response = await fetch(base + path, {
+              method,
+              headers: body ? { 'content-type': 'application/json' } : {},
+              body,
+              cache: 'no-store'
+            })
+            const text = await response.text()
+            const type = response.headers.get('content-type') || ''
+            if (response.status !== expected || !type.includes('application/json')) {
+              throw new Error(path + ': expected JSON HTTP ' + expected + ', got HTTP ' + response.status + ' (' + type + '): ' + text.slice(0, 180))
+            }
+            console.log('PASS ' + method + ' ' + path + ' -> ' + expected + ' JSON')
+          }
+          console.log('PASS PR 66 Staging API smoke tests; Production was not deployed or accessed.')
+          NODE
