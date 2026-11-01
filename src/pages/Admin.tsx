@@ -3,6 +3,26 @@ import { useEffect, useMemo, useState } from 'react'
 import { printSearchableHindiPdf } from '@/lib/printSearchableHindiPdf'
 import { jsPDF } from 'jspdf'
 
+function categoryLabel(category: string) {
+  switch (category) {
+    case 'student': return 'Student Participant'
+    case 'non-earning':
+    case 'non_earning': return 'Non-Earning Participant'
+    case 'earning': return 'Earning Participant'
+    case 'visitor': return 'Audience / Visitor'
+    default: return category || '—'
+  }
+}
+
+function yesNo(value: string) {
+  switch (value?.toLowerCase()) {
+    case 'yes': return 'Yes'
+    case 'no': return 'No'
+    case 'maybe': return 'Maybe'
+    default: return value || '—'
+  }
+}
+
 async function readAdminApiJson<T>(response: Response, context: string): Promise<T> {
   const responseText = await response.text()
   try {
