@@ -112,7 +112,9 @@ function renderShapedLine(
 ) {
   if (!text) return
   // Keep ordinary English as compact vector text; only Indic lines need Chromium shaping.
-  if (!/[\u0900-\u097F]/.test(text)) {
+  // The embedded Devanagari font also supplies the Indian rupee glyph (₹).
+  // Route mixed Hindi/English/₹ lines through Canvas shaping and the Unicode text layer.
+  if (!/[\u0900-\u097F\u20B9]/.test(text)) {
     pdf.setFont('helvetica', bold ? 'bold' : 'normal')
     pdf.setFontSize(fontSizePt)
     pdf.setTextColor(...color)
