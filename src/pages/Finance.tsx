@@ -494,8 +494,12 @@ export default function Finance() {
       { label: 'Approval', width: '7%' },
       { label: 'Payment', width: '6%' },
     ]
+    const formatFinanceDate = (value: unknown) => {
+      const date = new Date(String(value ?? ''))
+      return Number.isNaN(date.getTime()) ? String(value ?? '—') : date.toLocaleDateString('en-IN')
+    }
     const expenseRows = data.expenses.map((x, i) => [
-      String(i + 1), x.expense_no, formatDate(x.expense_date), x.category_name,
+      String(i + 1), x.expense_no, formatFinanceDate(x.expense_date), x.category_name,
       x.vendor_name || '—', x.description || '—', money(x.requested_amount_paise),
       money(x.approved_amount_paise), x.approval_status, x.payment_status,
     ])
@@ -506,7 +510,7 @@ export default function Finance() {
       { label: 'Mode', width: '10%' }, { label: 'Reference / Receipt', width: '18%' },
     ]
     const incomeRows = data.incomes.map((x, i) => [
-      String(i + 1), String(x.income_no ?? ''), formatDate(x.received_at), String(x.income_type ?? ''),
+      String(i + 1), String(x.income_no ?? ''), formatFinanceDate(x.received_at), String(x.income_type ?? ''),
       String(x.received_from ?? ''), money(Number(x.amount_paise ?? 0)), String(x.payment_mode ?? ''),
       [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
     ])
