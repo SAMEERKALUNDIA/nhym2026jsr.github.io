@@ -1,7 +1,7 @@
 import { DeveloperCredit } from '@/components/DeveloperCredit'
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { jsPDF } from 'jspdf'
+import { printSearchableHindiPdf } from '@/lib/printSearchableHindiPdf'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -16,34 +16,6 @@ import { Brand } from '@/components/Brand'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-
-async function createWarangCitiTextImage(text: string): Promise<string | null> {
-  try {
-    const response = await fetch('/NotoSansWarangCiti-Regular.ttf')
-    if (!response.ok) throw new Error('Warang Citi font file not found')
-    const bytes = await response.arrayBuffer()
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'font/ttf' }))
-    const face = new FontFace('NHYMWarangCiti', `url(${url})`)
-    await face.load()
-    document.fonts.add(face)
-    const canvas = document.createElement('canvas')
-    canvas.width = 1800
-    canvas.height = 110
-    const context = canvas.getContext('2d')
-    if (!context) return null
-    context.clearRect(0, 0, canvas.width, canvas.height)
-    context.fillStyle = '#1e412a'
-    context.textAlign = 'center'
-    context.textBaseline = 'middle'
-    context.font = '64px NHYMWarangCiti'
-    context.fillText(text, canvas.width / 2, canvas.height / 2)
-    URL.revokeObjectURL(url)
-    return canvas.toDataURL('image/png')
-  } catch (error) {
-    console.error('Unable to render Warang Citi header:', error)
-    return null
-  }
-}
 
 type ParticipantRecord = {
   participant_no: number
@@ -253,173 +225,45 @@ export default function Participant() {
     }
   }
 
-async function downloadRegistrationPdf() {
+function downloadRegistrationPdf() {
   if (!registration) return
-
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const pageWidth = pdf.internal.pageSize.getWidth()
-  const pageHeight = pdf.internal.pageSize.getHeight()
-  const margin = 15
-  const contentWidth = pageWidth - margin * 2
-  const forest: [number, number, number] = [23, 75, 53]
-  const border: [number, number, number] = [183, 208, 191]
-  const pale: [number, number, number] = [245, 250, 246]
-  const green: [number, number, number] = [221, 239, 227]
-  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳')
-
-  async function imageData(path: string): Promise<string | null> {
-    try {
-      const response = await fetch(path)
-      if (!response.ok) return null
-      const blob = await response.blob()
-      return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onloadend = () => resolve(reader.result as string)
-        reader.onerror = reject
-        reader.readAsDataURL(blob)
-      })
-    } catch {
-      return null
-    }
-  }
-
-  const logoData = await imageData('/nhym-logo2.jpg')
-  const hoSamajLogoData = await imageData('/ho-samaj-logo.jpg')
-  let y = 41
-
-  function addHeader(continuation = false) {
-    if (hoSamajLogoData) {
-      const props = pdf.getImageProperties(hoSamajLogoData)
-      const scale = Math.min(20 / props.width, 20 / props.height)
-      pdf.addImage(hoSamajLogoData, 'JPEG', margin + (20 - props.width * scale) / 2, 3 + (20 - props.height * scale) / 2, props.width * scale, props.height * scale)
-    }
-    if (logoData) {
-      const props = pdf.getImageProperties(logoData)
-      const scale = Math.min(20 / props.width, 20 / props.height)
-      pdf.addImage(logoData, 'JPEG', pageWidth - margin - 20 + (20 - props.width * scale) / 2, 3 + (20 - props.height * scale) / 2, props.width * scale, props.height * scale)
-    }
-    if (warangCitiHeaderImage && !continuation) pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 48, 1.5, 96, 5.8)
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(9.5)
-    pdf.setTextColor(...forest)
-    pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 9.5, { align: 'center' })
-    pdf.setFontSize(9.5)
-    pdf.text('2026', pageWidth / 2, 13.5, { align: 'center' })
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(6.8)
-    pdf.setTextColor(72, 30, 20)
-    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 18, { align: 'center', maxWidth: contentWidth - 44 })
-    pdf.setFillColor(...green)
-    pdf.setDrawColor(...forest)
-    pdf.roundedRect(margin, 25, contentWidth, 7, 1.2, 1.2, 'FD')
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(9.5)
-    pdf.setTextColor(...forest)
-    pdf.text(continuation ? 'REGISTRATION CONFIRMATION • ' + registration!.registrationId : 'REGISTRATION CONFIRMATION', pageWidth / 2, 29.5, { align: 'center' })
-    pdf.setDrawColor(...border)
-    pdf.line(margin, 34, pageWidth - margin, 34)
-    y = 39
-  }
-
-  function addFooter() {
-    const pages = pdf.getNumberOfPages()
-    for (let page = 1; page <= pages; page++) {
-      pdf.setPage(page)
-      pdf.setDrawColor(...border)
-      pdf.line(margin, pageHeight - 13, pageWidth - margin, pageHeight - 13)
-      pdf.setFont('helvetica', 'normal')
-      pdf.setFontSize(6.2)
-      pdf.setTextColor(82, 103, 90)
-      pdf.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 9.5, { align: 'center', maxWidth: pageWidth - margin * 2 })
-      const generatedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' })
-      pdf.text('Generated: ' + generatedAt + ' IST', margin, pageHeight - 4, { align: 'left' })
-      pdf.text('Page ' + page + ' of ' + pages, pageWidth - margin, pageHeight - 4, { align: 'right' })
-    }
-  }
-
-  function ensureSpace(height: number) {
-    if (y + height > pageHeight - 24) {
-      pdf.addPage()
-      // The full event header belongs on page one only.
-      y = 16
-    }
-  }
-
-  function section(title: string) {
-    ensureSpace(12)
-    pdf.setFillColor(...green)
-    pdf.setDrawColor(...forest)
-    pdf.roundedRect(margin, y, contentWidth, 8, 1, 1, 'FD')
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(9.5)
-    pdf.setTextColor(...forest)
-    pdf.text(title.toUpperCase(), margin + 3, y + 5.2)
-    y += 10
-  }
-
-  function drawCell(label: string, value: string, x: number, width: number, height: number, fill: [number, number, number], fixedLabelWidth?: number) {
-    pdf.setFillColor(...fill)
-    pdf.setDrawColor(...border)
-    pdf.rect(x, y, width, height, 'FD')
-    const labelWidth = fixedLabelWidth ?? Math.min(31, Math.max(21, width * 0.35))
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(6.2)
-    pdf.setTextColor(...forest)
-    pdf.text(pdf.splitTextToSize(label.toUpperCase(), labelWidth - 3), x + 2, y + 4.1)
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(7.7)
-    pdf.setTextColor(29, 44, 35)
-    pdf.text(pdf.splitTextToSize(value || '—', width - labelWidth - 4), x + labelWidth, y + 4.1)
-  }
-
-  function pair(label1: string, value1: string, label2: string, value2: string) {
-    const gap = 3
-    const cellWidth = (contentWidth - gap) / 2
-    const labelWidth = Math.min(31, Math.max(21, cellWidth * 0.35))
-    const values1 = pdf.splitTextToSize(value1 || '—', cellWidth - labelWidth - 4)
-    const values2 = pdf.splitTextToSize(value2 || '—', cellWidth - labelWidth - 4)
-    const labels1 = pdf.splitTextToSize(label1.toUpperCase(), labelWidth - 3)
-    const labels2 = pdf.splitTextToSize(label2.toUpperCase(), labelWidth - 3)
-    const height = Math.max(9, Math.max(values1.length, values2.length, labels1.length, labels2.length) * 3.4 + 4)
-    ensureSpace(height + 1)
-    const fill: [number, number, number] = Math.floor(y) % 2 === 0 ? pale : [255, 255, 255]
-    drawCell(label1, value1, margin, cellWidth, height, fill)
-    drawCell(label2, value2, margin + cellWidth + gap, cellWidth, height, fill)
-    y += height
-  }
-
-  function full(label: string, value: string) {
-    const labelWidth = 34
-    const lines = pdf.splitTextToSize(value || '—', contentWidth - labelWidth - 5)
-    const labelLines = pdf.splitTextToSize(label.toUpperCase(), labelWidth - 4)
-    const height = Math.max(9, Math.max(lines.length, labelLines.length) * 3.6 + 4)
-    ensureSpace(height + 1)
-    drawCell(label, value, margin, contentWidth, height, pale, 34)
-    y += height
-  }
-
-  addHeader()
-  section('Registration Details')
-  pair('Registration ID', registration.registrationId, 'Status', statusLabel(registration.status))
-  pair('Registered Email', registration.email, 'Total Amount', 'INR ' + registration.totalAmount.toLocaleString('en-IN'))
-  pair('Payment Method', registration.paymentMode.toUpperCase(), 'Participants', String(registration.participants.length))
-  pair('Submitted', formatDate(registration.createdAt), 'Approval Email', registration.approvalEmailSent ? 'Sent' : 'Not sent yet')
-
-  registration.participants.forEach((p) => {
-    y += 4
-    section('Participant ' + p.participant_no + ' Details')
-    full('Participant Name', p.name || '—')
-    pair('Category', categoryLabel(p.category), 'Participant Fee', 'INR ' + Number(p.fee || 0).toLocaleString('en-IN'))
-    pair('Date of Birth', p.dob || '—', 'Age', p.age || '—')
-    pair('Gender', p.gender || '—', 'District', p.district || '—')
-    pair('State', p.state || '—', 'Accommodation', yesNo(p.accommodation))
-    pair('From Outside Jamshedpur', yesNo(p.from_outside), 'Cultural', yesNo(p.cultural))
-    pair('Sports', yesNo(p.sports), 'Note', p.note || '—')
-    full('Activities', activities(p.activities_json))
+  printSearchableHindiPdf({
+    title: 'REGISTRATION CONFIRMATION',
+    subtitle: 'NATIONAL HO YOUTH MEET : SIRJON 2026 · Jamshedpur · 28–29 November 2026',
+    orientation: 'portrait',
+    sections: [
+      { title: 'Registration Details', rows: [
+        ['Registration ID', registration.registrationId],
+        ['Status', statusLabel(registration.status)],
+        ['Registered Email', registration.email],
+        ['Total Amount', 'INR ' + registration.totalAmount.toLocaleString('en-IN')],
+        ['Payment Method', registration.paymentMode.toUpperCase()],
+        ['Participants', String(registration.participants.length)],
+        ['Submitted', formatDate(registration.createdAt)],
+        ['Approval Email', registration.approvalEmailSent ? 'Sent' : 'Not sent yet'],
+      ] },
+      ...registration.participants.map((p) => ({
+        title: 'Participant ' + p.participant_no + ' Details',
+        rows: [
+          ['Participant Name', p.name || '—'],
+          ['Category', categoryLabel(p.category)],
+          ['Participant Fee', 'INR ' + Number(p.fee || 0).toLocaleString('en-IN')],
+          ['Date of Birth', p.dob || '—'],
+          ['Age', p.age || '—'],
+          ['Gender', p.gender || '—'],
+          ['District', p.district || '—'],
+          ['State', p.state || '—'],
+          ['Accommodation', yesNo(p.accommodation)],
+          ['From Outside Jamshedpur', yesNo(p.from_outside)],
+          ['Cultural', yesNo(p.cultural)],
+          ['Sports', yesNo(p.sports)],
+          ['Note', p.note || '—'],
+          ['Activities', activities(p.activities_json)],
+        ],
+      })),
+    ],
+    footer: 'Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003 · nhym2026jsr@gmail.com',
   })
-
-  addFooter()
-  pdf.save(registration.registrationId + '-Registration.pdf')
 }
   function clearLookup() {
     setRegistration(null)
