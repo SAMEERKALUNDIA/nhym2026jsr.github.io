@@ -1,5 +1,5 @@
 export type PrintablePdfColumn = { label: string; width?: string; align?: 'left' | 'center' | 'right' }
-export type PrintablePdfSection = { title: string; rows: Array<[string, string]> }
+export type PrintablePdfSection = { title: string; rows: string[][] }
 export type PrintablePdfTable = { columns: PrintablePdfColumn[]; rows: string[][] }
 
 const escapeHtml = (value: unknown) => String(value ?? '—')
