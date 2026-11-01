@@ -111,6 +111,14 @@ function renderShapedLine(
   searchable = false,
 ) {
   if (!text) return
+  // Keep ordinary English as compact vector text; only Indic lines need Chromium shaping.
+  if (!/[\\u0900-\\u097F]/.test(text)) {
+    pdf.setFont('helvetica', bold ? 'bold' : 'normal')
+    pdf.setFontSize(fontSizePt)
+    pdf.setTextColor(...color)
+    pdf.text(text, x, baselineY, { maxWidth: maxWidthMm })
+    return
+  }
   const scale = 3
   const widthPx = Math.max(12, Math.ceil(maxWidthMm * 96 / 25.4 * scale))
   const heightPx = Math.ceil(fontSizePt * 96 / 72 * scale * 1.9)
@@ -204,6 +212,17 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
 
   const addPageHeader = () => {
     pageNumber += 1
+    if (pageNumber > 1) {
+      // The full branded header is intentionally printed on page one only.
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(8)
+      pdf.setTextColor(...GREEN)
+      pdf.text(title, pageWidth / 2, 9, { align: 'center', maxWidth: contentWidth })
+      pdf.setDrawColor(...BORDER)
+      pdf.line(left, 13, right, 13)
+      y = 18
+      return
+    }
     pdf.setFillColor(255, 255, 255)
     pdf.rect(0, 0, pageWidth, pageHeight, 'F')
     if (hoLogo) {
@@ -364,7 +383,7 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
     }
 
     drawTableHeader()
-    table.rows.forEach(row => {
+    table.rows.forEach((row, rowIndex) => {
       const cells = table.columns.map((column, index) => {
         const text = String(row[index] ?? '—')
         const canvas = document.createElement('canvas')
@@ -381,7 +400,7 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
         addPageHeader()
         drawTableHeader()
       }
-      if (table.rows.indexOf(row) % 2 === 1) {
+      if (rowIndex % 2 === 1) {
         pdf.setFillColor(247, 250, 248)
         pdf.rect(left, y, contentWidth, rowHeight, 'F')
       }
