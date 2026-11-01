@@ -1015,7 +1015,7 @@ function exportRegistrationsPdf() {
     row.registration_id || '—',
     row.participants?.[0]?.name || '—',
     String(row.participant_count || 0),
-    `INR ${Number(row.total_amount || 0).toLocaleString('en-IN')}`,
+    `₹${Number(row.total_amount || 0).toLocaleString('en-IN')}`,
     row.payment_mode?.toUpperCase() || '—',
     row.payment_reference || '—',
     row.status?.replace(/_/g, ' ') || '—',
@@ -1047,7 +1047,7 @@ function exportRegistrationsPdf() {
       rows: [
         ['Total Registrations', String(filteredRows.length)],
         ['Total Participants', String(totalParticipants)],
-        ['Total Amount', `INR ${totalAmount.toLocaleString('en-IN')}`],
+        ['Total Amount', `₹${totalAmount.toLocaleString('en-IN')}`],
       ],
     }],
     footer: `Generated: ${new Date().toLocaleString('en-IN')} • Adivasi Ho Samaj Yuva Mahasabha, Jamshedpur`,
@@ -1150,7 +1150,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
         ['Registration ID', row.registration_id, 'pair'],
         ['Status', row.status.replace(/_/g, ' '), 'pair'],
         ['Registered Email', row.email || '—', 'pair'],
-        ['Total Amount', 'INR ' + Number(row.total_amount || 0).toLocaleString('en-IN'), 'pair'],
+        ['Total Amount', '₹' + Number(row.total_amount || 0).toLocaleString('en-IN'), 'pair'],
         ['Payment Method', row.payment_mode?.toUpperCase() || '—', 'pair'],
         ['Payment Reference', row.payment_reference || '—', 'pair'],
         ['Submitted', new Date(row.created_at).toLocaleString('en-IN'), 'pair'],
@@ -1161,7 +1161,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
         rows: [
           ['Participant Name', (p.name || '—').toUpperCase(), 'full'],
           ['Category', categoryLabel(p.category), 'pair'],
-          ['Participant Fee', 'INR ' + Number(p.fee || 0).toLocaleString('en-IN'), 'pair'],
+          ['Participant Fee', '₹' + Number(p.fee || 0).toLocaleString('en-IN'), 'pair'],
           ['Date of Birth', p.dob || '—', 'pair'],
           ['Age', p.age || '—', 'pair'],
           ['Gender', p.gender || '—', 'pair'],
@@ -1211,7 +1211,7 @@ async function exportParticipantsPdf() {
     String(participant.age || '—'),
     participant.district || '—',
     participant.state || '—',
-    'INR ' + Number(participant.fee || 0).toLocaleString('en-IN'),
+    '₹' + Number(participant.fee || 0).toLocaleString('en-IN'),
     yesNo(participant.accommodation),
     registration.status?.replace(/_/g, ' ') || '—',
   ])
@@ -1224,7 +1224,7 @@ async function exportParticipantsPdf() {
     sections: [{ title: 'Summary', rows: [
       ['Total Participants', String(participantRows.length)],
       ['Registrations', String(filteredRows.length)],
-      ['Total Participant Fees', 'INR ' + totalFees.toLocaleString('en-IN')],
+      ['Total Participant Fees', '₹' + totalFees.toLocaleString('en-IN')],
     ] }],
     footer: 'Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003 · nhym2026jsr@gmail.com',
   })
