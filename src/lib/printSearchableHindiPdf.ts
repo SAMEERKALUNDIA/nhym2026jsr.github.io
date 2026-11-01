@@ -112,7 +112,7 @@ function renderShapedLine(
 ) {
   if (!text) return
   // Keep ordinary English as compact vector text; only Indic lines need Chromium shaping.
-  if (!/[\\u0900-\\u097F]/.test(text)) {
+  if (!/[\u0900-\u097F]/.test(text)) {
     pdf.setFont('helvetica', bold ? 'bold' : 'normal')
     pdf.setFontSize(fontSizePt)
     pdf.setTextColor(...color)
