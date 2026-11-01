@@ -1026,7 +1026,7 @@ function exportRegistrationsPdf() {
   const totalParticipants = filteredRows.reduce((sum, row) => sum + Number(row.participant_count || 0), 0)
 
   printSearchableHindiPdf({
-    title: 'Registration Summary Report',
+    title: 'REGISTRATION SUMMARY REPORT',
     subtitle: 'NATIONAL HO YOUTH MEET : SIRJON • 2026',
     orientation: 'landscape',
     tables: [{
@@ -1217,7 +1217,7 @@ async function exportParticipantsPdf() {
   ])
   const totalFees = participantRows.reduce((sum, item) => sum + Number(item.participant.fee || 0), 0)
   printSearchableHindiPdf({
-    title: 'Participant Summary Report',
+    title: 'PARTICIPANT SUMMARY REPORT',
     subtitle: 'NATIONAL HO YOUTH MEET : SIRJON 2026 · Jamshedpur · 28–29 November 2026',
     orientation: 'landscape',
     tables: [{ columns, rows }],
