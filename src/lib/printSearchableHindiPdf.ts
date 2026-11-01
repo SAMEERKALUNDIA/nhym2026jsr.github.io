@@ -207,7 +207,8 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
   const right = pageWidth - 12
   const contentWidth = right - left
   const footerText = footer || 'Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003 · nhym2026jsr@gmail.com'
-  const footerY = pageHeight - 9
+  const footerY = pageHeight - 9.5
+  const generatedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' })
   const bottomLimit = pageHeight - 18
   let y = 0
   let pageNumber = 0
@@ -285,8 +286,9 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(6.3)
     pdf.setTextColor(...MUTED)
-    pdf.text(footerText, pageWidth / 2, footerY, { align: 'center', maxWidth: contentWidth })
-    pdf.text(`Page ${pageNumber}`, right, pageHeight - 4, { align: 'right' })
+    pdf.text(`Address: Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025, 7870979751`, pageWidth / 2, footerY, { align: 'center', maxWidth: contentWidth })
+    pdf.text(`Generated: ${generatedAt} IST`, left, pageHeight - 4, { align: 'left' })
+    pdf.text(`Page ${pageNumber} of ${pdf.getNumberOfPages()}`, right, pageHeight - 4, { align: 'right' })
   }
 
   const ensureSpace = (height: number) => {
@@ -306,36 +308,59 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
   }
 
   const drawDetailRows = (rows: string[][]) => {
-    const labelWidth = orientation === 'landscape' ? 48 : 42
     const gap = 3
-    const valueWidth = contentWidth - labelWidth - gap - 4
-    rows.forEach(([rawLabel, rawValue], index) => {
-      const label = String(rawLabel ?? '—')
-      const value = String(rawValue ?? '—')
-      const fontSize = 8.2
-      const canvas = document.createElement('canvas')
-      const context = canvas.getContext('2d')
-      if (!context) return
-      context.font = `400 ${fontSize * 96 / 72 * 2}px "${FONT_FAMILY}", "Noto Sans Devanagari", sans-serif`
-      const labelLines = wrapText(context, label, labelWidth * 96 / 25.4 * 2)
-      const valueLines = wrapText(context, value, valueWidth * 96 / 25.4 * 2)
-      const lineCount = Math.max(labelLines.length, valueLines.length)
-      const rowHeight = Math.max(7, lineCount * 4.2 + 2)
+    const cellWidth = (contentWidth - gap) / 2
+    const labelWidth = Math.min(31, Math.max(21, cellWidth * 0.35))
+    const drawCell = (label: string, value: string, x: number, width: number, height: number, fill: [number, number, number], fixedLabelWidth?: number) => {
+      pdf.setFillColor(...fill)
+      pdf.setDrawColor(...BORDER)
+      pdf.rect(x, y, width, height, 'FD')
+      const labelW = fixedLabelWidth ?? labelWidth
+      const labelCanvas = document.createElement('canvas')
+      const labelContext = labelCanvas.getContext('2d')
+      const valueCanvas = document.createElement('canvas')
+      const valueContext = valueCanvas.getContext('2d')
+      if (!labelContext || !valueContext) return
+      labelContext.font = `600 6.2pt "${FONT_FAMILY}", sans-serif`
+      valueContext.font = `400 7.7pt "${FONT_FAMILY}", sans-serif`
+      const labelLines = wrapText(labelContext, label.toUpperCase(), (labelW - 3) * 96 / 25.4)
+      const valueLines = wrapText(valueContext, value || '—', (width - labelW - 4) * 96 / 25.4)
+      labelLines.forEach((line, i) => renderShapedLine(pdf, line, x + 2, y + 4.1 + i * 3.4, labelW - 3, 6.2, GREEN, true, searchableFontReady))
+      valueLines.forEach((line, i) => renderShapedLine(pdf, line, x + labelW, y + 4.1 + i * 3.4, width - labelW - 4, 7.7, [29, 44, 35], false, searchableFontReady))
+    }
+    let index = 0
+    while (index < rows.length) {
+      const first = rows[index]
+      const full = first[2] === 'full'
+      const second = !full ? rows[index + 1] : undefined
+      const values = [first, ...(second ? [second] : [])].map(row => {
+        const labelCanvas = document.createElement('canvas')
+        const labelContext = labelCanvas.getContext('2d')
+        const valueCanvas = document.createElement('canvas')
+        const valueContext = valueCanvas.getContext('2d')
+        if (!labelContext || !valueContext) return { labelLines: ['—'], valueLines: ['—'] }
+        labelContext.font = `600 6.2pt "${FONT_FAMILY}", sans-serif`
+        valueContext.font = `400 7.7pt "${FONT_FAMILY}", sans-serif`
+        const width = full ? contentWidth : cellWidth
+        const labelW = full ? 34 : labelWidth
+        return {
+          labelLines: wrapText(labelContext, String(row[0] ?? '—').toUpperCase(), (labelW - 3) * 96 / 25.4),
+          valueLines: wrapText(valueContext, String(row[1] ?? '—'), (width - labelW - 4) * 96 / 25.4),
+        }
+      })
+      const maxLines = Math.max(1, ...values.map(v => Math.max(v.labelLines.length, v.valueLines.length)))
+      const rowHeight = Math.max(9, maxLines * 3.4 + 4)
       ensureSpace(rowHeight)
-      if (index % 2 === 1) {
-        pdf.setFillColor(245, 250, 246)
-        pdf.rect(left, y - 1, contentWidth, rowHeight, 'F')
+      const fill: [number, number, number] = Math.floor(y) % 2 === 0 ? [245, 250, 246] : [255, 255, 255]
+      if (full) {
+        drawCell(String(first[0] ?? '—'), String(first[1] ?? '—'), left, contentWidth, rowHeight, fill, 34)
+      } else {
+        drawCell(String(first[0] ?? '—'), String(first[1] ?? '—'), left, cellWidth, rowHeight, fill)
+        if (second) drawCell(String(second[0] ?? '—'), String(second[1] ?? '—'), left + cellWidth + gap, cellWidth, rowHeight, fill)
       }
-      labelLines.forEach((line, lineIndex) => renderShapedLine(
-        pdf, line, left + 2, y + 3.4 + lineIndex * 4.2, labelWidth - 3, fontSize, GREEN, true, searchableFontReady,
-      ))
-      valueLines.forEach((line, lineIndex) => renderShapedLine(
-        pdf, line, left + labelWidth + gap, y + 3.4 + lineIndex * 4.2, valueWidth, fontSize, [29, 44, 35], false, searchableFontReady,
-      ))
-      pdf.setDrawColor(216, 226, 218)
-      pdf.line(left, y + rowHeight - 1, right, y + rowHeight - 1)
       y += rowHeight
-    })
+      index += full || !second ? 1 : 2
+    }
   }
 
   const parseColumnWidths = (columns: PrintablePdfColumn[]) => {
