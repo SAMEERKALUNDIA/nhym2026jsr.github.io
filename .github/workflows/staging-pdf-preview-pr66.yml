@@ -1,6 +1,9 @@
 name: PR 66 Hindi PDF Preview - Staging Only
 
 on:
+  push:
+    branches:
+      - fix/hindi-pdf-searchable-text-20261101
   workflow_dispatch:
 
 permissions:
