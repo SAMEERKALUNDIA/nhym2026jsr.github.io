@@ -1340,13 +1340,11 @@ if (
 
         // These four desk-sheet responses are mandatory. Enforce them on the
         // server as well as in the browser so crafted or stale clients cannot
-        // create incomplete participant records. Enforce them on the
-        // server as well as in the browser so crafted or stale clients cannot
         // create incomplete participant records.
-        const cultural = String(participant.cultural ?? '').trim()
-        const sports = String(participant.sports ?? '').trim()
-        const fromOutside = String(participant.fromOutside ?? '').trim()
-        const accommodation = String(participant.accommodation ?? '').trim()
+        const cultural = String(participant.cultural ?? '').trim().toUpperCase()
+        const sports = String(participant.sports ?? '').trim().toUpperCase()
+        const fromOutside = String(participant.fromOutside ?? '').trim().toUpperCase()
+        const accommodation = String(participant.accommodation ?? '').trim().toUpperCase()
         if (!['YES', 'NO', 'MAYBE'].includes(cultural)) {
           return json({ error: `Participant ${expectedFees.length + 1}: choose an answer for Cultural Participation (Yes, No or Maybe).` }, 400)
         }
