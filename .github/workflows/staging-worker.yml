@@ -79,7 +79,6 @@ jobs:
       - name: Set Staging-only Worker secrets and deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           ADMIN_TOKEN: ${{ secrets.STAGING_ADMIN_TOKEN }}
           NHYM_EMAIL_SECRET: ${{ secrets.STAGING_NHYM_EMAIL_SECRET }}
         run: |
@@ -89,7 +88,6 @@ jobs:
       - name: Apply missing registration email columns to isolated Staging D1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs'
