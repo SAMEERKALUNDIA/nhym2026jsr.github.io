@@ -161,7 +161,6 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
     orientation = 'portrait',
     sections = [],
     tables = [],
-    footer = '',
   } = options
 
   try {
