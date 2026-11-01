@@ -206,7 +206,6 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
   const left = 12
   const right = pageWidth - 12
   const contentWidth = right - left
-  const footerText = footer || 'Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003 · nhym2026jsr@gmail.com'
   const footerY = pageHeight - 9.5
   const generatedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' })
   const bottomLimit = pageHeight - 18
@@ -288,7 +287,6 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
     pdf.setTextColor(...MUTED)
     pdf.text(`Address: Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025, 7870979751`, pageWidth / 2, footerY, { align: 'center', maxWidth: contentWidth })
     pdf.text(`Generated: ${generatedAt} IST`, left, pageHeight - 4, { align: 'left' })
-    pdf.text(`Page ${pageNumber} of ${pdf.getNumberOfPages()}`, right, pageHeight - 4, { align: 'right' })
   }
 
   const ensureSpace = (height: number) => {
@@ -464,6 +462,14 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
   })
   tables.forEach(drawTable)
   addFooter()
+  const totalPages = pdf.getNumberOfPages()
+  for (let page = 1; page <= totalPages; page += 1) {
+    pdf.setPage(page)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(6.3)
+    pdf.setTextColor(...MUTED)
+    pdf.text(`Page ${page} of ${totalPages}`, right, pageHeight - 4, { align: 'right' })
+  }
 
   const safeName = title
     .normalize('NFKD')
