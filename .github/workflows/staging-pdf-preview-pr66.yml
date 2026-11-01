@@ -88,7 +88,7 @@ jobs:
             }
             console.log('PASS ' + path + ' (' + bytes.length + ' bytes, ' + type + ')')
           }
-          const helper = readdirSync('dist/assets').find(name => /^printSearchableHindiPdf-.*\\.js$/.test(name))
+          const helper = readdirSync('dist/assets').find(name => /^printSearchableHindiPdf-.*\.js$/.test(name))
           if (!helper) throw new Error('Built PDF helper chunk was not found')
           const helperResponse = await fetch(base + '/assets/' + helper, { cache: 'no-store' })
           if (!helperResponse.ok) throw new Error('PDF helper chunk returned HTTP ' + helperResponse.status)
