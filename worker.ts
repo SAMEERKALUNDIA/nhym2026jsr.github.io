@@ -1317,7 +1317,30 @@ if (
       // the amount or fee values supplied by the browser.
       const expectedFees: number[] = []
       for (const participant of body.participants) {
+        // Reject incomplete participant details at the API boundary too; browser
+        // validation alone can be bypassed by a crafted or outdated client.
+        const participantNumber = expectedFees.length + 1
+        const name = String(participant.name ?? '').trim()
+        const gender = String(participant.gender ?? '').trim().toUpperCase()
+        const address = String(participant.address ?? '').trim()
+        const district = String(participant.district ?? '').trim()
+        const state = String(participant.state ?? '').trim()
+        const pin = String(participant.pin ?? '').trim()
+        const activities = participant.activities
+        if (name.length < 2) return json({ error: `Participant ${participantNumber}: name is required.` }, 400)
+        if (!['MALE', 'FEMALE', 'TRANSGENDER'].includes(gender)) return json({ error: `Participant ${participantNumber}: select a gender.` }, 400)
+        if (address.length < 4) return json({ error: `Participant ${participantNumber}: full residential address is required.` }, 400)
+        if (district.length < 2) return json({ error: `Participant ${participantNumber}: district is required.` }, 400)
+        if (state.length < 2) return json({ error: `Participant ${participantNumber}: state or union territory is required.` }, 400)
+        if (!/^\\d{6}$/.test(pin)) return json({ error: `Participant ${participantNumber}: PIN code must contain six digits.` }, 400)
+        if (!Array.isArray(activities) || activities.length < 1 || activities.length > 3 || activities.some((activity) => typeof activity !== 'string' || !activity.trim())) {
+          return json({ error: `Participant ${participantNumber}: select between one and three discussion topics.` }, 400)
+        }
+        // Note is intentionally optional: it is additional information only.
+
         // These four desk-sheet responses are mandatory. Enforce them on the
+        // server as well as in the browser so crafted or stale clients cannot
+        // create incomplete participant records. Enforce them on the
         // server as well as in the browser so crafted or stale clients cannot
         // create incomplete participant records.
         const cultural = String(participant.cultural ?? '').trim()
