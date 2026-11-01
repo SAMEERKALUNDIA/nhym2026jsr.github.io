@@ -14,6 +14,15 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Code branch to deploy to the isolated Staging Worker"
+        required: true
+        type: choice
+        default: main
+        options:
+          - main
+          - fix/hindi-pdf-searchable-text-20261101
 
 permissions:
   contents: read
@@ -28,6 +37,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
