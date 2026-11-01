@@ -32,7 +32,8 @@ export function printSearchableHindiPdf(options: {
   printWindow.document.write(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${escapeHtml(title)}</title>
     <style>
-      @font-face{font-family:NHYMDevanagari;src:url('/NotoSansDevanagari-Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:block}\n      @font-face{font-family:NHYMWarangCiti;src:url('/NotoSansWarangCiti-Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:block}
+      @font-face{font-family:NHYMDevanagari;src:url('/NotoSansDevanagari-Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:block}
+      @font-face{font-family:NHYMWarangCiti;src:url('/NotoSansWarangCiti-Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:block}
       @page{size:A4 ${orientation};margin:14mm 12mm 16mm}
       *{box-sizing:border-box}body{font-family:NHYMDevanagari,'Noto Sans Devanagari',sans-serif;color:#1d2c23;font-size:10pt;line-height:1.45}
       header{text-align:center;border-bottom:1px solid #b7d0bf;padding:0 26mm 8px;margin-bottom:14px;position:relative;min-height:24mm}.brand-logo{position:absolute;top:0;width:20mm;height:20mm;object-fit:contain}.brand-logo.left{left:0}.brand-logo.right{right:0}.warang{font-family:NHYMWarangCiti,sans-serif;font-size:13pt;color:#174b35;margin:0 0 2px}
