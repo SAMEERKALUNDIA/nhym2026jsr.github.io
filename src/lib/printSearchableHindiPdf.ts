@@ -134,8 +134,26 @@ function renderShapedLine(
   context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`
   context.textBaseline = 'alphabetic'
   context.textAlign = 'left'
-  context.font = `${bold ? '600' : '400'} ${pixelFontSize}px "${FONT_FAMILY}", "Noto Sans Devanagari", sans-serif`
-  context.fillText(text, 0, pixelFontSize * 1.25, widthPx)
+  const fontWeight = bold ? '600' : '400'
+  const fontFamily = `"${FONT_FAMILY}", "Noto Sans Devanagari", sans-serif`
+  context.font = `${fontWeight} ${pixelFontSize}px ${fontFamily}`
+  const baseline = pixelFontSize * 1.25
+  // Enlarge only the rupee glyph so it visually matches the height and weight of nearby digits.
+  let cursorX = 0
+  const parts = text.split('₹')
+  parts.forEach((part, index) => {
+    if (part) {
+      context.font = `${fontWeight} ${pixelFontSize}px ${fontFamily}`
+      context.fillText(part, cursorX, baseline)
+      cursorX += context.measureText(part).width
+    }
+    if (index < parts.length - 1) {
+      const rupeeSize = pixelFontSize * 1.22
+      context.font = `${fontWeight} ${rupeeSize}px ${fontFamily}`
+      context.fillText('₹', cursorX, baseline + pixelFontSize * 0.04)
+      cursorX += context.measureText('₹').width
+    }
+  })
   const image = canvas.toDataURL('image/png')
   const imageWidthMm = widthPx * 25.4 / (96 * scale)
   const imageHeightMm = heightPx * 25.4 / (96 * scale)
