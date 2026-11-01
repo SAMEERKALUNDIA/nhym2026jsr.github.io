@@ -273,7 +273,7 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
     pdf.setFont('helvetica', 'normal')
     pdf.setFontSize(7)
     pdf.setTextColor(...MUTED)
-    if (subtitle) pdf.text(subtitle, pageWidth / 2, 36, { align: 'center', maxWidth: contentWidth - 8 })
+    // Event details are already printed in the branded header above; do not repeat them below the report title.
     pdf.setDrawColor(...BORDER)
     pdf.line(left, 39, right, 39)
     y = 44
