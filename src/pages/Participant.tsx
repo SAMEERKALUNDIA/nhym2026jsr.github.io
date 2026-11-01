@@ -236,7 +236,7 @@ function downloadRegistrationPdf() {
         ['Registration ID', registration.registrationId, 'pair'],
         ['Status', statusLabel(registration.status), 'pair'],
         ['Registered Email', registration.email, 'pair'],
-        ['Total Amount', 'INR ' + registration.totalAmount.toLocaleString('en-IN'), 'pair'],
+        ['Total Amount', '₹' + registration.totalAmount.toLocaleString('en-IN'), 'pair'],
         ['Payment Method', registration.paymentMode.toUpperCase(), 'pair'],
         ['Participants', String(registration.participants.length), 'pair'],
         ['Submitted', formatDate(registration.createdAt), 'pair'],
@@ -247,7 +247,7 @@ function downloadRegistrationPdf() {
         rows: [
           ['Participant Name', p.name || '—', 'full'],
           ['Category', categoryLabel(p.category), 'pair'],
-          ['Participant Fee', 'INR ' + Number(p.fee || 0).toLocaleString('en-IN'), 'pair'],
+          ['Participant Fee', '₹' + Number(p.fee || 0).toLocaleString('en-IN'), 'pair'],
           ['Date of Birth', p.dob || '—', 'pair'],
           ['Age', p.age || '—', 'pair'],
           ['Gender', p.gender || '—', 'pair'],
