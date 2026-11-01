@@ -1081,377 +1081,53 @@ function exportRegistrationsCsv() {
   )
 }
 
-async function exportRegistrationsPdf() {
+function exportRegistrationsPdf() {
   if (filteredRows.length === 0) {
     window.alert('There are no registrations to export.')
     return
   }
 
-  const pdf = new jsPDF({
+  const rows = filteredRows.map(row => [
+    row.registration_id || '—',
+    row.participants?.[0]?.name || '—',
+    String(row.participant_count || 0),
+    `INR ${Number(row.total_amount || 0).toLocaleString('en-IN')}`,
+    row.payment_mode?.toUpperCase() || '—',
+    row.payment_reference || '—',
+    row.status?.replace(/_/g, ' ') || '—',
+    new Date(row.created_at).toLocaleString('en-IN'),
+  ])
+
+  const totalAmount = filteredRows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0)
+  const totalParticipants = filteredRows.reduce((sum, row) => sum + Number(row.participant_count || 0), 0)
+
+  printSearchableHindiPdf({
+    title: 'Registration Summary Report',
+    subtitle: 'NATIONAL HO YOUTH MEET : SIRJON • 2026',
     orientation: 'landscape',
-    unit: 'mm',
-    format: 'a4',
+    tables: [{
+      columns: [
+        { label: 'Registration ID', width: '15%' },
+        { label: 'Primary Participant', width: '17%' },
+        { label: 'Count', width: '6%', align: 'center' },
+        { label: 'Amount', width: '10%', align: 'right' },
+        { label: 'Payment', width: '9%' },
+        { label: 'Reference', width: '15%' },
+        { label: 'Status', width: '12%' },
+        { label: 'Submitted', width: '16%' },
+      ],
+      rows,
+    }],
+    sections: [{
+      title: 'Registration Totals',
+      rows: [
+        ['Total Registrations', String(filteredRows.length)],
+        ['Total Participants', String(totalParticipants)],
+        ['Total Amount', `INR ${totalAmount.toLocaleString('en-IN')}`],
+      ],
+    }],
+    footer: `Generated: ${new Date().toLocaleString('en-IN')} • Adivasi Ho Samaj Yuva Mahasabha, Jamshedpur`,
   })
-
-  await registerWarangCitiFont(pdf)
-  const warangCitiHeaderImage = await createWarangCitiTextImage('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳')
-  const hoSamajLogoData = await loadPdfImage('/ho-samaj-logo.jpg')
-
-  const pageWidth = pdf.internal.pageSize.getWidth()
-  const pageHeight = pdf.internal.pageSize.getHeight()
-
-  const margin = 12
-  const contentWidth = pageWidth - margin * 2
-
-  let logoData: string | null = null
-
-  try {
-    const response = await fetch('/nhym-logo2.jpg')
-
-    if (response.ok) {
-      const blob = await response.blob()
-
-      logoData = await new Promise<string>(
-        (resolve, reject) => {
-          const reader = new FileReader()
-
-          reader.onloadend = () =>
-            resolve(reader.result as string)
-
-          reader.onerror = reject
-
-          reader.readAsDataURL(blob)
-        }
-      )
-    }
-  } catch (error) {
-    console.error(
-      'Unable to load NHYM logo:',
-      error
-    )
-  }
-
-  const generatedAt =
-    new Date().toLocaleString('en-IN')
-
-  const columnWidths = [
-    31, // Registration ID
-    45, // Primary participant
-    16, // Count
-    25, // Amount
-    28, // Payment
-    35, // Reference
-    32, // Status
-    36, // Submitted
-  ]
-
-  const headers = [
-    'Registration ID',
-    'Primary Participant',
-    'Count',
-    'Amount',
-    'Payment',
-    'Reference',
-    'Status',
-    'Submitted',
-  ]
-
-  let y = 59
-
-  function addPageHeader(continuation = false) {
-    // Continuation pages have no header or logos; keep room for the table and footer.
-    if (continuation) {
-      y = 16
-      return
-    }
-
-    // Compact centered header, matching the individual Admin Registration PDF.
-    addContainedPdfImage(pdf, hoSamajLogoData, margin, 2, 20, 20)
-    addContainedPdfImage(pdf, logoData, pageWidth - margin - 20, 2, 20, 20)
-
-    // Ho script, English title and year are centered and use the same size.
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(11)
-    pdf.setTextColor(23, 75, 53)
-    if (warangCitiHeaderImage) {
-      pdf.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 42, 1.4, 84, 6.1)
-    }
-    pdf.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 11, { align: 'center' })
-    pdf.text('2026', pageWidth / 2, 16.5, { align: 'center' })
-
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(7.5)
-    pdf.setTextColor(72, 30, 20)
-    pdf.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 22, { align: 'center', maxWidth: pageWidth - margin * 2 })
-
-    // Pale-green rounded report title box, with a dark-green border and title.
-    pdf.setFillColor(221, 239, 227)
-    pdf.setDrawColor(23, 100, 63)
-    pdf.setLineWidth(0.35)
-    pdf.roundedRect(margin, 27.5, contentWidth, 8.5, 1.2, 1.2, 'FD')
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(10)
-    pdf.setTextColor(23, 75, 53)
-    pdf.text('Registration Summary Report', pageWidth / 2, 33, { align: 'center' })
-
-    // Generated date/time is shown in the footer; omit duplicate metadata here.
-    y = 42
-  }
-
-  function drawTableHeader() {
-    const rowHeight = 9
-    let x = margin
-
-    pdf.setFillColor(221, 239, 227)
-
-    pdf.rect(
-      margin,
-      y,
-      contentWidth,
-      rowHeight,
-      'F'
-    )
-
-    pdf.setFont('helvetica', 'bold')
-    pdf.setFontSize(7)
-    pdf.setTextColor(60)
-
-    headers.forEach(
-      (header, index) => {
-        pdf.text(
-          header,
-          x + 2,
-          y + 5.7
-        )
-
-        x += columnWidths[index]
-      }
-    )
-
-    pdf.setDrawColor(205)
-
-    pdf.line(
-      margin,
-      y + rowHeight,
-      pageWidth - margin,
-      y + rowHeight
-    )
-
-    y += rowHeight
-  }
-
-  function addNewPage() {
-    pdf.addPage()
-    // Continuation pages omit the event header; retain the table's column labels.
-    y = 16
-    drawTableHeader()
-  }
-
-  addPageHeader()
-  // Keep the table below the report title and generated-at metadata.
-  y = 48
-  drawTableHeader()
-
-  filteredRows.forEach(
-    (row, rowIndex) => {
-      const values = [
-        row.registration_id || '—',
-
-        row.participants?.[0]?.name ||
-          '—',
-
-        String(
-          row.participant_count || 0
-        ),
-
-        `INR ${Number(
-          row.total_amount || 0
-        ).toLocaleString('en-IN')}`,
-
-        row.payment_mode?.toUpperCase() || '—',
-
-        row.payment_reference || '—',
-
-        row.status
-          ?.replace(/_/g, ' ') ||
-          '—',
-
-        new Date(
-          row.created_at
-        ).toLocaleString('en-IN'),
-      ]
-
-      const wrappedValues =
-        values.map(
-          (value, index) =>
-            pdf.splitTextToSize(
-              value,
-              columnWidths[index] - 4
-            )
-        )
-
-      const maxLines =
-        Math.max(
-          ...wrappedValues.map(
-            value => value.length
-          )
-        )
-
-      const rowHeight =
-        Math.max(
-          9,
-          maxLines * 3.6 + 4
-        )
-
-      if (
-        y + rowHeight >
-        pageHeight - 30
-      ) {
-        addNewPage()
-      }
-
-      if (rowIndex % 2 === 1) {
-        pdf.setFillColor(
-          250,
-          250,
-          250
-        )
-
-        pdf.rect(
-          margin,
-          y,
-          contentWidth,
-          rowHeight,
-          'F'
-        )
-      }
-
-      let x = margin
-
-      pdf.setFont(
-        'helvetica',
-        'normal'
-      )
-
-      pdf.setFontSize(7)
-      pdf.setTextColor(30)
-
-      wrappedValues.forEach(
-        (value, index) => {
-          pdf.text(
-            value,
-            x + 2,
-            y + 5
-          )
-
-          x += columnWidths[index]
-        }
-      )
-
-      pdf.setDrawColor(230)
-
-      pdf.line(
-        margin,
-        y + rowHeight,
-        pageWidth - margin,
-        y + rowHeight
-      )
-
-      y += rowHeight
-    }
-  )
-
-  // Summary
-  const reportAmount =
-    filteredRows.reduce(
-      (sum, row) =>
-        sum +
-        Number(row.total_amount || 0),
-      0
-    )
-
-  const reportParticipants =
-    filteredRows.reduce(
-      (sum, row) =>
-        sum +
-        Number(
-          row.participant_count || 0
-        ),
-      0
-    )
-
-  if (y + 22 > pageHeight - 30) {
-    addNewPage()
-  }
-
-  y += 3
-
-  pdf.setFillColor(221, 239, 227)
-  pdf.setDrawColor(23, 100, 63)
-  pdf.setLineWidth(0.45)
-
-  pdf.roundedRect(
-    margin,
-    y,
-    contentWidth,
-    14,
-    1.5,
-    1.5,
-    'FD'
-  )
-
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(8.5)
-  pdf.setTextColor(23, 75, 53)
-
-  pdf.text(
-    `Total Registrations: ${filteredRows.length}`,
-    margin + 4,
-    y + 8.5
-  )
-
-  pdf.text(
-    `Total Participants: ${reportParticipants}`,
-    margin + 75,
-    y + 8.5
-  )
-
-  pdf.text(
-    `Total Amount: INR ${reportAmount.toLocaleString(
-      'en-IN'
-    )}`,
-    margin + 155,
-    y + 8.5
-  )
-
-  // Compact footer: generated timestamp left, page number right.
-  const pageCount = pdf.getNumberOfPages()
-  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
-    pdf.setPage(pageNumber)
-    pdf.setDrawColor(23, 100, 63)
-    pdf.setLineWidth(0.35)
-    pdf.line(margin, pageHeight - 14, pageWidth - margin, pageHeight - 14)
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(6.5)
-    pdf.setTextColor(75, 90, 80)
-    pdf.text(
-      'Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751',
-      pageWidth / 2,
-      pageHeight - 9,
-      { align: 'center', maxWidth: pageWidth - margin * 2 }
-    )
-    pdf.text(`Generated: ${generatedAt}`, margin, pageHeight - 3.5)
-    pdf.text(`Page ${pageNumber} of ${pageCount}`, pageWidth - margin, pageHeight - 3.5, { align: 'right' })
-  }
-
-  const date =
-    new Date()
-      .toISOString()
-      .slice(0, 10)
-
-  pdf.save(
-    `NHYM-2026-Registrations-${date}.pdf`
-  )
 }
 
 function exportParticipantsCsv() {
