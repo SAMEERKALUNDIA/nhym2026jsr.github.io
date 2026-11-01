@@ -32,10 +32,10 @@ export function printSearchableHindiPdf(options: {
   printWindow.document.write(`<!doctype html><html lang="hi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${escapeHtml(title)}</title>
     <style>
-      @font-face{font-family:NHYMDevanagari;src:url('/NotoSansDevanagari-Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:block}
+      @font-face{font-family:NHYMDevanagari;src:url('/NotoSansDevanagari-Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:block}\n      @font-face{font-family:NHYMWarangCiti;src:url('/NotoSansWarangCiti-Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:block}
       @page{size:A4 ${orientation};margin:14mm 12mm 16mm}
       *{box-sizing:border-box}body{font-family:NHYMDevanagari,'Noto Sans Devanagari',sans-serif;color:#1d2c23;font-size:10pt;line-height:1.45}
-      header{text-align:center;border-bottom:1px solid #b7d0bf;padding-bottom:8px;margin-bottom:14px}
+      header{text-align:center;border-bottom:1px solid #b7d0bf;padding:0 26mm 8px;margin-bottom:14px;position:relative;min-height:24mm}.brand-logo{position:absolute;top:0;width:20mm;height:20mm;object-fit:contain}.brand-logo.left{left:0}.brand-logo.right{right:0}.warang{font-family:NHYMWarangCiti,sans-serif;font-size:13pt;color:#174b35;margin:0 0 2px}
       h1{font-size:17pt;color:#174b35;margin:0 0 3px}header p{margin:0;color:#5b665e;font-size:9pt}
       h2{font-size:11pt;color:#174b35;background:#ddefe3;border:1px solid #174b35;border-radius:4px;padding:5px 8px;margin:14px 0 7px}
       dl{margin:0}.detail{display:grid;grid-template-columns:minmax(30mm,38mm) 1fr;border-bottom:1px solid #d8e2da;padding:5px 7px;break-inside:avoid}
@@ -47,7 +47,7 @@ export function printSearchableHindiPdf(options: {
       @media print{.screen-actions{display:none}body{margin:0}.report-section{break-inside:auto}}
     </style></head><body>
     <div class="screen-actions"><button onclick="(async()=>{await document.fonts.load('10pt NHYMDevanagari');await document.fonts.ready;window.print()})()">Print / Save as PDF</button><button onclick="window.close()">Close</button></div>
-    <header><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></header>
+    <header><img class="brand-logo left" src="/ho-samaj-logo.jpg" alt="Ho Samaj logo"><img class="brand-logo right" src="/nhym-logo2.jpg" alt="NHYM logo"><div class="warang">𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳</div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></header>
     ${sectionHtml}${tableHtml}<div class="footer">${escapeHtml(footer)}</div>
     <script>document.fonts.ready.then(()=>{document.documentElement.dataset.fontReady='true'})</script>
     </body></html>`)
