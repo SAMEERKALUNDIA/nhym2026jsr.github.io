@@ -164,7 +164,9 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
     footer = '',
   } = options
 
+  try {
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation, compress: true })
+  pdf.setProperties({ title, subject: subtitle, creator: 'NHYM 2026 PDF Export' })
   const searchableFontReady = await loadFont(pdf)
 
   // Load and shape fonts before drawing. Canvas uses Chromium's full Indic shaping,
@@ -444,4 +446,8 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
     .replace(/^-+|-+$/g, '')
     .slice(0, 70) || 'NHYM-2026-Report'
   pdf.save(`NHYM-2026-${safeName}.pdf`)
+  } catch (error) {
+    console.error('Direct PDF export failed:', error)
+    window.alert('PDF डाउनलोड नहीं हो सका। कृपया दोबारा प्रयास करें।')
+  }
 }
