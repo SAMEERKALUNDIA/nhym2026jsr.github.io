@@ -81,3 +81,4 @@ CREATE TABLE IF NOT EXISTS registration_payment_allocations (
 );
 CREATE INDEX IF NOT EXISTS idx_payment_allocations_participant
   ON registration_payment_allocations(participant_id);
+

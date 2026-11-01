@@ -94,6 +94,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           pnpm dlx wrangler@4 d1 execute nhym2026-staging --remote --file=schema.sql --config wrangler.staging.jsonc
+          pnpm dlx wrangler@4 d1 execute nhym2026-staging --remote --file=migrations/0008_registration_email_delivery_tracking.sql --config wrangler.staging.jsonc
           pnpm dlx wrangler@4 d1 execute nhym2026-staging --remote --file=migrations/0001_finance_management.sql --config wrangler.staging.jsonc
           pnpm dlx wrangler@4 d1 execute nhym2026-staging --remote --file=migrations/0002_finance_force_password_change.sql --config wrangler.staging.jsonc
           pnpm dlx wrangler@4 d1 execute nhym2026-staging --remote --file=migrations/0003_daily_updates.sql --config wrangler.staging.jsonc
@@ -117,6 +118,7 @@ jobs:
           if (!ready) throw new Error('Staging Worker did not become ready with JSON registration-status API')
           const checks = [
             ['/api/registration-status', 'GET', undefined, 200],
+            ['/api/participant/lookup', 'POST', JSON.stringify({ registrationId: 'NHYM26-STAGING-NOT-FOUND', email: 'staging-smoke-test@example.invalid' }), 404],
             ['/api/registrations', 'POST', '{}', 400],
             ['/api/admin/registrations', 'GET', undefined, 401],
             ['/api/admin/privacy-requests', 'GET', undefined, 401],
