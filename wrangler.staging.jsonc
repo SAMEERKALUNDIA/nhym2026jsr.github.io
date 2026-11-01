@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nhymindia-staging",
+  "main": "worker.ts",
+  "account_id": "1d5d70a7ee45b7c0c9b1f04aeb025924",
+  "compatibility_date": "2026-09-30",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nhym2026-staging",
+      "database_id": "b182bce5-14e5-4006-9d87-7d3fe28b5165"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "GALLERY",
+      "bucket_name": "nhym-gallery-staging"
+    }
+  ],
+  "vars": {
+    "EMAIL_SERVICE_URL": "https://example.invalid",
+    "STAGING_MODE": "true"
+  },
+  "secrets": {
+    "required": ["ADMIN_TOKEN", "NHYM_EMAIL_SECRET"]
+  }
+}
