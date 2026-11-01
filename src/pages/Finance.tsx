@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { ArrowLeft, BadgeCheck, Banknote, ClipboardList, FileSpreadsheet, Plus, RefreshCw, Wallet, FileText } from 'lucide-react'
-import { jsPDF } from 'jspdf'
+import { printSearchableHindiPdf } from '@/lib/printSearchableHindiPdf'
 
 type Expense = {
   id: string; expense_no: string; category_name: string; vendor_name: string; description: string
@@ -482,284 +482,62 @@ export default function Finance() {
 
   async function exportPdf() {
     if (!data) return
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
-    const pageWidth = doc.internal.pageSize.getWidth()
-    const pageHeight = doc.internal.pageSize.getHeight()
-    const left = 12
-    const right = pageWidth - 12
-    const contentWidth = right - left
-    const green: [number, number, number] = [23, 75, 53]
-    const paleGreen: [number, number, number] = [221, 239, 227]
-    const muted: [number, number, number] = [82, 103, 90]
-    const border: [number, number, number] = [183, 208, 191]
-    const warangCitiHeaderImage = await (async () => {
-      try {
-        const response = await fetch('/NotoSansWarangCiti-Regular.ttf')
-        if (!response.ok) return null
-        const bytes = await response.arrayBuffer()
-        const url = URL.createObjectURL(new Blob([bytes], { type: 'font/ttf' }))
-        const face = new FontFace('NHYMWarangCitiFinance', `url(${url})`)
-        await face.load()
-        document.fonts.add(face)
-        const canvas = document.createElement('canvas')
-        canvas.width = 1800; canvas.height = 110
-        const context = canvas.getContext('2d')
-        if (!context) return null
-        context.clearRect(0, 0, canvas.width, canvas.height)
-        context.fillStyle = '#1e412a'; context.textAlign = 'center'; context.textBaseline = 'middle'
-        context.font = '64px NHYMWarangCitiFinance'
-        context.fillText('𑢴𑢢𑢴𑢣𑢶 𑢹𑢩𑢩 𑢮𑢣𑢡𑢳 𑢮𑢣𑢶𑢣𑢼 : 𑢽𑢢𑢼𑢮𑢩𑢳', canvas.width / 2, canvas.height / 2)
-        URL.revokeObjectURL(url)
-        return canvas.toDataURL('image/png')
-      } catch { return null }
-    })()
-    async function imageData(path: string): Promise<string | null> {
-      try {
-        const response = await fetch(path)
-        if (!response.ok) return null
-        const blob = await response.blob()
-        return await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onloadend = () => resolve(reader.result as string)
-          reader.onerror = reject
-          reader.readAsDataURL(blob)
-        })
-      } catch { return null }
-    }
-    const hoSamajLogoData = await imageData('/ho-samaj-logo.jpg')
-    const logoData = await imageData('/nhym-logo2.jpg')
-    const formatDate = (value: unknown) => {
-      const raw = String(value ?? '')
-      if (!raw) return '—'
-      const date = new Date(raw)
-      return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString('en-IN')
-    }
-    const moneyValue = (paise: unknown) => 'INR ' + (Number(paise ?? 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    let pageNumber = 0
-    let y = 0
-
-    const drawHeader = () => {
-      doc.setFillColor(255, 255, 255)
-      doc.rect(0, 0, pageWidth, pageHeight, 'F')
-      if (hoSamajLogoData) {
-        const props = doc.getImageProperties(hoSamajLogoData)
-        const scale = Math.min(20 / props.width, 20 / props.height)
-        doc.addImage(hoSamajLogoData, 'JPEG', left + (20 - props.width * scale) / 2, 3 + (20 - props.height * scale) / 2, props.width * scale, props.height * scale)
-      }
-      if (logoData) {
-        const props = doc.getImageProperties(logoData)
-        const scale = Math.min(20 / props.width, 20 / props.height)
-        doc.addImage(logoData, 'JPEG', right - 20 + (20 - props.width * scale) / 2, 3 + (20 - props.height * scale) / 2, props.width * scale, props.height * scale)
-      }
-      if (warangCitiHeaderImage) doc.addImage(warangCitiHeaderImage, 'PNG', pageWidth / 2 - 48, 1.5, 96, 5.8)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9.5)
-      doc.setTextColor(...green)
-      doc.text('NATIONAL HO YOUTH MEET : SIRJON', pageWidth / 2, 9.5, { align: 'center' })
-      doc.setFontSize(9.5)
-      doc.text('2026', pageWidth / 2, 13.5, { align: 'center' })
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(6.8)
-      doc.setTextColor(72, 30, 20)
-      doc.text('Organized By : Adivasi Ho Samaj Yuva Mahasabha • Jamshedpur • 28–29 November 2026', pageWidth / 2, 18, { align: 'center', maxWidth: contentWidth - 44 })
-      doc.setFillColor(...paleGreen)
-      doc.setDrawColor(...green)
-      doc.roundedRect(left, 25, contentWidth, 7, 1.2, 1.2, 'FD')
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9.5)
-      doc.setTextColor(...green)
-      doc.text('FINANCIAL STATEMENT', pageWidth / 2, 29.5, { align: 'center' })
-      doc.setDrawColor(...border)
-      doc.line(left, 34, right, 34)
-      y = 39
-    }
-    const generatedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' })
-    const drawFooter = () => {
-      doc.setDrawColor(...border)
-      doc.setLineWidth(0.35)
-      doc.line(left, pageHeight - 13, right, pageHeight - 13)
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(6.5)
-      doc.setTextColor(...muted)
-      doc.text('Adress: Adivasi Ho Samaj Bhawan,Golmuri, Jamshedpur-831003 | Email: nhym2026jsr@gmail.com | Phone: 9931333025,7870979751', pageWidth / 2, pageHeight - 9.5, { align: 'center', maxWidth: pageWidth - left * 2 })
-      doc.text(`Generated: ${generatedAt} IST`, left, pageHeight - 4, { align: 'left' })
-    }
-    const newPage = () => {
-      drawFooter()
-      doc.addPage()
-      pageNumber += 1
-      y = 12
-    }
-    const ensureSpace = (height: number) => {
-      if (y + height > pageHeight - 18) newPage()
-    }
-    const drawSection = (title: string) => {
-      ensureSpace(11)
-      y += 2
-      doc.setFillColor(...paleGreen)
-      doc.setDrawColor(...green)
-      doc.setLineWidth(0.35)
-      doc.roundedRect(left, y - 5, contentWidth, 7, 1.2, 1.2, 'FD')
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(8.5)
-      doc.setTextColor(...green)
-      doc.text(title.toUpperCase(), pageWidth / 2, y - 0.2, { align: 'center', maxWidth: contentWidth - 8 })
-      y += 6
-    }
-    const drawTable = (headers: string[], rows: string[][], widths: number[], aligns: Array<'left' | 'right' | 'center'> = []) => {
-      // Scale every table to the available landscape page width to prevent
-      // long descriptions, payee names and IDs from colliding across columns.
-      const baseWidth = widths.reduce((sum, width) => sum + width, 0)
-      widths = widths.map(width => width * contentWidth / baseWidth)
-      const baseRowHeight = 9
-      const drawTableHeader = () => {
-        ensureSpace(10)
-        // Column headings use bold dark-green text with an underline instead of a dark-green fill.
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(8)
-        doc.setTextColor(...green)
-        let x = left
-        headers.forEach((header, i) => {
-          const align = aligns[i] || 'left'
-          const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
-          doc.text(header, tx, y + 4.5, { align, maxWidth: widths[i] - 3 })
-          x += widths[i]
-        })
-        // One continuous rule beneath the column headings, using a light
-        // stroke that visually matches the bold heading text without overpowering it.
-        doc.setDrawColor(82, 103, 90)
-        doc.setLineWidth(0.3)
-        doc.line(left, y + 6.1, right, y + 6.1)
-        y += baseRowHeight
-      }
-      drawTableHeader()
-      rows.forEach((row, rowIndex) => {
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(7)
-        const wrapped = row.map((value, i) => i === 0 ? [String(value ?? '—')] : doc.splitTextToSize(String(value ?? '—').replace(/\s+/g, ' ').trim(), Math.max(8, widths[i] - 4)) as string[])
-        const maxLines = Math.max(1, ...wrapped.map(lines => lines.length))
-        const rowHeight = Math.max(baseRowHeight, maxLines * 3.6 + 3)
-        if (y + rowHeight > pageHeight - 18) {
-          newPage()
-          drawTableHeader()
-        }
-        if (rowIndex % 2 === 0) {
-          doc.setFillColor(247, 249, 247)
-          doc.rect(left, y, contentWidth, rowHeight, 'F')
-        }
-        doc.setDrawColor(220, 227, 221)
-        doc.setLineWidth(0.15)
-        doc.line(left, y + rowHeight, right, y + rowHeight)
-        doc.setTextColor(42, 49, 44)
-        let x = left
-        wrapped.forEach((lines, i) => {
-          const align = aligns[i] || 'left'
-          const tx = align === 'right' ? x + widths[i] - 2 : align === 'center' ? x + widths[i] / 2 : x + 2
-          if (i === 0) {
-            // Keep the record ID on one line; shrink only its font to fit its own column.
-            const originalSize = 7
-            let size = originalSize
-            doc.setFontSize(size)
-            while (size > 5 && doc.getTextWidth(lines[0]) > widths[i] - 4) {
-              size -= 0.25
-              doc.setFontSize(size)
-            }
-            doc.text(lines[0], tx, y + 5, { align: 'left', maxWidth: widths[i] - 4 })
-            doc.setFontSize(originalSize)
-          } else {
-            doc.text(lines, tx, y + 4.5, { align, lineHeightFactor: 1.05, maxWidth: widths[i] - 3 })
-          }
-          x += widths[i]
-        })
-        y += rowHeight
-      })
-      y += 3
-    }
-
-    pageNumber = 1
-    drawHeader()
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7.5)
-    doc.setTextColor(...muted)
-    doc.text('Reporting basis: records currently loaded in the Finance dashboard.', left, y)
-    y += 7
-
-    const summaryItems = [
-      { label: 'TOTAL RECORDED INCOME', value: moneyValue(totals.income) },
-      { label: 'TOTAL PAID EXPENSES', value: moneyValue(totals.paid) },
-      { label: 'NET CASH MOVEMENT*', value: moneyValue(totals.net) },
-      { label: 'PENDING APPROVALS', value: String(data.pendingApprovalCount ?? 0) },
+    const expenseColumns = [
+      { label: 'S. No.', width: '5%', align: 'center' as const },
+      { label: 'Expense No.', width: '9%' },
+      { label: 'Date', width: '8%' },
+      { label: 'Category', width: '11%' },
+      { label: 'Vendor / Payee', width: '13%' },
+      { label: 'Purpose', width: '23%' },
+      { label: 'Requested', width: '9%', align: 'right' as const },
+      { label: 'Approved', width: '9%', align: 'right' as const },
+      { label: 'Approval', width: '7%' },
+      { label: 'Payment', width: '6%' },
     ]
-    const gap = 4
-    const cardWidth = (contentWidth - gap * 3) / 4
-    summaryItems.forEach((item, index) => {
-      const x = left + index * (cardWidth + gap)
-      doc.setFillColor(...paleGreen)
-      doc.setDrawColor(...green)
-      doc.setLineWidth(0.4)
-      doc.roundedRect(x, y, cardWidth, 17, 1.5, 1.5, 'FD')
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(6.7)
-      doc.setTextColor(...muted)
-      doc.text(item.label, x + 3, y + 5)
-      doc.setFontSize(11)
-      doc.setTextColor(...green)
-      doc.text(item.value, x + 3, y + 12.5)
+    const expenseRows = data.expenses.map((x, i) => [
+      String(i + 1), x.expense_no, formatDate(x.expense_date), x.category_name,
+      x.vendor_name || '—', x.description || '—', money(x.requested_amount_paise),
+      money(x.approved_amount_paise), x.approval_status, x.payment_status,
+    ])
+    const incomeColumns = [
+      { label: 'S. No.', width: '6%' }, { label: 'Income ID', width: '12%' },
+      { label: 'Received Date', width: '12%' }, { label: 'Income Type', width: '13%' },
+      { label: 'Received From', width: '17%' }, { label: 'Amount', width: '12%' },
+      { label: 'Mode', width: '10%' }, { label: 'Reference / Receipt', width: '18%' },
+    ]
+    const incomeRows = data.incomes.map((x, i) => [
+      String(i + 1), String(x.income_no ?? ''), formatDate(x.received_at), String(x.income_type ?? ''),
+      String(x.received_from ?? ''), money(Number(x.amount_paise ?? 0)), String(x.payment_mode ?? ''),
+      [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
+    ])
+    const budgetColumns = [
+      { label: 'S. No.', width: '7%' }, { label: 'Budget Period', width: '18%' },
+      { label: 'Category', width: '22%' }, { label: 'Planned / Approved Amount', width: '25%' },
+      { label: 'Status', width: '16%' }, { label: 'Revision', width: '12%' },
+    ]
+    const budgetRows = data.budgets.map((x, i) => [
+      String(i + 1), String(x.budget_period ?? ''), String(x.category_name ?? ''),
+      money(Number(x.approved_amount_paise ?? 0)), String(x.status ?? ''), String(x.revision_no ?? ''),
+    ])
+    printSearchableHindiPdf({
+      title: 'NHYM 2026 FINANCIAL STATEMENT',
+      subtitle: 'NATIONAL HO YOUTH MEET : SIRJON · Jamshedpur · 28–29 November 2026',
+      orientation: 'landscape',
+      sections: [
+        { title: 'Financial Summary', rows: [
+          ['Total Income', money(data.totalIncomePaise)],
+          ['Total Paid Expenses', money(data.totalPaidPaise)],
+          ['Pending Approvals', String(data.pendingApprovalCount)],
+          ['Unpaid Expenses', String(data.unpaidCount)],
+        ] },
+      ],
+      tables: [
+        { columns: expenseColumns, rows: expenseRows },
+        { columns: incomeColumns, rows: incomeRows },
+        { columns: budgetColumns, rows: budgetRows },
+      ],
+      footer: 'Adivasi Ho Samaj Bhawan, Golmuri, Jamshedpur-831003 · nhym2026jsr@gmail.com',
     })
-    y += 21
-    doc.setFont('helvetica', 'italic')
-    doc.setFontSize(7)
-    doc.setTextColor(...muted)
-    doc.text('* Net cash movement is recorded income minus paid expenses; it is not a verified bank/cash balance.', left, y)
-    y += 5
-
-    drawSection('Expense Register')
-    drawTable(
-      ['S. No.', 'Expense ID', 'Date', 'Category', 'Vendor / Payee', 'Purpose', 'Requested', 'Approved', 'Paid', 'Approval', 'Payment'],
-      data.expenses.map((x, i) => [
-        String(i + 1), x.expense_no, formatDate(x.expense_date), x.category_name, x.vendor_name, x.description,
-        moneyValue(x.requested_amount_paise), x.approved_amount_paise == null ? '—' : moneyValue(x.approved_amount_paise),
-        moneyValue(x.paid_amount_paise), x.approval_status, x.payment_status,
-      ]),
-      [13, 40, 19, 30, 37, 47, 22, 22, 20, 21, 21],
-      ['center', 'left', 'left', 'left', 'left', 'left', 'right', 'right', 'right', 'center', 'center'],
-    )
-
-    drawSection('Income Register')
-    drawTable(
-      ['S. No.', 'Income ID', 'Received Date', 'Income Type', 'Received From', 'Amount', 'Mode', 'Reference / Receipt'],
-      data.incomes.map((x, i) => [
-        String(i + 1), String(x.income_no ?? ''), formatDate(x.received_at), String(x.income_type ?? ''),
-        String(x.received_from ?? ''), moneyValue(x.amount_paise), String(x.payment_mode ?? ''),
-        [String(x.reference_no ?? ''), String(x.receipt_no ?? '')].filter(Boolean).join(' / ') || '—',
-      ]),
-      [13, 38, 23, 28, 34, 25, 18, 24],
-      ['center', 'left', 'left', 'left', 'left', 'right', 'center', 'left'],
-    )
-
-    drawSection('Budget Register')
-    drawTable(
-      ['S. No.', 'Budget Period', 'Category', 'Planned / Approved Amount', 'Status', 'Revision'],
-      data.budgets.map((x, i) => [
-        String(i + 1), String(x.budget_period ?? ''), String(x.category_name ?? ''),
-        moneyValue(x.approved_amount_paise), String(x.status ?? ''), String(x.revision_no ?? ''),
-      ]),
-      [9, 38, 42, 48, 35, 23],
-      ['center', 'left', 'left', 'right', 'center', 'center'],
-    )
-
-    const pageCount = doc.getNumberOfPages()
-    for (let page = 1; page <= pageCount; page++) {
-      doc.setPage(page)
-      // Draw the footer on every page, then replace its page label with "Page X of Y".
-      pageNumber = page
-      drawFooter()
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(6.5)
-      doc.setTextColor(...muted)
-      doc.text(`Page ${page} of ${pageCount}`, right, pageHeight - 4, { align: 'right' })
-    }
-    doc.save('NHYM-2026-Finance-Accounting-Report.pdf')
   }
 
   if (!token) return <main className="min-h-screen bg-background px-4 py-12 text-foreground"><div className="mx-auto max-w-md rounded-2xl border bg-card p-6 shadow-sm">
