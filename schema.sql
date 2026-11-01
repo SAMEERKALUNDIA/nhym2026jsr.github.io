@@ -81,3 +81,7 @@ CREATE TABLE IF NOT EXISTS registration_payment_allocations (
 );
 CREATE INDEX IF NOT EXISTS idx_payment_allocations_participant
   ON registration_payment_allocations(participant_id);
+
+-- Email delivery timestamps used by approval/rejection workflow.
+ALTER TABLE registrations ADD COLUMN approval_email_sent_at TEXT;
+ALTER TABLE registrations ADD COLUMN rejection_email_sent_at TEXT;
