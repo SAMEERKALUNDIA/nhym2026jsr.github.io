@@ -386,7 +386,7 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
 
     drawTableHeader()
     table.rows.forEach((row, rowIndex) => {
-      const cells = table.columns.map((column, index) => {
+      const cells = table.columns.map((_, index) => {
         const text = String(row[index] ?? '—')
         const canvas = document.createElement('canvas')
         const context = canvas.getContext('2d')
