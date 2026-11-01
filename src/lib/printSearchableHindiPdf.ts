@@ -46,7 +46,7 @@ export function printSearchableHindiPdf(options: {
       @media screen{body{max-width:1100px;margin:24px auto;padding:20px} .screen-actions{display:flex;gap:8px;margin-bottom:16px}.screen-actions button{padding:8px 14px}}
       @media print{.screen-actions{display:none}body{margin:0}.report-section{break-inside:auto}}
     </style></head><body>
-    <div class="screen-actions"><button onclick="window.print()">Print / Save as PDF</button><button onclick="window.close()">Close</button></div>
+    <div class="screen-actions"><button onclick="(async()=>{await document.fonts.load('10pt NHYMDevanagari');await document.fonts.ready;window.print()})()">Print / Save as PDF</button><button onclick="window.close()">Close</button></div>
     <header><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></header>
     ${sectionHtml}${tableHtml}<div class="footer">${escapeHtml(footer)}</div>
     <script>document.fonts.ready.then(()=>{document.documentElement.dataset.fontReady='true'})</script>
