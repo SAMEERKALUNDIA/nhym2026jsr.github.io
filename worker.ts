@@ -1332,7 +1332,7 @@ if (
         if (address.length < 4) return json({ error: `Participant ${participantNumber}: full residential address is required.` }, 400)
         if (district.length < 2) return json({ error: `Participant ${participantNumber}: district is required.` }, 400)
         if (state.length < 2) return json({ error: `Participant ${participantNumber}: state or union territory is required.` }, 400)
-        if (!/^\\d{6}$/.test(pin)) return json({ error: `Participant ${participantNumber}: PIN code must contain six digits.` }, 400)
+        if (!/^\d{6}$/.test(pin)) return json({ error: `Participant ${participantNumber}: PIN code must contain six digits.` }, 400)
         if (!Array.isArray(activities) || activities.length < 1 || activities.length > 3 || activities.some((activity) => typeof activity !== 'string' || !activity.trim())) {
           return json({ error: `Participant ${participantNumber}: select between one and three discussion topics.` }, 400)
         }
