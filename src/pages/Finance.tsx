@@ -484,11 +484,11 @@ export default function Finance() {
     if (!data) return
     const expenseColumns = [
       { label: 'S. No.', width: '5%', align: 'center' as const },
-      { label: 'Expense No.', width: '9%' },
+      { label: 'Expense No.', width: '15%' },
       { label: 'Date', width: '8%' },
-      { label: 'Category', width: '11%' },
-      { label: 'Vendor / Payee', width: '13%' },
-      { label: 'Purpose', width: '23%' },
+      { label: 'Category', width: '10%' },
+      { label: 'Vendor / Payee', width: '12%' },
+      { label: 'Purpose', width: '19%' },
       { label: 'Requested', width: '9%', align: 'right' as const },
       { label: 'Approved', width: '9%', align: 'right' as const },
       { label: 'Approval', width: '7%' },
