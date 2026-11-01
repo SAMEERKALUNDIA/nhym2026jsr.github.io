@@ -70,12 +70,10 @@ jobs:
       - name: Validate Staging-only credentials
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           ADMIN_TOKEN: ${{ secrets.STAGING_ADMIN_TOKEN }}
           NHYM_EMAIL_SECRET: ${{ secrets.STAGING_NHYM_EMAIL_SECRET }}
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || (echo "Missing staging CLOUDFLARE_API_TOKEN" && exit 1)
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "Missing staging CLOUDFLARE_ACCOUNT_ID" && exit 1)
           test -n "$ADMIN_TOKEN" || (echo "Missing STAGING_ADMIN_TOKEN" && exit 1)
           test -n "$NHYM_EMAIL_SECRET" || (echo "Missing STAGING_NHYM_EMAIL_SECRET" && exit 1)
       - name: Set Staging-only Worker secrets and deploy
@@ -94,7 +92,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           node --input-type=module <<'NODE'
-          const accountId = process.env.CLOUDFLARE_ACCOUNT_ID
+          import { readFileSync } from 'node:fs'
+          const stagingConfig = JSON.parse(readFileSync('wrangler.staging.jsonc', 'utf8'))
+          const accountId = stagingConfig.account_id
           const databaseId = 'b182bce5-14e5-4006-9d87-7d3fe28b5165'
           const token = process.env.CLOUDFLARE_API_TOKEN
           if (!accountId || !token) throw new Error('Missing Staging D1 API credentials')
