@@ -360,18 +360,18 @@ export default function Register() {
       if (!error && row.address.trim().length < 4) error = 'Write the full residential address for the desk’s sheet.'
       if (!error && row.district.trim().length < 2) error = 'Write the district.'
       if (!error && row.state.trim().length < 2) error = 'Write the state or union territory.'
-      if (!error && !/^\\d{6}$/.test(row.pin.trim())) error = 'A PIN code is six digits.'
+      if (!error && !/^\d{6}$/.test(row.pin.trim())) error = 'A PIN code is six digits.'
       if (!error && row.activities.length < 1) error = 'Select at least one Open Stage Discussion topic.'
       if (!error && row.activities.length > 3) error = 'You can select a maximum of three Open Stage Discussion topics.'
       if (!error && row.cultural === '') error = 'Say whether this participant wants to take part in the cultural programme.'
       if (!error && row.sports === '') error = 'Say whether this participant wants to take part in sports.'
       if (!error && row.fromOutside === '') error = 'Say whether this participant is travelling from outside Jamshedpur.'
       if (!error && row.accommodation === '') error = 'Say whether accommodation is needed.'
-      if (!error && row.age.trim() !== '' && !/^\\d{1,2}$/.test(row.age.trim())) error = 'Age is a number of years, or leave it blank.'
+      if (!error && row.age.trim() !== '' && !/^\d{1,2}$/.test(row.age.trim())) error = 'Age is a number of years, or leave it blank.'
       if (!error && row.category === 'visitor' && row.contribution === '') error = 'Choose a contribution of ₹100, ₹200, ₹500, or an other amount.'
       if (!error && row.category === 'visitor' && row.contribution === 'other') {
         const entered = Number(row.other.trim())
-        if (!/^\\d+$/.test(row.other.trim()) || entered < EVENT.contributionFloor) {
+        if (!/^\d+$/.test(row.other.trim()) || entered < EVENT.contributionFloor) {
           error = `An other amount is a whole number of rupees, ${inr(EVENT.contributionFloor)} or more.`
         }
       }
@@ -398,7 +398,7 @@ export default function Register() {
       ok = false
       if (!problem) problem = 'Enter a valid transaction reference for each payment group.'
     }
-    const normalizedReferences = paymentGroups.map((group) => group.reference.trim().replace(/\\s+/g, '').toUpperCase())
+    const normalizedReferences = paymentGroups.map((group) => group.reference.trim().replace(/\s+/g, '').toUpperCase())
     if (new Set(normalizedReferences).size !== normalizedReferences.length) {
       ok = false
       if (!problem) problem = 'Each separate payment transaction must have a different transaction reference.'
@@ -459,8 +459,8 @@ export default function Register() {
     const lines = text.split(/\r?\n/).map(cleanOcrValue).filter(Boolean)
     for (let i = 0; i < lines.length; i += 1) {
       for (const label of labels) {
-        const pattern = label.split(/\s+/).map((part) => part.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('\\s*')
-        const match = lines[i].match(new RegExp('(?:^|\\b)' + pattern + '\\s*(?:[:：=.-]\\s*)?(.*)$', 'i'))
+        const pattern = label.split(/\s+/).map((part) => part.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('\s*')
+        const match = lines[i].match(new RegExp('(?:^|\\b)' + pattern + '\s*(?:[:：=.-]\s*)?(.*)$', 'i'))
         if (!match) continue
         let value = cleanOcrValue(match[1] || '')
         if (!value || looksLikeOcrLabel(value) || /^(enter|write|select|dd\/?mm\/?yyyy)$/i.test(value)) {
