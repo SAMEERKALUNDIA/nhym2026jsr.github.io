@@ -2324,7 +2324,7 @@ if (!authenticated) {
                     </Button>
                   </div>
                   <div className="mb-4">
-                    <Button type="button" variant="outline" disabled={participantAuditLoading} onClick={() => void loadParticipantAudit(participant)}>
+                    <Button type="button" variant="outline" aria-busy={participantAuditLoading && participantAuditId === participant.id} disabled={participantAuditLoading} onClick={() => void loadParticipantAudit(participant)}>
                       {participantAuditLoading && participantAuditId === participant.id ? 'Loading audit…' : 'Correction Audit History'}
                     </Button>
                     {participantAuditId === participant.id && (
