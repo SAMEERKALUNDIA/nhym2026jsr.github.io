@@ -86,7 +86,6 @@ type Participant = {
   sports: string
   from_outside: string
   accommodation: string
-  note: string
   details_json: string
 }
 
@@ -1085,7 +1084,6 @@ function exportParticipantsCsv() {
     'Sports',
     'From Outside',
     'Accommodation',
-    'Note',
     'Email',
     'Payment Mode',
     'Payment Reference',
@@ -1113,7 +1111,6 @@ function exportParticipantsCsv() {
       participant.sports,
       participant.from_outside,
       participant.accommodation,
-      participant.note,
       registration.email,
       registration.payment_mode,
       registration.payment_reference,
@@ -1173,8 +1170,7 @@ async function downloadAdminRegistrationPdf(row: Row) {
           ['From Outside Jamshedpur', yesNo(p.from_outside), 'pair'],
           ['Cultural', p.cultural || '—', 'pair'],
           ['Sports', p.sports || '—', 'pair'],
-          ['Activities', activities(p.activities_json), 'full'],
-          ['Note', p.note || '—', 'full'],
+          ['Activities', activities(p.activities_json), 'full'], 
         ],
       })),
     ],
@@ -2489,11 +2485,6 @@ if (!authenticated) {
                     <div>
                       <strong>Accommodation</strong>
                       <div>{participant.accommodation || '—'}</div>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <strong>Note</strong>
-                      <div>{participant.note || '—'}</div>
                     </div>
 
                   </div>
