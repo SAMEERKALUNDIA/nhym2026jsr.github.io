@@ -118,7 +118,11 @@ function renderShapedLine(
     pdf.setFont('helvetica', bold ? 'bold' : 'normal')
     pdf.setFontSize(fontSizePt)
     pdf.setTextColor(...color)
-    pdf.text(text, x, baselineY, { maxWidth: maxWidthMm })
+    // Lines are already wrapped by wrapText() before reaching this renderer.
+    // Passing maxWidth here makes jsPDF wrap them a second time using different
+    // font metrics, which can insert extra lines (for example, a stray “AND”)
+    // and overlap the next pre-wrapped line.
+    pdf.text(text, x, baselineY)
     return
   }
   const scale = 3
