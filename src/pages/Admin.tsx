@@ -162,12 +162,15 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [registrationOpen, setRegistrationOpen] = useState(true)
   const [registrationControlLoading, setRegistrationControlLoading] = useState(false)
   const [registrationControlSaving, setRegistrationControlSaving] = useState(false)
+  const [registrationControlTarget, setRegistrationControlTarget] = useState<boolean | null>(null)
   const [homeSectionsLoading, setHomeSectionsLoading] = useState(false)
   const [homeSectionsSaving, setHomeSectionsSaving] = useState(false)
   const [feedbackDeleting, setFeedbackDeleting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [updatingId, setUpdatingId] = useState<number | null>(null)
+  const [updatingStatus, setUpdatingStatus] = useState<'PAYMENT_VERIFIED' | 'APPROVED' | 'REJECTED' | null>(null)
+  const [updatingPaymentStatus, setUpdatingPaymentStatus] = useState<'VERIFIED' | 'REJECTED' | 'PENDING' | null>(null)
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('search') || '')
   const [selected, setSelected] = useState<Row | null>(null)
   const [editingParticipantId, setEditingParticipantId] = useState<number | null>(null)
@@ -198,6 +201,7 @@ const [checkingSession, setCheckingSession] = useState(true)
   }
 
   async function saveRegistrationStatus(nextOpen: boolean) {
+    setRegistrationControlTarget(nextOpen)
     setRegistrationControlSaving(true)
     setError('')
     setSuccess('')
@@ -215,7 +219,7 @@ const [checkingSession, setCheckingSession] = useState(true)
         : 'Registration बंद कर दिया गया है। पुराने रिकॉर्ड और approval प्रक्रिया सुरक्षित हैं।')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Registration status सेव नहीं हो सका।')
-    } finally { setRegistrationControlSaving(false) }
+    } finally { setRegistrationControlSaving(false); setRegistrationControlTarget(null) }
   }
 
   async function loadHomepageSections() {
@@ -747,10 +751,11 @@ useEffect(() => {
     const prompt = status === 'VERIFIED' ? 'Confirm that this transaction has been checked against the bank/UPI/cash receipt?' : status === 'REJECTED' ? 'Reject this payment transaction?' : 'Reset this transaction to pending verification?'
     if (!window.confirm(`${prompt}\n\nRegistration: ${row.registration_id}\nReference: ${payment.payment_reference}\nAmount: ₹${Number(payment.amount).toLocaleString('en-IN')}`)) return
     setUpdatingId(row.id)
+    setUpdatingPaymentStatus(status)
     setError('')
     setSuccess('')
     try {
-      const response = await fetch(`/api/admin/registrations/${row.id}/payments/${payment.id}`, {
+      const response = await fetch(`/api/admin/registrations/${row.id}/payments/${payment.id}`,  {
         method: 'PATCH',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ status }),
@@ -763,6 +768,7 @@ useEffect(() => {
       setError(error instanceof Error ? error.message : 'Payment status could not be updated.')
     } finally {
       setUpdatingId(null)
+      setUpdatingPaymentStatus(null)
     }
   }
 
@@ -798,6 +804,7 @@ useEffect(() => {
     }
 
     setUpdatingId(row.id)
+    setUpdatingStatus(value)
     setError('')
     setSuccess('')
 
@@ -858,6 +865,7 @@ useEffect(() => {
       )
     } finally {
       setUpdatingId(null)
+      setUpdatingStatus(null)
     }
   }
 
@@ -1277,6 +1285,7 @@ async function exportParticipantsPdf() {
 
   function actionButtons(row: Row) {
     const busy = updatingId === row.id
+    const busyStatus = busy ? updatingStatus : null
     const hasTransactionLedger = (row.payments || []).some(payment => !payment.legacy && payment.id !== null)
 
     if (row.status === 'PENDING' && hasTransactionLedger) {
@@ -1291,18 +1300,18 @@ async function exportParticipantsPdf() {
       return (
         <div className="flex flex-wrap gap-2">
           <Button
-            aria-busy={busy}
+            aria-busy={busyStatus === 'PAYMENT_VERIFIED'}
             disabled={busy}
             onClick={() =>
               changeStatus(row, 'PAYMENT_VERIFIED')
             }
           >
-            {busy ? 'Updating…' : 'Verify Payment'}
+            {busyStatus === 'PAYMENT_VERIFIED' ? 'Updating…' : 'Verify Payment'}
           </Button>
 
           <Button
             variant="outline"
-            aria-busy={busy}
+            aria-busy={busyStatus === 'REJECTED'}
             disabled={busy}
             onClick={() =>
               changeStatus(row, 'REJECTED')
@@ -1318,13 +1327,13 @@ async function exportParticipantsPdf() {
       return (
         <div className="flex flex-wrap gap-2">
           <Button
-            aria-busy={busy}
+            aria-busy={busyStatus === 'APPROVED'}
             disabled={busy}
             onClick={() =>
               changeStatus(row, 'APPROVED')
             }
           >
-            {busy ? 'Updating…' : 'Approve Registration'}
+            {busyStatus === 'APPROVED' ? 'Updating…' : 'Approve Registration'}
           </Button>
 
           <Button
@@ -1967,8 +1976,8 @@ if (!authenticated) {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" aria-busy={registrationControlSaving} disabled={registrationControlLoading || registrationControlSaving || registrationOpen} onClick={() => void saveRegistrationStatus(true)}>Registration चालू करें</Button>
-                  <Button type="button" variant="destructive" aria-busy={registrationControlSaving} disabled={registrationControlLoading || registrationControlSaving || !registrationOpen} onClick={() => {
+                  <Button type="button" aria-busy={registrationControlSaving && registrationControlTarget === true} disabled={registrationControlLoading || registrationControlSaving || registrationOpen} onClick={() => void saveRegistrationStatus(true)}>Registration चालू करें</Button>
+                  <Button type="button" variant="destructive" aria-busy={registrationControlSaving && registrationControlTarget === false} disabled={registrationControlLoading || registrationControlSaving || !registrationOpen} onClick={() => {
                     if (window.confirm('क्या आप नया registration बंद करना चाहते हैं? पहले से दर्ज सभी रिकॉर्ड सुरक्षित रहेंगे।')) void saveRegistrationStatus(false)
                   }}>Registration बंद करें</Button>
                   <Button type="button" variant="outline" aria-busy={registrationControlLoading} disabled={registrationControlLoading || registrationControlSaving} onClick={() => void loadRegistrationStatus()}>रीफ़्रेश</Button>
@@ -2288,9 +2297,9 @@ if (!authenticated) {
                     <div className="text-sm font-medium">{payment.status}{payment.legacy ? ' (legacy record)' : ''}</div>
                   </div>
                   {!payment.legacy && payment.id !== null && <div className="mt-3 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" aria-busy={updatingId === selected.id} disabled={updatingId === selected.id || payment.status === 'VERIFIED'} onClick={() => void changePaymentStatus(selected, payment, 'VERIFIED')}>Verify transaction</Button>
-                    <Button type="button" size="sm" variant="outline" aria-busy={updatingId === selected.id} disabled={updatingId === selected.id || payment.status === 'REJECTED'} onClick={() => void changePaymentStatus(selected, payment, 'REJECTED')}>Reject transaction</Button>
-                    <Button type="button" size="sm" variant="outline" aria-busy={updatingId === selected.id} disabled={updatingId === selected.id || payment.status === 'PENDING'} onClick={() => void changePaymentStatus(selected, payment, 'PENDING')}>Reset to pending</Button>
+                    <Button type="button" size="sm" aria-busy={updatingId === selected.id && updatingPaymentStatus === 'VERIFIED'} disabled={updatingId === selected.id || payment.status === 'VERIFIED'} onClick={() => void changePaymentStatus(selected, payment, 'VERIFIED')}>Verify transaction</Button>
+                    <Button type="button" size="sm" variant="outline" aria-busy={updatingId === selected.id && updatingPaymentStatus === 'REJECTED'} disabled={updatingId === selected.id || payment.status === 'REJECTED'} onClick={() => void changePaymentStatus(selected, payment, 'REJECTED')}>Reject transaction</Button>
+                    <Button type="button" size="sm" variant="outline" aria-busy={updatingId === selected.id && updatingPaymentStatus === 'PENDING'} disabled={updatingId === selected.id || payment.status === 'PENDING'} onClick={() => void changePaymentStatus(selected, payment, 'PENDING')}>Reset to pending</Button>
                   </div>}
                   <div className="mt-3 text-sm text-muted-foreground">
                     Linked people: {(payment.allocations || []).map((person) => `${person.name} (₹${Number(person.amount).toLocaleString('en-IN')})`).join(', ') || 'Allocation details unavailable'}
