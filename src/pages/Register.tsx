@@ -343,93 +343,43 @@ export default function Register() {
     }
     if (stillToTick.length > 0) {
       ok = false
-      problem = `Tick ${stillToTick
-        .map((declaration) => declaration.label)
-        .join(', ')} before sending the registration.`
+      problem = `Tick ${stillToTick.map((declaration) => declaration.label).join(', ')} before sending the registration.`
     }
-    setRows((prev) =>
-      prev.map((row) => {
-        if (row.name.trim().length < 2) {
-          ok = false
-          return { ...row, error: 'Write the name as it should appear on the pass.' }
-        }
-if (!row.dob.trim()) {
-  ok = false
-  return { ...row, error: 'Select the date of birth.' }
-}
+
+    // Validate synchronously from the current rows. A React state updater may
+    // run after this function returns, which must never decide whether to submit.
+    const validatedRows = rows.map((row) => {
+      let error: string | undefined
+      if (row.name.trim().length < 2) error = 'Write the name as it should appear on the pass.'
+      else if (!row.dob.trim()) error = 'Select the date of birth.'
+      else {
         const ageFromDob = calculateAge(row.dob)
-        if (ageFromDob === '' || Number(ageFromDob) < 18) {
-          ok = false
-          return { ...row, error: 'Registration is available only to participants aged 18 or older.' }
+        if (ageFromDob === '' || Number(ageFromDob) < 18) error = 'Registration is available only to participants aged 18 or older.'
+      }
+      if (!error && row.gender === '') error = 'Choose Male, Female, or Transgender.'
+      if (!error && row.address.trim().length < 4) error = 'Write the full residential address for the desk’s sheet.'
+      if (!error && row.district.trim().length < 2) error = 'Write the district.'
+      if (!error && row.state.trim().length < 2) error = 'Write the state or union territory.'
+      if (!error && !/^\d{6}$/.test(row.pin.trim())) error = 'A PIN code is six digits.'
+      if (!error && row.activities.length < 1) error = 'Select at least one Open Stage Discussion topic.'
+      if (!error && row.activities.length > 3) error = 'You can select a maximum of three Open Stage Discussion topics.'
+      if (!error && row.cultural === '') error = 'Say whether this participant wants to take part in the cultural programme.'
+      if (!error && row.sports === '') error = 'Say whether this participant wants to take part in sports.'
+      if (!error && row.fromOutside === '') error = 'Say whether this participant is travelling from outside Jamshedpur.'
+      if (!error && row.accommodation === '') error = 'Say whether accommodation is needed.'
+      if (!error && row.age.trim() !== '' && !/^\d{1,2}$/.test(row.age.trim())) error = 'Age is a number of years, or leave it blank.'
+      if (!error && row.category === 'visitor' && row.contribution === '') error = 'Choose a contribution of ₹100, ₹200, ₹500, or an other amount.'
+      if (!error && row.category === 'visitor' && row.contribution === 'other') {
+        const entered = Number(row.other.trim())
+        if (!/^\d+$/.test(row.other.trim()) || entered < EVENT.contributionFloor) {
+          error = `An other amount is a whole number of rupees, ${inr(EVENT.contributionFloor)} or more.`
         }
-        if (row.gender === '') {
-          ok = false
-          return { ...row, error: 'Choose Male, Female, or Transgender.' }
-        }
-        if (row.address.trim().length < 4) {
-          ok = false
-          return { ...row, error: 'Write the full residential address for the desk\u2019s sheet.' }
-        }
-        if (row.district.trim().length < 2) {
-          ok = false
-          return { ...row, error: 'Write the district.' }
-        }
-        if (row.state.trim().length < 2) {
-          ok = false
-          return { ...row, error: 'Write the state or union territory.' }
-        }
-        if (!/^\d{6}$/.test(row.pin.trim())) {
-          ok = false
-          return { ...row, error: 'A PIN code is six digits.' }
-        }
-        if (row.activities.length === 0) {
-          ok = false
-          return { ...row, error: 'Select at least one Open Stage Discussion topic.' }
-        }
-        if (row.activities.length > 3) {
-          ok = false
-          return { ...row, error: 'You can select a maximum of three Open Stage Discussion topics.' }
-        }
-        if (row.cultural === '') {
-          ok = false
-          return { ...row, error: 'Say whether this participant wants to take part in the cultural programme.' }
-        }
-        if (row.sports === '') {
-          ok = false
-          return { ...row, error: 'Say whether this participant wants to take part in sports.' }
-        }
-        if (row.fromOutside === '') {
-          ok = false
-          return { ...row, error: 'Say whether this participant is travelling from outside Jamshedpur.' }
-        }
-        if (row.accommodation === '') {
-          ok = false
-          return { ...row, error: 'Say whether accommodation is needed.' }
-        }
-        if (row.age.trim() !== '' && !/^\d{1,2}$/.test(row.age.trim())) {
-          ok = false
-          return { ...row, error: 'Age is a number of years, or leave it blank.' }
-        }
-        if (row.category === 'visitor' && row.contribution === '') {
-          ok = false
-          return {
-            ...row,
-            error: 'Choose a contribution of ₹100, ₹200, ₹500, or an other amount.',
-          }
-        }
-        if (row.category === 'visitor' && row.contribution === 'other') {
-          const entered = Number(row.other.trim())
-          if (!/^\d+$/.test(row.other.trim()) || entered < EVENT.contributionFloor) {
-            ok = false
-            return {
-              ...row,
-              error: `An other amount is a whole number of rupees, ${inr(EVENT.contributionFloor)} or more.`,
-            }
-          }
-        }
-        return { ...row, error: undefined }
-      }),
-    )
+      }
+      if (error) ok = false
+      return { ...row, error }
+    })
+    setRows(validatedRows)
+
     if (!EMAIL.test(email.trim())) {
       ok = false
       if (!email.trim()) problem = 'Email address is required so the approval message can reach you.'
@@ -509,8 +459,8 @@ if (!row.dob.trim()) {
     const lines = text.split(/\r?\n/).map(cleanOcrValue).filter(Boolean)
     for (let i = 0; i < lines.length; i += 1) {
       for (const label of labels) {
-        const pattern = label.split(/\s+/).map((part) => part.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('\\s*')
-        const match = lines[i].match(new RegExp('(?:^|\\b)' + pattern + '\\s*(?:[:：=.-]\\s*)?(.*)$', 'i'))
+        const pattern = label.split(/\s+/).map((part) => part.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('\s*')
+        const match = lines[i].match(new RegExp('(?:^|\\b)' + pattern + '\s*(?:[:：=.-]\s*)?(.*)$', 'i'))
         if (!match) continue
         let value = cleanOcrValue(match[1] || '')
         if (!value || looksLikeOcrLabel(value) || /^(enter|write|select|dd\/?mm\/?yyyy)$/i.test(value)) {
