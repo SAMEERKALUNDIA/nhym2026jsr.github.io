@@ -701,6 +701,7 @@ useEffect(() => {
   }
 
   async function loadParticipantAudit(participant: Participant) {
+    setParticipantAuditId(participant.id)
     setParticipantAuditLoading(true); setError('')
     try {
       const response = await fetch(`/api/admin/participants/${participant.id}/audit`, { headers: { authorization: `Bearer ${token}` }, cache: 'no-store' })
@@ -1290,7 +1291,7 @@ async function exportParticipantsPdf() {
 
     if (row.status === 'PENDING' && hasTransactionLedger) {
       return (
-        <Button type="button" variant="outline" aria-busy={busy} disabled={busy} onClick={() => setSelected(row)}>
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
           View / Verify Transactions
         </Button>
       )
@@ -1338,6 +1339,7 @@ async function exportParticipantsPdf() {
 
           <Button
             variant="outline"
+            aria-busy={busyStatus === 'REJECTED'}
             disabled={busy}
             onClick={() =>
               changeStatus(row, 'REJECTED')
