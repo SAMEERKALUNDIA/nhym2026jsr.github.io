@@ -123,7 +123,9 @@ function renderShapedLine(
   }
   const scale = 3
   const widthPx = Math.max(12, Math.ceil(maxWidthMm * 96 / 25.4 * scale))
-  const heightPx = Math.ceil(fontSizePt * 96 / 72 * scale * 1.9)
+  // Keep the shaped glyph image within one text line; the previous 1.9em canvas
+  // extended into the next baseline and caused long ACTIVITIES values to overlap.
+  const heightPx = Math.ceil(fontSizePt * 96 / 72 * scale * 1.2)
   const canvas = document.createElement('canvas')
   canvas.width = widthPx
   canvas.height = heightPx
