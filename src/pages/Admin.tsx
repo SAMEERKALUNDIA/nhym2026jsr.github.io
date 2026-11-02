@@ -1302,6 +1302,7 @@ async function exportParticipantsPdf() {
 
           <Button
             variant="outline"
+            aria-busy={busy}
             disabled={busy}
             onClick={() =>
               changeStatus(row, 'REJECTED')
@@ -1384,7 +1385,7 @@ if (!authenticated) {
 }
   return (
     <main data-participant-management={isParticipantPage ? 'true' : undefined} className="min-h-dvh bg-background px-gutter py-10">
-      {isParticipantPage && <style>{`[data-participant-management="true"] button:active:not(:disabled) { box-shadow: 0 0 0 3px hsl(var(--primary) / .28), 0 0 18px hsl(var(--primary) / .48); } [data-participant-management="true"] button[aria-busy="true"] { box-shadow: 0 0 0 3px hsl(var(--primary) / .32), 0 0 20px hsl(var(--primary) / .58); animation: participant-button-glow 1.1s ease-in-out infinite alternate; } @keyframes participant-button-glow { from { filter: brightness(1); } to { filter: brightness(1.16); } }`}</style> }
+      {isParticipantPage && <style>{`[data-participant-management="true"] button:active:not(:disabled) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent), 0 0 18px color-mix(in srgb, var(--primary) 48%, transparent); } [data-participant-management="true"] button[aria-busy="true"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 32%, transparent), 0 0 20px color-mix(in srgb, var(--primary) 58%, transparent); animation: participant-button-glow 1.1s ease-in-out infinite alternate; } @keyframes participant-button-glow { from { filter: brightness(1); } to { filter: brightness(1.16); } }`}</style> }
       <div className="mx-auto max-w-content">
 
         <div className="flex flex-wrap items-start justify-between gap-4">
