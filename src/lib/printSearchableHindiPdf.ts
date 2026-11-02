@@ -123,9 +123,10 @@ function renderShapedLine(
   }
   const scale = 3
   const widthPx = Math.max(12, Math.ceil(maxWidthMm * 96 / 25.4 * scale))
-  // Keep the shaped glyph image within one text line; the previous 1.9em canvas
-  // extended into the next baseline and caused long ACTIVITIES values to overlap.
-  const heightPx = Math.ceil(fontSizePt * 96 / 72 * scale * 1.2)
+  // Keep enough canvas below the alphabetic baseline so glyphs are not clipped.
+  // The image baseline must align exactly with the PDF text baseline; otherwise
+  // the visible shaped text and invisible searchable layer appear as doubled strokes.
+  const heightPx = Math.ceil(fontSizePt * 96 / 72 * scale * 1.7)
   const canvas = document.createElement('canvas')
   canvas.width = widthPx
   canvas.height = heightPx
@@ -139,7 +140,7 @@ function renderShapedLine(
   const fontWeight = bold ? '600' : '400'
   const fontFamily = `"${FONT_FAMILY}", "Noto Sans Devanagari", sans-serif`
   context.font = `${fontWeight} ${pixelFontSize}px ${fontFamily}`
-  const baseline = pixelFontSize * 1.25
+  const baseline = pixelFontSize * 1.35
   // Enlarge only the rupee glyph so it visually matches the height and weight of nearby digits.
   let cursorX = 0
   const parts = text.split('₹')
@@ -159,7 +160,7 @@ function renderShapedLine(
   const image = canvas.toDataURL('image/png')
   const imageWidthMm = widthPx * 25.4 / (96 * scale)
   const imageHeightMm = heightPx * 25.4 / (96 * scale)
-  const topY = baselineY - fontSizePt * 25.4 / 72 * 0.92
+  const topY = baselineY - baseline * 25.4 / (96 * scale)
   pdf.addImage(image, 'PNG', x, topY, Math.min(maxWidthMm, imageWidthMm), imageHeightMm, undefined, 'FAST')
 
   // The visible glyphs are rendered by Chromium's Indic text shaper. This invisible
@@ -328,6 +329,7 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
 
   const drawDetailRows = (rows: string[][]) => {
     const gap = 3
+    const detailLineHeight = 4
     const cellWidth = (contentWidth - gap) / 2
     const labelWidth = Math.min(31, Math.max(21, cellWidth * 0.35))
     const drawCell = (label: string, value: string, x: number, width: number, height: number, fill: [number, number, number], fixedLabelWidth?: number) => {
@@ -344,8 +346,8 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
       valueContext.font = `400 7.7pt "${FONT_FAMILY}", sans-serif`
       const labelLines = wrapText(labelContext, label.toUpperCase(), (labelW - 3) * 96 / 25.4)
       const valueLines = wrapText(valueContext, value || '—', (width - labelW - 4) * 96 / 25.4)
-      labelLines.forEach((line, i) => renderShapedLine(pdf, line, x + 2, y + 4.1 + i * 3.4, labelW - 3, 6.2, GREEN, true, searchableFontReady))
-      valueLines.forEach((line, i) => renderShapedLine(pdf, line, x + labelW, y + 4.1 + i * 3.4, width - labelW - 4, 7.7, [29, 44, 35], false, searchableFontReady))
+      labelLines.forEach((line, i) => renderShapedLine(pdf, line, x + 2, y + 4.3 + i * detailLineHeight, labelW - 3, 6.2, GREEN, true, searchableFontReady))
+      valueLines.forEach((line, i) => renderShapedLine(pdf, line, x + labelW, y + 4.3 + i * detailLineHeight, width - labelW - 4, 7.7, [29, 44, 35], false, searchableFontReady))
     }
     let index = 0
     while (index < rows.length) {
@@ -368,7 +370,7 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
         }
       })
       const maxLines = Math.max(1, ...values.map(v => Math.max(v.labelLines.length, v.valueLines.length)))
-      const rowHeight = Math.max(9, maxLines * 3.4 + 4)
+      const rowHeight = Math.max(9, maxLines * detailLineHeight + 4.5)
       ensureSpace(rowHeight)
       const fill: [number, number, number] = Math.floor(y) % 2 === 0 ? [245, 250, 246] : [255, 255, 255]
       if (full) {
