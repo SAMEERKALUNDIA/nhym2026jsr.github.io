@@ -120,7 +120,7 @@ function activities(value: string) {
     const parsed = JSON.parse(value)
 
     if (Array.isArray(parsed)) {
-      return parsed.join(', ')
+      return parsed.filter((item) => typeof item === 'string' && item.trim()).join('\n')
     }
   } catch {
     // Ignore malformed historical data.
