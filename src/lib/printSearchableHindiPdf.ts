@@ -374,7 +374,12 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
         }
       })
       const maxLines = Math.max(1, ...values.map(v => Math.max(v.labelLines.length, v.valueLines.length)))
-      const rowHeight = Math.max(9, maxLines * detailLineHeight + 4.5)
+      // Activities can contain long multi-topic descriptions. Give that full-width
+      // cell extra vertical breathing room so the final wrapped line stays inside
+      // its border in both the Admin Record and Participant Confirmation PDFs.
+      const isActivitiesRow = String(first[0] ?? '').trim().toUpperCase() === 'ACTIVITIES'
+      const rowBottomPadding = isActivitiesRow ? 7.5 : 4.5
+      const rowHeight = Math.max(9, maxLines * detailLineHeight + rowBottomPadding)
       ensureSpace(rowHeight)
       const fill: [number, number, number] = Math.floor(y) % 2 === 0 ? [245, 250, 246] : [255, 255, 255]
       if (full) {
