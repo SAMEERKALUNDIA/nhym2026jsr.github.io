@@ -116,7 +116,7 @@ type Row = {
 }
 
 export default function Admin() {
-  const adminPath = window.location.pathname
+  const adminPath = window.location.pathname.replace(/\/+$/, '') || '/'
   const isGalleryPage = adminPath === '/admin/gallery'
   const isParticipantPage = adminPath === '/admin/participants'
   const isFeedbackPage = adminPath === '/admin/feedback'
@@ -162,12 +162,15 @@ const [checkingSession, setCheckingSession] = useState(true)
   const [registrationOpen, setRegistrationOpen] = useState(true)
   const [registrationControlLoading, setRegistrationControlLoading] = useState(false)
   const [registrationControlSaving, setRegistrationControlSaving] = useState(false)
+  const [registrationControlTarget, setRegistrationControlTarget] = useState<boolean | null>(null)
   const [homeSectionsLoading, setHomeSectionsLoading] = useState(false)
   const [homeSectionsSaving, setHomeSectionsSaving] = useState(false)
   const [feedbackDeleting, setFeedbackDeleting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [updatingId, setUpdatingId] = useState<number | null>(null)
+  const [updatingStatus, setUpdatingStatus] = useState<'PAYMENT_VERIFIED' | 'APPROVED' | 'REJECTED' | null>(null)
+  const [updatingPaymentStatus, setUpdatingPaymentStatus] = useState<'VERIFIED' | 'REJECTED' | 'PENDING' | null>(null)
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('search') || '')
   const [selected, setSelected] = useState<Row | null>(null)
   const [editingParticipantId, setEditingParticipantId] = useState<number | null>(null)
@@ -198,6 +201,7 @@ const [checkingSession, setCheckingSession] = useState(true)
   }
 
   async function saveRegistrationStatus(nextOpen: boolean) {
+    setRegistrationControlTarget(nextOpen)
     setRegistrationControlSaving(true)
     setError('')
     setSuccess('')
@@ -215,7 +219,7 @@ const [checkingSession, setCheckingSession] = useState(true)
         : 'Registration बंद कर दिया गया है। पुराने रिकॉर्ड और approval प्रक्रिया सुरक्षित हैं।')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Registration status सेव नहीं हो सका।')
-    } finally { setRegistrationControlSaving(false) }
+    } finally { setRegistrationControlSaving(false); setRegistrationControlTarget(null) }
   }
 
   async function loadHomepageSections() {
@@ -697,6 +701,7 @@ useEffect(() => {
   }
 
   async function loadParticipantAudit(participant: Participant) {
+    setParticipantAuditId(participant.id)
     setParticipantAuditLoading(true); setError('')
     try {
       const response = await fetch(`/api/admin/participants/${participant.id}/audit`, { headers: { authorization: `Bearer ${token}` }, cache: 'no-store' })
@@ -747,10 +752,11 @@ useEffect(() => {
     const prompt = status === 'VERIFIED' ? 'Confirm that this transaction has been checked against the bank/UPI/cash receipt?' : status === 'REJECTED' ? 'Reject this payment transaction?' : 'Reset this transaction to pending verification?'
     if (!window.confirm(`${prompt}\n\nRegistration: ${row.registration_id}\nReference: ${payment.payment_reference}\nAmount: ₹${Number(payment.amount).toLocaleString('en-IN')}`)) return
     setUpdatingId(row.id)
+    setUpdatingPaymentStatus(status)
     setError('')
     setSuccess('')
     try {
-      const response = await fetch(`/api/admin/registrations/${row.id}/payments/${payment.id}`, {
+      const response = await fetch(`/api/admin/registrations/${row.id}/payments/${payment.id}`,  {
         method: 'PATCH',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ status }),
@@ -763,6 +769,7 @@ useEffect(() => {
       setError(error instanceof Error ? error.message : 'Payment status could not be updated.')
     } finally {
       setUpdatingId(null)
+      setUpdatingPaymentStatus(null)
     }
   }
 
@@ -798,6 +805,7 @@ useEffect(() => {
     }
 
     setUpdatingId(row.id)
+    setUpdatingStatus(value)
     setError('')
     setSuccess('')
 
@@ -858,6 +866,7 @@ useEffect(() => {
       )
     } finally {
       setUpdatingId(null)
+      setUpdatingStatus(null)
     }
   }
 
@@ -1277,6 +1286,7 @@ async function exportParticipantsPdf() {
 
   function actionButtons(row: Row) {
     const busy = updatingId === row.id
+    const busyStatus = busy ? updatingStatus : null
     const hasTransactionLedger = (row.payments || []).some(payment => !payment.legacy && payment.id !== null)
 
     if (row.status === 'PENDING' && hasTransactionLedger) {
@@ -1291,16 +1301,18 @@ async function exportParticipantsPdf() {
       return (
         <div className="flex flex-wrap gap-2">
           <Button
+            aria-busy={busyStatus === 'PAYMENT_VERIFIED'}
             disabled={busy}
             onClick={() =>
               changeStatus(row, 'PAYMENT_VERIFIED')
             }
           >
-            {busy ? 'Updating…' : 'Verify Payment'}
+            {busyStatus === 'PAYMENT_VERIFIED' ? 'Updating…' : 'Verify Payment'}
           </Button>
 
           <Button
             variant="outline"
+            aria-busy={busyStatus === 'REJECTED'}
             disabled={busy}
             onClick={() =>
               changeStatus(row, 'REJECTED')
@@ -1316,16 +1328,18 @@ async function exportParticipantsPdf() {
       return (
         <div className="flex flex-wrap gap-2">
           <Button
+            aria-busy={busyStatus === 'APPROVED'}
             disabled={busy}
             onClick={() =>
               changeStatus(row, 'APPROVED')
             }
           >
-            {busy ? 'Updating…' : 'Approve Registration'}
+            {busyStatus === 'APPROVED' ? 'Updating…' : 'Approve Registration'}
           </Button>
 
           <Button
             variant="outline"
+            aria-busy={busyStatus === 'REJECTED'}
             disabled={busy}
             onClick={() =>
               changeStatus(row, 'REJECTED')
@@ -1381,7 +1395,8 @@ if (!authenticated) {
   )
 }
   return (
-    <main className="min-h-dvh bg-background px-gutter py-10">
+    <main data-participant-management={isParticipantPage ? 'true' : undefined} className="min-h-dvh bg-background px-gutter py-10">
+      {isParticipantPage && <style>{`[data-participant-management="true"] button:active:not(:disabled), [data-participant-management="true"] [data-slot="button"]:active:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-participant-management="true"] button[aria-busy="true"], [data-participant-management="true"] [data-slot="button"][aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: participant-button-processing-glow 900ms ease-in-out infinite !important; } @keyframes participant-button-processing-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 34%, transparent), 0 0 12px color-mix(in oklch, var(--primary) 48%, transparent); filter: brightness(1.04); } 50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 62%, transparent), 0 0 26px color-mix(in oklch, var(--primary) 82%, transparent); filter: brightness(1.22); } }`}</style> }
       <div className="mx-auto max-w-content">
 
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1963,11 +1978,11 @@ if (!authenticated) {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" disabled={registrationControlLoading || registrationControlSaving || registrationOpen} onClick={() => void saveRegistrationStatus(true)}>Registration चालू करें</Button>
-                  <Button type="button" variant="destructive" disabled={registrationControlLoading || registrationControlSaving || !registrationOpen} onClick={() => {
+                  <Button type="button" aria-busy={registrationControlSaving && registrationControlTarget === true} disabled={registrationControlLoading || registrationControlSaving || registrationOpen} onClick={() => void saveRegistrationStatus(true)}>Registration चालू करें</Button>
+                  <Button type="button" variant="destructive" aria-busy={registrationControlSaving && registrationControlTarget === false} disabled={registrationControlLoading || registrationControlSaving || !registrationOpen} onClick={() => {
                     if (window.confirm('क्या आप नया registration बंद करना चाहते हैं? पहले से दर्ज सभी रिकॉर्ड सुरक्षित रहेंगे।')) void saveRegistrationStatus(false)
                   }}>Registration बंद करें</Button>
-                  <Button type="button" variant="outline" disabled={registrationControlLoading || registrationControlSaving} onClick={() => void loadRegistrationStatus()}>रीफ़्रेश</Button>
+                  <Button type="button" variant="outline" aria-busy={registrationControlLoading} disabled={registrationControlLoading || registrationControlSaving} onClick={() => void loadRegistrationStatus()}>रीफ़्रेश</Button>
                 </div>
               </div>
             </section>
@@ -2126,6 +2141,7 @@ if (!authenticated) {
         </tr>
       ) : (
         filteredRows.map(row => (
+        <>
         <tr
           key={row.id}
           className="border-b align-middle"
@@ -2170,6 +2186,332 @@ if (!authenticated) {
             </Button>
           </td>
         </tr>
+        {selected?.id === row.id && (
+          <tr>
+            <td colSpan={7} className="p-3">
+                      {selected && (
+                        <div className="mt-10 rounded-lg border p-6">
+              
+                          <div className="flex flex-wrap items-center justify-between gap-4">
+              
+                            <div>
+                              <h2 className="text-2xl font-semibold">
+                                Registration Details
+                              </h2>
+              
+                              <p className="font-mono text-sm">
+                                {selected.registration_id}
+                              </p>
+                            </div>
+              
+                            <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  onClick={() =>
+                    void downloadAdminRegistrationPdf(selected)
+                  }
+                >
+                  Download PDF
+                </Button>
+              
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSelected(null)}
+                >
+                  Close
+                </Button>
+              </div>
+              
+                          </div>
+              
+                          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              
+                            <div>
+                              <strong>Email</strong>
+                              <div>{selected.email}</div>
+                            </div>
+              
+                            <div>
+                              <strong>Total Amount</strong>
+                              <div>
+                                ₹{selected.total_amount.toLocaleString('en-IN')}
+                              </div>
+                            </div>
+              
+                            <div>
+                              <strong>Status</strong>
+                              <div className="mt-1">
+                                {statusBadge(selected.status)}
+                              </div>
+                            </div>
+              
+                            <div>
+                              <strong>Payment Mode</strong>
+                              <div>{selected.payment_mode}</div>
+                            </div>
+              
+                            <div>
+                              <strong>Payment Reference</strong>
+                              <div>{selected.payment_reference}</div>
+                            </div>
+              
+                            <div>
+                              <strong>Submitted</strong>
+                              <div>
+                                {new Date(
+                                  selected.created_at
+                                ).toLocaleString('en-IN')}
+                              </div>
+                            </div>
+              
+                            <div>
+                              <strong>Approval Email</strong>
+                              <div>
+                                {selected.approval_email_sent_at
+                                  ? '✓ Sent'
+                                  : 'Not sent'}
+                              </div>
+                            </div>
+              
+                          </div>
+              
+                          <div className="mt-6 rounded-lg border p-4">
+                            <div className="mb-3 font-semibold">
+                              Registration Actions
+                            </div>
+              
+                            {actionButtons(selected)}
+                          </div>
+              
+                          <h3 className="mt-8 text-xl font-semibold">Payment Transactions</h3>
+                          <div className="mt-4 space-y-3">
+                            {(selected.payments || []).map((payment) => (
+                              <section key={payment.id ?? `legacy-${payment.payment_no}`} className="rounded-lg border p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <div className="font-semibold">Transaction {payment.payment_no} · ₹{Number(payment.amount).toLocaleString('en-IN')}</div>
+                                    <div className="mt-1 text-sm">Mode: {payment.payment_mode} · Reference: <span className="font-mono break-all">{payment.payment_reference}</span></div>
+                                  </div>
+                                  <div className="text-sm font-medium">{payment.status}{payment.legacy ? ' (legacy record)' : ''}</div>
+                                </div>
+                                {!payment.legacy && payment.id !== null && <div className="mt-3 flex flex-wrap gap-2">
+                                  <Button type="button" size="sm" aria-busy={updatingId === selected.id && updatingPaymentStatus === 'VERIFIED'} disabled={updatingId === selected.id || payment.status === 'VERIFIED'} onClick={() => void changePaymentStatus(selected, payment, 'VERIFIED')}>Verify transaction</Button>
+                                  <Button type="button" size="sm" variant="outline" aria-busy={updatingId === selected.id && updatingPaymentStatus === 'REJECTED'} disabled={updatingId === selected.id || payment.status === 'REJECTED'} onClick={() => void changePaymentStatus(selected, payment, 'REJECTED')}>Reject transaction</Button>
+                                  <Button type="button" size="sm" variant="outline" aria-busy={updatingId === selected.id && updatingPaymentStatus === 'PENDING'} disabled={updatingId === selected.id || payment.status === 'PENDING'} onClick={() => void changePaymentStatus(selected, payment, 'PENDING')}>Reset to pending</Button>
+                                </div>}
+                                <div className="mt-3 text-sm text-muted-foreground">
+                                  Linked people: {(payment.allocations || []).map((person) => `${person.name} (₹${Number(person.amount).toLocaleString('en-IN')})`).join(', ') || 'Allocation details unavailable'}
+                                </div>
+                              </section>
+                            ))}
+                            {(!selected.payments || selected.payments.length === 0) && <p className="text-sm text-muted-foreground">No transaction ledger details returned.</p>}
+                          </div>
+              
+                          <h3 className="mt-8 text-xl font-semibold">
+                            Participant Details
+                          </h3>
+              
+                          <div className="mt-4 space-y-6">
+              
+                            {selected.participants?.map(participant => (
+              
+                              <div
+                                key={participant.id}
+                                className="rounded-lg border p-5"
+                              >
+              
+                                <div className="mb-4 text-lg font-semibold">
+                                  Participant {participant.participant_no}
+                                  {' — '}
+                                  {participant.name.toUpperCase()}
+                                </div>
+                                <div className="mb-4">
+                                  <Button type="button" variant="outline" onClick={() => beginParticipantEdit(participant)}>
+                                    Edit Participant / जानकारी सुधारें
+                                  </Button>
+                                </div>
+                                <div className="mb-4">
+                                  <Button type="button" variant="outline" aria-busy={participantAuditLoading && participantAuditId === participant.id} disabled={participantAuditLoading} onClick={() => void loadParticipantAudit(participant)}>
+                                    {participantAuditLoading && participantAuditId === participant.id ? 'Loading audit…' : 'Correction Audit History'}
+                                  </Button>
+                                  {participantAuditId === participant.id && (
+                                    <div className="mt-3 space-y-2 rounded-lg border p-3">
+                                      {participantAudit.length === 0 ? <p className="text-sm text-muted-foreground">No correction audit entries found.</p> : participantAudit.map((entry, index) => (
+                                        <div key={`${participant.id}-audit-${index}`} className="border-b pb-2 last:border-0">
+                                          <p className="text-sm font-semibold">{entry.action} · {new Date(entry.created_at).toLocaleString('en-IN')}</p>
+                                          <p className="text-sm">Reason: {entry.reason}</p>
+                                          {entry.privacy_request_id && <p className="text-xs text-muted-foreground">Privacy request: {entry.privacy_request_id}</p>}
+                                          <details className="mt-1 text-xs">
+                                            <summary className="cursor-pointer">Changed fields (before / after)</summary>
+                                            <div className="mt-2 space-y-2">
+                                              {(() => {
+                                                const parseSnapshot = (raw: string) => {
+                                                  try {
+                                                    const value = JSON.parse(raw || '{}')
+                                                    return value && typeof value === 'object' && !Array.isArray(value)
+                                                      ? value as Record<string, unknown>
+                                                      : {}
+                                                  } catch {
+                                                    return {}
+                                                  }
+                                                }
+                                                const before = parseSnapshot(entry.old_values_json)
+                                                const after = parseSnapshot(entry.new_values_json)
+                                                if (before.redacted === true || after.redacted === true) {
+                                                  return <p className="rounded-md bg-muted p-3 text-muted-foreground">Personal data values have been redacted under the privacy-deletion process. Audit event and timestamp are retained.</p>
+                                                }
+                                                const fields = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]))
+                                                if (!fields.length) return <p className="text-muted-foreground">No field-level details are available.</p>
+                                                const displayValue = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value)
+                                                return fields.map(field => (
+                                                  <div key={field} className="grid gap-1 rounded-md border p-2 sm:grid-cols-3">
+                                                    <span className="font-semibold">{field.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}</span>
+                                                    <span><span className="text-muted-foreground">Before: </span>{displayValue(before[field])}</span>
+                                                    <span><span className="text-muted-foreground">After: </span>{displayValue(after[field])}</span>
+                                                  </div>
+                                                ))
+                                              })()}
+                                            </div>
+                                          </details>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                {editingParticipantId === participant.id && (
+                                  <div className="mb-5 space-y-3 rounded-lg border border-primary/40 bg-muted/30 p-4">
+                                    <h3 className="font-semibold">Correct participant data</h3>
+                                    <p className="text-xs text-muted-foreground">पहचान सत्यापित करने और सही जानकारी की पुष्टि के बाद ही बदलाव सेव करें। DOB बदलने पर आयु दोबारा निकाली जाएगी; 18 वर्ष से कम आयु का रिकॉर्ड इस registration policy के अनुसार सेव नहीं होगा।</p>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                      {([
+                                        ['name', 'Name'],
+                                        ['dob', 'Date of birth'],
+                                        ['gender', 'Gender'],
+                                        ['district', 'District'],
+                                        ['state', 'State'],
+                                        ['pin', 'PIN'],
+                                        ['address', 'Address'],
+                                      ] as const).map(([field, label]) => (
+                                        <label key={field} className={field === 'address' ? 'space-y-1 text-sm sm:col-span-2' : 'space-y-1 text-sm'}>
+                                          <span className="font-medium">{label}</span>
+                                          {field === 'address' ? (
+                                            <textarea className="w-full rounded-lg border bg-background px-3 py-2" maxLength={500} value={participantDraft[field]} onChange={event => setParticipantDraft(current => ({ ...current, [field]: event.target.value }))} />
+                                          ) : (
+                                            <Input type={field === 'dob' ? 'date' : 'text'} maxLength={field === 'name' ? 150 : field === 'pin' ? 10 : 100} value={participantDraft[field]} onChange={event => setParticipantDraft(current => ({ ...current, [field]: event.target.value }))} />
+                                          )}
+                                        </label>
+                                      ))}
+                                    </div>
+                                    <label className="block space-y-1 text-sm font-medium">Reason for correction (required)
+                                      <textarea className="w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={500} minLength={5} value={participantDraft.reason} onChange={event => setParticipantDraft(current => ({ ...current, reason: event.target.value }))} placeholder="e.g. Verified correction requested by participant" required />
+                                    </label>
+                                    {participantDraft.privacyRequestId && <p className="text-xs text-muted-foreground">Linked privacy request: {participantDraft.privacyRequestId}</p>}
+                                    <div className="flex flex-wrap gap-2">
+                                      <Button type="button" aria-busy={participantSaving} disabled={participantSaving} onClick={() => void saveParticipantCorrection(participant)}>{participantSaving ? 'Saving…' : 'Save correction'}</Button>
+                                      <Button type="button" variant="outline" disabled={participantSaving} onClick={() => setEditingParticipantId(null)}>Cancel</Button>
+                                    </div>
+                                  </div>
+                                )}
+              
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              
+                                  <div>
+                                    <strong>Name</strong>
+                                    <div>{participant.name || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>Date of Birth</strong>
+                                    <div>{participant.dob || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>Age</strong>
+                                    <div>{participant.age || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>Gender</strong>
+                                    <div>{participant.gender || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>Category</strong>
+                                    <div>{participant.category || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>Fee</strong>
+                                    <div>
+                                      ₹{Number(
+                                        participant.fee || 0
+                                      ).toLocaleString('en-IN')}
+                                    </div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>District</strong>
+                                    <div>{participant.district || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>State</strong>
+                                    <div>{participant.state || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>PIN</strong>
+                                    <div>{participant.pin || '—'}</div>
+                                  </div>
+              
+                                  <div className="md:col-span-2">
+                                    <strong>Address</strong>
+                                    <div>{participant.address || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>Activities</strong>
+                                    <div>
+                                      {activities(
+                                        participant.activities_json
+                                      )}
+                                    </div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>Cultural</strong>
+                                    <div>{participant.cultural || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>Sports</strong>
+                                    <div>{participant.sports || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>From Outside</strong>
+                                    <div>{participant.from_outside || '—'}</div>
+                                  </div>
+              
+                                  <div>
+                                    <strong>Accommodation</strong>
+                                    <div>{participant.accommodation || '—'}</div>
+                                  </div>
+              
+                                </div>
+              
+                              </div>
+                            ))}
+              
+                          </div>
+              
+                        </div>
+                      )}
+            </td>
+          </tr>
+        )}
+        </>
         ))
       )}
     </tbody>
@@ -2177,325 +2519,7 @@ if (!authenticated) {
   </table>
 </div>
 
-        {selected && (
-          <div className="mt-10 rounded-lg border p-6">
 
-            <div className="flex flex-wrap items-center justify-between gap-4">
-
-              <div>
-                <h2 className="text-2xl font-semibold">
-                  Registration Details
-                </h2>
-
-                <p className="font-mono text-sm">
-                  {selected.registration_id}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-  <Button
-    type="button"
-    onClick={() =>
-      void downloadAdminRegistrationPdf(selected)
-    }
-  >
-    Download PDF
-  </Button>
-
-  <Button
-    type="button"
-    variant="outline"
-    onClick={() => setSelected(null)}
-  >
-    Close
-  </Button>
-</div>
-
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-
-              <div>
-                <strong>Email</strong>
-                <div>{selected.email}</div>
-              </div>
-
-              <div>
-                <strong>Total Amount</strong>
-                <div>
-                  ₹{selected.total_amount.toLocaleString('en-IN')}
-                </div>
-              </div>
-
-              <div>
-                <strong>Status</strong>
-                <div className="mt-1">
-                  {statusBadge(selected.status)}
-                </div>
-              </div>
-
-              <div>
-                <strong>Payment Mode</strong>
-                <div>{selected.payment_mode}</div>
-              </div>
-
-              <div>
-                <strong>Payment Reference</strong>
-                <div>{selected.payment_reference}</div>
-              </div>
-
-              <div>
-                <strong>Submitted</strong>
-                <div>
-                  {new Date(
-                    selected.created_at
-                  ).toLocaleString('en-IN')}
-                </div>
-              </div>
-
-              <div>
-                <strong>Approval Email</strong>
-                <div>
-                  {selected.approval_email_sent_at
-                    ? '✓ Sent'
-                    : 'Not sent'}
-                </div>
-              </div>
-
-            </div>
-
-            <div className="mt-6 rounded-lg border p-4">
-              <div className="mb-3 font-semibold">
-                Registration Actions
-              </div>
-
-              {actionButtons(selected)}
-            </div>
-
-            <h3 className="mt-8 text-xl font-semibold">Payment Transactions</h3>
-            <div className="mt-4 space-y-3">
-              {(selected.payments || []).map((payment) => (
-                <section key={payment.id ?? `legacy-${payment.payment_no}`} className="rounded-lg border p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold">Transaction {payment.payment_no} · ₹{Number(payment.amount).toLocaleString('en-IN')}</div>
-                      <div className="mt-1 text-sm">Mode: {payment.payment_mode} · Reference: <span className="font-mono break-all">{payment.payment_reference}</span></div>
-                    </div>
-                    <div className="text-sm font-medium">{payment.status}{payment.legacy ? ' (legacy record)' : ''}</div>
-                  </div>
-                  {!payment.legacy && payment.id !== null && <div className="mt-3 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" disabled={updatingId === selected.id || payment.status === 'VERIFIED'} onClick={() => void changePaymentStatus(selected, payment, 'VERIFIED')}>Verify transaction</Button>
-                    <Button type="button" size="sm" variant="outline" disabled={updatingId === selected.id || payment.status === 'REJECTED'} onClick={() => void changePaymentStatus(selected, payment, 'REJECTED')}>Reject transaction</Button>
-                    <Button type="button" size="sm" variant="outline" disabled={updatingId === selected.id || payment.status === 'PENDING'} onClick={() => void changePaymentStatus(selected, payment, 'PENDING')}>Reset to pending</Button>
-                  </div>}
-                  <div className="mt-3 text-sm text-muted-foreground">
-                    Linked people: {(payment.allocations || []).map((person) => `${person.name} (₹${Number(person.amount).toLocaleString('en-IN')})`).join(', ') || 'Allocation details unavailable'}
-                  </div>
-                </section>
-              ))}
-              {(!selected.payments || selected.payments.length === 0) && <p className="text-sm text-muted-foreground">No transaction ledger details returned.</p>}
-            </div>
-
-            <h3 className="mt-8 text-xl font-semibold">
-              Participant Details
-            </h3>
-
-            <div className="mt-4 space-y-6">
-
-              {selected.participants?.map(participant => (
-
-                <div
-                  key={participant.id}
-                  className="rounded-lg border p-5"
-                >
-
-                  <div className="mb-4 text-lg font-semibold">
-                    Participant {participant.participant_no}
-                    {' — '}
-                    {participant.name.toUpperCase()}
-                  </div>
-                  <div className="mb-4">
-                    <Button type="button" variant="outline" onClick={() => beginParticipantEdit(participant)}>
-                      Edit Participant / जानकारी सुधारें
-                    </Button>
-                  </div>
-                  <div className="mb-4">
-                    <Button type="button" variant="outline" disabled={participantAuditLoading} onClick={() => void loadParticipantAudit(participant)}>
-                      {participantAuditLoading && participantAuditId === participant.id ? 'Loading audit…' : 'Correction Audit History'}
-                    </Button>
-                    {participantAuditId === participant.id && (
-                      <div className="mt-3 space-y-2 rounded-lg border p-3">
-                        {participantAudit.length === 0 ? <p className="text-sm text-muted-foreground">No correction audit entries found.</p> : participantAudit.map((entry, index) => (
-                          <div key={`${participant.id}-audit-${index}`} className="border-b pb-2 last:border-0">
-                            <p className="text-sm font-semibold">{entry.action} · {new Date(entry.created_at).toLocaleString('en-IN')}</p>
-                            <p className="text-sm">Reason: {entry.reason}</p>
-                            {entry.privacy_request_id && <p className="text-xs text-muted-foreground">Privacy request: {entry.privacy_request_id}</p>}
-                            <details className="mt-1 text-xs">
-                              <summary className="cursor-pointer">Changed fields (before / after)</summary>
-                              <div className="mt-2 space-y-2">
-                                {(() => {
-                                  const parseSnapshot = (raw: string) => {
-                                    try {
-                                      const value = JSON.parse(raw || '{}')
-                                      return value && typeof value === 'object' && !Array.isArray(value)
-                                        ? value as Record<string, unknown>
-                                        : {}
-                                    } catch {
-                                      return {}
-                                    }
-                                  }
-                                  const before = parseSnapshot(entry.old_values_json)
-                                  const after = parseSnapshot(entry.new_values_json)
-                                  if (before.redacted === true || after.redacted === true) {
-                                    return <p className="rounded-md bg-muted p-3 text-muted-foreground">Personal data values have been redacted under the privacy-deletion process. Audit event and timestamp are retained.</p>
-                                  }
-                                  const fields = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]))
-                                  if (!fields.length) return <p className="text-muted-foreground">No field-level details are available.</p>
-                                  const displayValue = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value)
-                                  return fields.map(field => (
-                                    <div key={field} className="grid gap-1 rounded-md border p-2 sm:grid-cols-3">
-                                      <span className="font-semibold">{field.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}</span>
-                                      <span><span className="text-muted-foreground">Before: </span>{displayValue(before[field])}</span>
-                                      <span><span className="text-muted-foreground">After: </span>{displayValue(after[field])}</span>
-                                    </div>
-                                  ))
-                                })()}
-                              </div>
-                            </details>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {editingParticipantId === participant.id && (
-                    <div className="mb-5 space-y-3 rounded-lg border border-primary/40 bg-muted/30 p-4">
-                      <h3 className="font-semibold">Correct participant data</h3>
-                      <p className="text-xs text-muted-foreground">पहचान सत्यापित करने और सही जानकारी की पुष्टि के बाद ही बदलाव सेव करें। DOB बदलने पर आयु दोबारा निकाली जाएगी; 18 वर्ष से कम आयु का रिकॉर्ड इस registration policy के अनुसार सेव नहीं होगा।</p>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {([
-                          ['name', 'Name'],
-                          ['dob', 'Date of birth'],
-                          ['gender', 'Gender'],
-                          ['district', 'District'],
-                          ['state', 'State'],
-                          ['pin', 'PIN'],
-                          ['address', 'Address'],
-                        ] as const).map(([field, label]) => (
-                          <label key={field} className={field === 'address' ? 'space-y-1 text-sm sm:col-span-2' : 'space-y-1 text-sm'}>
-                            <span className="font-medium">{label}</span>
-                            {field === 'address' ? (
-                              <textarea className="w-full rounded-lg border bg-background px-3 py-2" maxLength={500} value={participantDraft[field]} onChange={event => setParticipantDraft(current => ({ ...current, [field]: event.target.value }))} />
-                            ) : (
-                              <Input type={field === 'dob' ? 'date' : 'text'} maxLength={field === 'name' ? 150 : field === 'pin' ? 10 : 100} value={participantDraft[field]} onChange={event => setParticipantDraft(current => ({ ...current, [field]: event.target.value }))} />
-                            )}
-                          </label>
-                        ))}
-                      </div>
-                      <label className="block space-y-1 text-sm font-medium">Reason for correction (required)
-                        <textarea className="w-full rounded-lg border bg-background px-3 py-2 font-normal" maxLength={500} minLength={5} value={participantDraft.reason} onChange={event => setParticipantDraft(current => ({ ...current, reason: event.target.value }))} placeholder="e.g. Verified correction requested by participant" required />
-                      </label>
-                      {participantDraft.privacyRequestId && <p className="text-xs text-muted-foreground">Linked privacy request: {participantDraft.privacyRequestId}</p>}
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" disabled={participantSaving} onClick={() => void saveParticipantCorrection(participant)}>{participantSaving ? 'Saving…' : 'Save correction'}</Button>
-                        <Button type="button" variant="outline" disabled={participantSaving} onClick={() => setEditingParticipantId(null)}>Cancel</Button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-
-                    <div>
-                      <strong>Name</strong>
-                      <div>{participant.name || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>Date of Birth</strong>
-                      <div>{participant.dob || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>Age</strong>
-                      <div>{participant.age || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>Gender</strong>
-                      <div>{participant.gender || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>Category</strong>
-                      <div>{participant.category || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>Fee</strong>
-                      <div>
-                        ₹{Number(
-                          participant.fee || 0
-                        ).toLocaleString('en-IN')}
-                      </div>
-                    </div>
-
-                    <div>
-                      <strong>District</strong>
-                      <div>{participant.district || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>State</strong>
-                      <div>{participant.state || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>PIN</strong>
-                      <div>{participant.pin || '—'}</div>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <strong>Address</strong>
-                      <div>{participant.address || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>Activities</strong>
-                      <div>
-                        {activities(
-                          participant.activities_json
-                        )}
-                      </div>
-                    </div>
-
-                    <div>
-                      <strong>Cultural</strong>
-                      <div>{participant.cultural || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>Sports</strong>
-                      <div>{participant.sports || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>From Outside</strong>
-                      <div>{participant.from_outside || '—'}</div>
-                    </div>
-
-                    <div>
-                      <strong>Accommodation</strong>
-                      <div>{participant.accommodation || '—'}</div>
-                    </div>
-
-                  </div>
-
-                </div>
-              ))}
-
-            </div>
-
-          </div>
-        )}
       </>
     )}
 
