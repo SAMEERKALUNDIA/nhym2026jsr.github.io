@@ -26,6 +26,7 @@ on:
           - fix/participant-management-active-button-glow
           - feat/participant-details-inline-row-v2
           - fix-activities-pdf-overflow
+          - fix/finance-management-export-button-glow
 
 permissions:
   contents: read
