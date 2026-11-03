@@ -1236,16 +1236,23 @@ async function exportParticipantsPdf() {
 }
 
   function activities(value: string) {
+    const raw = String(value || '').trim()
+    if (!raw) return '—'
+
     try {
-      const parsed = JSON.parse(value || '[]')
-
+      const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
-        return parsed.join(', ') || '—'
+        return parsed
+          .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          .join('\n') || '—'
       }
-
+      if (typeof parsed === 'string') {
+        return parsed.split(/,\s*/).map(item => item.trim()).filter(Boolean).join('\n') || '—'
+      }
       return String(parsed || '—')
     } catch {
-      return value || '—'
+      // Older records may store the selected topics as comma-separated plain text.
+      return raw.split(/,\s*/).map(item => item.trim()).filter(Boolean).join('\n') || '—'
     }
   }
 
@@ -2472,7 +2479,7 @@ if (!authenticated) {
               
                                   <div>
                                     <strong>Activities</strong>
-                                    <div>
+                                    <div className="whitespace-pre-line">
                                       {activities(
                                         participant.activities_json
                                       )}

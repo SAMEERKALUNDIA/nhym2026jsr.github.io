@@ -116,17 +116,24 @@ function yesNo(value: string) {
 }
 
 function activities(value: string) {
-  try {
-    const parsed = JSON.parse(value)
+  const raw = String(value || '').trim()
+  if (!raw) return '—'
 
+  try {
+    const parsed = JSON.parse(raw)
     if (Array.isArray(parsed)) {
-      return parsed.join(', ')
+      return parsed
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .join('\n') || '—'
+    }
+    if (typeof parsed === 'string') {
+      return parsed.split(/,\s*/).map(item => item.trim()).filter(Boolean).join('\n') || '—'
     }
   } catch {
-    // Ignore malformed historical data.
+    // Older records may store the selected topics as comma-separated plain text.
   }
 
-  return value || '—'
+  return raw.split(/,\s*/).map(item => item.trim()).filter(Boolean).join('\n') || '—'
 }
 
 function maskEmail(email: string) {
@@ -630,7 +637,7 @@ function downloadRegistrationPdf() {
                               Activities
                             </dt>
 
-                            <dd className="mt-1 font-medium">
+                            <dd className="mt-1 whitespace-pre-line font-medium">
                               {activities(
                                 participant.activities_json
                               )}

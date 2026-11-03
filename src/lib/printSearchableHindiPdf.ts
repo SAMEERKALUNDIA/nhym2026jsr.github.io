@@ -358,6 +358,7 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
       const first = rows[index]
       const full = first[2] === 'full'
       const second = !full ? rows[index + 1] : undefined
+      const isActivitiesRow = String(first[0] ?? '').trim().toUpperCase() === 'ACTIVITIES'
       const values = [first, ...(second ? [second] : [])].map(row => {
         const labelCanvas = document.createElement('canvas')
         const labelContext = labelCanvas.getContext('2d')
@@ -368,13 +369,22 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
         valueContext.font = `400 7.7pt "${FONT_FAMILY}", sans-serif`
         const width = full ? contentWidth : cellWidth
         const labelW = full ? 34 : labelWidth
+        // The final PDF renderer uses Helvetica for English text, whose glyph
+        // widths are wider than the Canvas fallback metrics used for wrapping.
+        // Wrap full-width Activities conservatively so no rendered line reaches
+        // beyond the right cell border.
+        const valueWidth = (width - labelW - 4) * (full && isActivitiesRow ? 0.88 : 1)
         return {
           labelLines: wrapText(labelContext, String(row[0] ?? '—').toUpperCase(), (labelW - 3) * 96 / 25.4),
-          valueLines: wrapText(valueContext, String(row[1] ?? '—'), (width - labelW - 4) * 96 / 25.4),
+          valueLines: wrapText(valueContext, String(row[1] ?? '—'), valueWidth * 96 / 25.4),
         }
       })
       const maxLines = Math.max(1, ...values.map(v => Math.max(v.labelLines.length, v.valueLines.length)))
-      const rowHeight = Math.max(9, maxLines * detailLineHeight + 4.5)
+      // Activities can contain long multi-topic descriptions. Give that full-width
+      // cell extra vertical breathing room so the final wrapped line stays inside
+      // its border in both the Admin Record and Participant Confirmation PDFs.
+      const rowBottomPadding = isActivitiesRow ? 7.5 : 4.5
+      const rowHeight = Math.max(9, maxLines * detailLineHeight + rowBottomPadding)
       ensureSpace(rowHeight)
       const fill: [number, number, number] = Math.floor(y) % 2 === 0 ? [245, 250, 246] : [255, 255, 255]
       if (full) {
