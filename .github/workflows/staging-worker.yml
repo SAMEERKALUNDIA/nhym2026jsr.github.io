@@ -25,6 +25,7 @@ on:
           - fix/hindi-pdf-searchable-text-20261101
           - fix/participant-management-active-button-glow
           - feat/participant-details-inline-row-v2
+          - fix-activities-pdf-overflow
 
 permissions:
   contents: read
