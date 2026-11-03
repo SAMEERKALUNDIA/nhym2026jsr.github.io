@@ -116,7 +116,7 @@ type Row = {
 }
 
 export default function Admin() {
-  const adminPath = window.location.pathname
+  const adminPath = window.location.pathname.replace(/\/+$/, '') || '/'
   const isGalleryPage = adminPath === '/admin/gallery'
   const isParticipantPage = adminPath === '/admin/participants'
   const isFeedbackPage = adminPath === '/admin/feedback'
@@ -1396,7 +1396,7 @@ if (!authenticated) {
 }
   return (
     <main data-participant-management={isParticipantPage ? 'true' : undefined} className="min-h-dvh bg-background px-gutter py-10">
-      {isParticipantPage && <style>{`[data-participant-management="true"] button:active:not(:disabled) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent), 0 0 18px color-mix(in srgb, var(--primary) 48%, transparent); } [data-participant-management="true"] button[aria-busy="true"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 32%, transparent), 0 0 20px color-mix(in srgb, var(--primary) 58%, transparent); animation: participant-button-glow 1.1s ease-in-out infinite alternate; } @keyframes participant-button-glow { from { filter: brightness(1); } to { filter: brightness(1.16); } }`}</style> }
+      {isParticipantPage && <style>{`[data-participant-management="true"] button:active:not(:disabled), [data-participant-management="true"] [data-slot="button"]:active:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-participant-management="true"] button[aria-busy="true"], [data-participant-management="true"] [data-slot="button"][aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: participant-button-glow 1.1s ease-in-out infinite alternate; } @keyframes participant-button-glow { from { filter: brightness(1.04); } to { filter: brightness(1.2); } }`}</style> }
       <div className="mx-auto max-w-content">
 
         <div className="flex flex-wrap items-start justify-between gap-4">
