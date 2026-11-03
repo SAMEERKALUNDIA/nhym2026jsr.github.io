@@ -558,7 +558,7 @@ function downloadRegistrationPdf() {
                               Category
                             </dt>
 
-                            <dd className="mt-1 whitespace-pre-line font-medium">
+                            <dd className="mt-1 font-medium">
                               {categoryLabel(
                                 participant.category
                               )}
@@ -630,7 +630,7 @@ function downloadRegistrationPdf() {
                               Activities
                             </dt>
 
-                            <dd className="mt-1 font-medium">
+                            <dd className="mt-1 whitespace-pre-line font-medium">
                               {activities(
                                 participant.activities_json
                               )}
