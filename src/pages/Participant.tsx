@@ -558,7 +558,7 @@ function downloadRegistrationPdf() {
                               Category
                             </dt>
 
-                            <dd className="mt-1 font-medium">
+                            <dd className="mt-1 whitespace-pre-line font-medium">
                               {categoryLabel(
                                 participant.category
                               )}
