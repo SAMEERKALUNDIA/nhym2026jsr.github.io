@@ -2472,7 +2472,7 @@ if (!authenticated) {
               
                                   <div>
                                     <strong>Activities</strong>
-                                    <div>
+                                    <div className="whitespace-pre-line">
                                       {activities(
                                         participant.activities_json
                                       )}
