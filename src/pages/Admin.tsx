@@ -1247,12 +1247,12 @@ async function exportParticipantsPdf() {
           .join('\n') || '—'
       }
       if (typeof parsed === 'string') {
-        return parsed.split(/,\\s*/).map(item => item.trim()).filter(Boolean).join('\n') || '—'
+        return parsed.split(/,\s*/).map(item => item.trim()).filter(Boolean).join('\n') || '—'
       }
       return String(parsed || '—')
     } catch {
       // Older records may store the selected topics as comma-separated plain text.
-      return raw.split(/,\\s*/).map(item => item.trim()).filter(Boolean).join('\n') || '—'
+      return raw.split(/,\s*/).map(item => item.trim()).filter(Boolean).join('\n') || '—'
     }
   }
 
