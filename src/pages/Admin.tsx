@@ -1240,7 +1240,7 @@ async function exportParticipantsPdf() {
       const parsed = JSON.parse(value || '[]')
 
       if (Array.isArray(parsed)) {
-        return parsed.join(', ') || '—'
+        return parsed.filter((item) => typeof item === 'string' && item.trim()).join('\n') || '—'
       }
 
       return String(parsed || '—')
