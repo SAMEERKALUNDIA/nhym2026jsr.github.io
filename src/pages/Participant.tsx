@@ -280,7 +280,8 @@ function downloadRegistrationPdf() {
   }
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div data-portal-button-glow="true" className="min-h-dvh bg-background">
+      <style>{`[data-portal-button-glow="true"] button:active:not(:disabled), [data-portal-button-glow="true"] [data-slot="button"]:active:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-portal-button-glow="true"] button[aria-busy="true"], [data-portal-button-glow="true"] [data-slot="button"][aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: portal-button-processing-glow 900ms ease-in-out infinite !important; } @keyframes portal-button-processing-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 34%, transparent), 0 0 12px color-mix(in oklch, var(--primary) 48%, transparent); filter: brightness(1.04); } 50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 62%, transparent), 0 0 26px color-mix(in oklch, var(--primary) 82%, transparent); filter: brightness(1.22); } }`}</style>
       <header className="border-b border-border bg-card px-gutter py-5">
         <div className="mx-auto flex max-w-content items-center justify-between gap-4">
           <Link to="/" className="rounded-md">

@@ -29,6 +29,7 @@ on:
           - fix/finance-management-export-button-glow
           - feat/admin-dashboard-button-glow
           - feat/homepage-button-glow
+          - feat/participant-registration-button-glow
 
 permissions:
   contents: read
