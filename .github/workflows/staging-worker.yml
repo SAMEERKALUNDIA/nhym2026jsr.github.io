@@ -28,6 +28,7 @@ on:
           - fix-activities-pdf-overflow
           - fix/finance-management-export-button-glow
           - feat/admin-dashboard-button-glow
+          - feat/homepage-button-glow
 
 permissions:
   contents: read
