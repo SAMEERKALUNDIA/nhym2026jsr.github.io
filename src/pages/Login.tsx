@@ -54,7 +54,7 @@ export default function Login() {
       </div>
       <form onSubmit={event => event.preventDefault()} onKeyDown={event => { if (event.key === 'Enter') event.preventDefault() }} className="mt-5 space-y-3">
         {role === 'admin' ? <input type="password" autoComplete="current-password" value={adminKey} onChange={e=>setAdminKey(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Main Admin access key" required/> : <><input autoComplete="username" value={loginId} onChange={e=>setLoginId(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Finance login ID" required/><input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-3" placeholder="Finance password" required/></>}
-        <button type="button" onClick={() => { if (!busy) void submit() }} disabled={busy} aria-busy={busy} className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">{busy ? 'Signing in…' : 'Secure Login'}</button>
+        <button type="button" onClick={event => { if (!busy && event.currentTarget.form?.reportValidity()) void submit() }} disabled={busy} aria-busy={busy} className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground">{busy ? 'Signing in…' : 'Secure Login'}</button>
       </form>
       {error && <p role="alert" className="mt-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
       <p className="mt-4 text-xs text-muted-foreground">Never share your access key or password. If a Finance password was reset by the Main Admin, you must replace the temporary password after signing in.</p>
