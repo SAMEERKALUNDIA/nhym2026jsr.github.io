@@ -1404,6 +1404,7 @@ if (!authenticated) {
   return (
     <main data-participant-management={isParticipantPage ? 'true' : undefined} className="min-h-dvh bg-background px-gutter py-10">
       {isParticipantPage && <style>{`[data-participant-management="true"] button:active:not(:disabled), [data-participant-management="true"] [data-slot="button"]:active:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-participant-management="true"] button[aria-busy="true"], [data-participant-management="true"] [data-slot="button"][aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: participant-button-processing-glow 900ms ease-in-out infinite !important; } @keyframes participant-button-processing-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 34%, transparent), 0 0 12px color-mix(in oklch, var(--primary) 48%, transparent); filter: brightness(1.04); } 50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 62%, transparent), 0 0 26px color-mix(in oklch, var(--primary) 82%, transparent); filter: brightness(1.22); } }`}</style> }
+      <style>{`[data-admin-dashboard-glow="true"]:active:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-admin-dashboard-glow="true"][aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: admin-dashboard-button-processing-glow 900ms ease-in-out infinite !important; } @keyframes admin-dashboard-button-processing-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 34%, transparent), 0 0 12px color-mix(in oklch, var(--primary) 48%, transparent); filter: brightness(1.04); } 50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 62%, transparent), 0 0 26px color-mix(in oklch, var(--primary) 82%, transparent); filter: brightness(1.22); } }`}</style>
       <div className="mx-auto max-w-content">
 
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1427,6 +1428,7 @@ if (!authenticated) {
 
   <Button
     variant="outline"
+    data-admin-dashboard-glow="true"
     onClick={logout}
   >
     Logout
@@ -1506,6 +1508,7 @@ if (!authenticated) {
     <div className="mt-8 grid gap-4 md:grid-cols-4">
       <button
         type="button"
+        data-admin-dashboard-glow="true"
         onClick={() => { window.location.href = '/admin/participants' }}
         className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40"
       >
@@ -1517,6 +1520,7 @@ if (!authenticated) {
 
       <button
         type="button"
+        data-admin-dashboard-glow="true"
         onClick={() => { window.location.href = '/admin/gallery' }}
         className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40"
       >
@@ -1526,18 +1530,19 @@ if (!authenticated) {
         </p>
       </button>
 
-      <button type="button" onClick={() => { window.location.href = '/admin/homepage-sections' }} className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40">
+      <button type="button" data-admin-dashboard-glow="true" onClick={() => { window.location.href = '/admin/homepage-sections' }} className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40">
         <div className="text-xl font-semibold">Homepage Section Visibility →</div>
         <p className="mt-2 text-sm text-muted-foreground">महत्वपूर्ण सूचना और लोगों की प्रतिक्रियाओं को होम पेज पर दिखाएँ या छिपाएँ।</p>
       </button>
 
-      <button type="button" onClick={() => { window.location.href = '/admin/feedback' }} className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40">
+      <button type="button" data-admin-dashboard-glow="true" onClick={() => { window.location.href = '/admin/feedback' }} className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40">
         <div className="text-xl font-semibold">Manage Feedback →</div>
         <p className="mt-2 text-sm text-muted-foreground">सार्वजनिक प्रतिक्रियाएँ देखें और एक या कई प्रतिक्रियाएँ चुनकर हटाएँ।</p>
       </button>
 
       <button
         type="button"
+        data-admin-dashboard-glow="true"
         onClick={() => { window.location.href = '/admin/finance' }}
         className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40"
       >
@@ -1549,6 +1554,7 @@ if (!authenticated) {
 
       <button
         type="button"
+        data-admin-dashboard-glow="true"
         onClick={() => { window.location.href = '/admin/privacy-requests' }}
         className="rounded-xl border bg-card p-6 text-left transition hover:bg-muted/40"
       >
@@ -1565,7 +1571,7 @@ if (!authenticated) {
           <h2 className="text-xl font-semibold">Finance Account Recovery</h2>
           <p className="mt-1 text-sm text-muted-foreground">Only the Main Admin can reset Finance Head and Finance Member passwords.</p>
         </div>
-        <Button type="button" variant="outline" disabled={adminFinanceLoading} onClick={() => showAdminFinanceUsers ? setShowAdminFinanceUsers(false) : void loadAdminFinanceUsers()}>
+        <Button type="button" variant="outline" data-admin-dashboard-glow="true" aria-busy={adminFinanceLoading} disabled={adminFinanceLoading} onClick={() => showAdminFinanceUsers ? setShowAdminFinanceUsers(false) : void loadAdminFinanceUsers()}>
           {adminFinanceLoading ? 'Loading...' : showAdminFinanceUsers ? 'Hide Finance Accounts' : 'Manage Finance Accounts'}
         </Button>
       </div>
