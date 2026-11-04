@@ -33,16 +33,15 @@ export const EVENT = {
   helpLine: 'Call the organising committee for anything the form does not cover.',
   address: 'Office - Adivasi Ho Samaj Bhawan, Golmuri',
   email: 'nhym2026jsr@gmail.com',
-  /* Four contributions: three fixed amounts, each with the band of giving it
-     stands for, and one open amount with a floor of its own. */
+  /* Audience / visitor contributions: two fixed choices and one open amount.
+     The open amount must meet the same minimum contribution. */
   contributions: [
-    { id: 'amount-100', kind: 'fixed', label: '₹100', from: 100, to: 299 },
-    { id: 'amount-200', kind: 'fixed', label: '₹200', from: 200, to: 399 },
-    { id: 'amount-500', kind: 'fixed', label: '₹500', from: 500, to: 700 },
-    { id: 'other', kind: 'open', label: 'Other amount', from: 100 },
+    { id: 'amount-300', kind: 'fixed', label: '₹300', from: 300, to: 300 },
+    { id: 'amount-500', kind: 'fixed', label: '₹500', from: 500, to: 500 },
+    { id: 'other', kind: 'open', label: 'Other amount', from: 300 },
   ],
-  /* The floor for an "other amount". */
-  contributionFloor: 100,
+  /* Minimum audience / visitor contribution, including Other amount. */
+  contributionFloor: 300,
   account: {
     name: 'RAVI SAWAIYAN',
     number: '45447017069',

@@ -368,7 +368,7 @@ export default function Register() {
       if (!error && row.fromOutside === '') error = 'Say whether this participant is travelling from outside Jamshedpur.'
       if (!error && row.accommodation === '') error = 'Say whether accommodation is needed.'
       if (!error && row.age.trim() !== '' && !/^\d{1,2}$/.test(row.age.trim())) error = 'Age is a number of years, or leave it blank.'
-      if (!error && row.category === 'visitor' && row.contribution === '') error = 'Choose a contribution of ₹100, ₹200, ₹500, or an other amount.'
+      if (!error && row.category === 'visitor' && row.contribution === '') error = 'Choose a contribution of ₹300, ₹500, or an other amount.'
       if (!error && row.category === 'visitor' && row.contribution === 'other') {
         const entered = Number(row.other.trim())
         if (!/^\d+$/.test(row.other.trim()) || entered < EVENT.contributionFloor) {
