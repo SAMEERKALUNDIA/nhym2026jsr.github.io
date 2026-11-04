@@ -96,7 +96,8 @@ export default function Home() {
   }, [])
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div data-homepage-action-glow="true" className="min-h-dvh bg-background">
+      <style>{`[data-homepage-action-glow="true"] [data-homepage-glow-button="true"]:active:not(:disabled), [data-homepage-action-glow="true"] [data-homepage-glow-button="true"] [data-slot="button"]:active:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-homepage-action-glow="true"] [data-homepage-glow-button="true"][aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: homepage-button-processing-glow 900ms ease-in-out infinite !important; } @keyframes homepage-button-processing-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 34%, transparent), 0 0 12px color-mix(in oklch, var(--primary) 48%, transparent); filter: brightness(1.04); } 50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 62%, transparent), 0 0 26px color-mix(in oklch, var(--primary) 82%, transparent); filter: brightness(1.22); } }`}</style>\n
       {/* ---- First screen ------------------------------------------------- */}
 <header className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-gutter backdrop-blur">
   <div className="mx-auto flex min-h-20 max-w-content items-center justify-between gap-4">
@@ -161,6 +162,7 @@ export default function Home() {
   variant="outline"
   size="icon"
   className="lg:hidden"
+  data-homepage-glow-button="true"
   onClick={() => setMobileMenuOpen((open) => !open)}
   aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
   aria-expanded={mobileMenuOpen}
@@ -175,6 +177,7 @@ export default function Home() {
       <Button
         asChild
         variant="outline"
+        data-homepage-glow-button="true"
         className="hidden h-10 px-4 sm:inline-flex"
       >
         <a href="/participant">Participant Login</a>
@@ -182,6 +185,7 @@ export default function Home() {
 
       <Button
         asChild
+        data-homepage-glow-button="true"
         className="h-10 bg-brand px-4 text-brand-foreground hover:bg-brand/90"
       >
         <a href="/register">
@@ -193,6 +197,7 @@ export default function Home() {
       <Button
         asChild
         variant="ghost"
+        data-homepage-glow-button="true"
         className="hidden h-10 px-3 xl:inline-flex"
       >
         <a href="/admin">Admin</a>
@@ -209,6 +214,7 @@ export default function Home() {
       <div className="flex flex-col gap-1">
         <a
           href="#top"
+          data-homepage-glow-button="true"
           onClick={() => setMobileMenuOpen(false)}
           className="rounded-md px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
         >
@@ -217,6 +223,7 @@ export default function Home() {
 
         <a
           href="#about"
+          data-homepage-glow-button="true"
           onClick={() => setMobileMenuOpen(false)}
           className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
         >
@@ -225,6 +232,7 @@ export default function Home() {
 
         <a
           href="#fees"
+          data-homepage-glow-button="true"
           onClick={() => setMobileMenuOpen(false)}
           className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
         >
@@ -233,6 +241,7 @@ export default function Home() {
 
         <a
           href="/gallery"
+          data-homepage-glow-button="true"
           onClick={() => setMobileMenuOpen(false)}
           className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
         >
@@ -241,6 +250,7 @@ export default function Home() {
 
         <a
           href="/daily-updates"
+          data-homepage-glow-button="true"
           onClick={() => setMobileMenuOpen(false)}
           className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
         >
@@ -249,6 +259,7 @@ export default function Home() {
 
         <a
           href="#committee"
+          data-homepage-glow-button="true"
           onClick={() => setMobileMenuOpen(false)}
           className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
         >
@@ -259,6 +270,7 @@ export default function Home() {
 
         <a
           href="/participant"
+          data-homepage-glow-button="true"
           className="rounded-md px-3 py-3 text-sm font-medium hover:bg-muted"
         >
           Participant Login
@@ -266,6 +278,7 @@ export default function Home() {
 
         <a
           href="/admin"
+          data-homepage-glow-button="true"
           className="rounded-md px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
         >
           Admin Login
@@ -407,7 +420,7 @@ export default function Home() {
                   For participants arriving by train, open driving directions from Tatanagar
                   Railway Station to the venue.
                 </p>
-                <Button asChild className="mt-5 w-full">
+                <Button asChild data-homepage-glow-button="true" className="mt-5 w-full">
                   <a
                     href="https://www.google.com/maps/dir/?api=1&origin=Tatanagar+Railway+Station%2C+Jamshedpur%2C+Jharkhand&destination=Birsa+Munda+Town+Hall%2C+Sidhgora%2C+Jamshedpur%2C+Jharkhand&travelmode=driving"
                     target="_blank"
@@ -427,7 +440,7 @@ export default function Home() {
                   For participants arriving by bus, open driving directions from Mango Bus Stand
                   to the venue.
                 </p>
-                <Button asChild className="mt-5 w-full">
+                <Button asChild data-homepage-glow-button="true" className="mt-5 w-full">
                   <a
                     href="https://www.google.com/maps/dir/?api=1&origin=Mango+Bus+Stand%2C+Jamshedpur%2C+Jharkhand&destination=Birsa+Munda+Town+Hall%2C+Sidhgora%2C+Jamshedpur%2C+Jharkhand&travelmode=driving"
                     target="_blank"
