@@ -30,6 +30,7 @@ on:
           - feat/admin-dashboard-button-glow
           - feat/homepage-button-glow
           - feat/participant-registration-button-glow
+          - fix/finance-login-explicit-button
 
 permissions:
   contents: read
