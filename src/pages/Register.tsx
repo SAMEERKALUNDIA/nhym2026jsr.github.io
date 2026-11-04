@@ -994,7 +994,7 @@ export default function Register() {
                               id={`cultural-${row.key}`}
                               label="Interested in Cultural Participation?"
                               value={row.cultural}
-                              options="yesnomaybe"
+                              options="yesno"
                               onChange={(value) =>
                                 update(row.key, { cultural: value, error: undefined })
                               }
@@ -1003,7 +1003,7 @@ export default function Register() {
                               id={`sports-${row.key}`}
                               label="Interested in Sports Participation?"
                               value={row.sports}
-                              options="yesnomaybe"
+                              options="yesno"
                               onChange={(value) => update(row.key, { sports: value, error: undefined })}
                             />
                             <YesNoRow
