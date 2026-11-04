@@ -30,6 +30,8 @@ on:
           - feat/admin-dashboard-button-glow
           - feat/homepage-button-glow
           - feat/participant-registration-button-glow
+          - fix/registration-cultural-sports-yes-no
+          - fix/audience-visitor-minimum-contribution-300
 
 permissions:
   contents: read
