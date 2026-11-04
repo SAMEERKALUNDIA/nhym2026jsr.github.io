@@ -43,12 +43,13 @@ export default function Privacy() {
   }
 
   return (
-    <div className="min-h-dvh bg-background">
+    <div data-privacy-button-glow="true" className="min-h-dvh bg-background">
+      <style>{`[data-privacy-button-glow="true"] button:active:not(:disabled), [data-privacy-button-glow="true"] button:focus-visible:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-privacy-button-glow="true"] button[aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: privacy-button-processing-glow 900ms ease-in-out infinite !important; } @keyframes privacy-button-processing-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 34%, transparent), 0 0 12px color-mix(in oklch, var(--primary) 48%, transparent); filter: brightness(1.04); } 50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 62%, transparent), 0 0 26px color-mix(in oklch, var(--primary) 82%, transparent); filter: brightness(1.22); } } [data-glow-link="true"]:active, [data-glow-link="true"]:focus-visible { outline: 2px solid var(--ring) !important; outline-offset: 3px; border-radius: 3px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); }`}</style>
       <Meta title="Privacy Policy | National Ho Youth Meet 2026" description="Privacy notice in English and Hindi for personal data processed by the NHYM 2026 Local Organizing Committee." />
       <header className="border-b px-gutter py-6">
         <div className="mx-auto flex max-w-content items-center justify-between gap-4">
           <Brand />
-          <Button asChild variant="outline"><a href="/">Home / मुखपृष्ठ</a></Button>
+          <Button asChild variant="outline"><a data-glow-link="true" href="/">Home / मुखपृष्ठ</a></Button>
         </div>
       </header>
       <main className="mx-auto max-w-content px-gutter py-section">

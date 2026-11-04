@@ -43,7 +43,8 @@ export default function Login() {
     }
   }
 
-  return <main className="min-h-screen bg-background px-4 py-12 text-foreground">
+  return <main data-auth-screen-glow="true" className="min-h-screen bg-background px-4 py-12 text-foreground">
+    <style>{`[data-auth-screen-glow="true"] button:active:not(:disabled), [data-auth-screen-glow="true"] button:focus-visible:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-auth-screen-glow="true"] button[aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: auth-button-processing-glow 900ms ease-in-out infinite !important; } @keyframes auth-button-processing-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 34%, transparent), 0 0 12px color-mix(in oklch, var(--primary) 48%, transparent); filter: brightness(1.04); } 50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 62%, transparent), 0 0 26px color-mix(in oklch, var(--primary) 82%, transparent); filter: brightness(1.22); } }`}</style>
     <div className="mx-auto max-w-md rounded-2xl border bg-card p-6 shadow-sm">
       <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground"><ArrowLeft size={16}/> NHYM home</Link>
       <div className="flex items-center gap-3"><div className="rounded-xl bg-primary/10 p-3 text-primary"><ShieldCheck size={24}/></div><div><p className="text-xs font-semibold uppercase tracking-[.2em] text-primary">NHYM 2026</p><h1 className="mt-1 text-2xl font-semibold">Secure Login</h1></div></div>

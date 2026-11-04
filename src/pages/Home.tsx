@@ -97,7 +97,7 @@ export default function Home() {
 
   return (
     <div data-homepage-action-glow="true" className="min-h-dvh bg-background">
-      <style>{`[data-homepage-action-glow="true"] [data-homepage-glow-button="true"]:active:not(:disabled), [data-homepage-action-glow="true"] [data-homepage-glow-button="true"] [data-slot="button"]:active:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-homepage-action-glow="true"] [data-homepage-glow-button="true"][aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: homepage-button-processing-glow 900ms ease-in-out infinite !important; } @keyframes homepage-button-processing-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 34%, transparent), 0 0 12px color-mix(in oklch, var(--primary) 48%, transparent); filter: brightness(1.04); } 50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 62%, transparent), 0 0 26px color-mix(in oklch, var(--primary) 82%, transparent); filter: brightness(1.22); } }`}</style>\n
+      <style>{`[data-homepage-action-glow="true"] [data-homepage-glow-button="true"]:active:not(:disabled), [data-homepage-action-glow="true"] [data-homepage-glow-button="true"] [data-slot="button"]:active:not(:disabled) { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); } [data-homepage-action-glow="true"] [data-homepage-glow-button="true"][aria-busy="true"] { outline: 2px solid var(--ring) !important; outline-offset: 2px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 48%, transparent), 0 0 24px color-mix(in oklch, var(--primary) 72%, transparent) !important; animation: homepage-button-processing-glow 900ms ease-in-out infinite !important; } @keyframes homepage-button-processing-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 34%, transparent), 0 0 12px color-mix(in oklch, var(--primary) 48%, transparent); filter: brightness(1.04); } 50% { box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 62%, transparent), 0 0 26px color-mix(in oklch, var(--primary) 82%, transparent); filter: brightness(1.22); } } [data-glow-link="true"]:active, [data-glow-link="true"]:focus-visible { outline: 2px solid var(--ring) !important; outline-offset: 3px; border-radius: 3px; box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 42%, transparent), 0 0 22px color-mix(in oklch, var(--primary) 68%, transparent) !important; filter: brightness(1.12); }`}</style>\n
       {/* ---- First screen ------------------------------------------------- */}
 <header className="sticky top-0 z-50 border-b border-border/70 bg-background/95 px-gutter backdrop-blur">
   <div className="mx-auto flex min-h-20 max-w-content items-center justify-between gap-4">
@@ -735,12 +735,13 @@ export default function Home() {
                 Email -{' '}
                 <a
                   className="rounded-sm font-medium underline underline-offset-4"
+                  data-glow-link="true"
                   href={`mailto:${EVENT.email}`}
                 >
                   {EVENT.email}
                 </a>
               </p>
-              <p className="mt-3 text-sm"><a className="underline underline-offset-4" href="/privacy">Privacy Policy / गोपनीयता नीति</a></p>
+              <p className="mt-3 text-sm"><a className="underline underline-offset-4" data-glow-link="true" href="/privacy">Privacy Policy / गोपनीयता नीति</a></p>
             </div>
           </div>
           <div
