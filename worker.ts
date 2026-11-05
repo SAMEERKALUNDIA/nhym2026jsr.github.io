@@ -1376,12 +1376,11 @@ if (
         else if (category === 'EARNING') expectedFee = 1500
         else if (category === 'VISITOR') {
           const contribution = String(participant.contribution ?? '')
-          if (contribution === 'AMOUNT-100') expectedFee = 100
-          else if (contribution === 'AMOUNT-200') expectedFee = 200
+          if (contribution === 'AMOUNT-300') expectedFee = 300
           else if (contribution === 'AMOUNT-500') expectedFee = 500
           else if (contribution === 'OTHER') {
             const otherAmount = Number(String(participant.other ?? '').trim())
-            if (!Number.isSafeInteger(otherAmount) || otherAmount < 100) return json({ error: 'Visitor contribution must be at least ₹100.' }, 400)
+            if (!Number.isSafeInteger(otherAmount) || otherAmount < 300) return json({ error: 'Visitor contribution must be at least ₹300.' }, 400)
             expectedFee = otherAmount
           } else return json({ error: 'Invalid participant category or visitor contribution.' }, 400)
         } else return json({ error: 'Invalid participant category.' }, 400)
