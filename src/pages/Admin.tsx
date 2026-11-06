@@ -1412,7 +1412,6 @@ async function exportParticipantsPdf() {
         return (
           <Button
             type="button"
-            variant="outline"
             disabled={busy}
             aria-busy={busy && updatingStatus === 'REJECTED'}
             onClick={() => void changeStatus(row, 'REJECTED')}
