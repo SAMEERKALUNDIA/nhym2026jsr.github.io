@@ -2307,7 +2307,7 @@ if (!authenticated) {
                             </div>
               
                             {actionButtons(selected)}
-                            {selected.status === 'PENDING' && (
+                            {String(selected.status ?? '').trim().toUpperCase() === 'PENDING' && (
                               <Button
                                 type="button"
                                 variant="outline"
