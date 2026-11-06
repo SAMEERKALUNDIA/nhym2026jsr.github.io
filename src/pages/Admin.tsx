@@ -2307,6 +2307,19 @@ if (!authenticated) {
                             </div>
               
                             {actionButtons(selected)}
+                            {selected.status === 'PENDING' && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                disabled={updatingId === selected.id}
+                                aria-busy={updatingId === selected.id && updatingStatus === 'REJECTED'}
+                                onClick={() => void changeStatus(selected, 'REJECTED')}
+                              >
+                                {updatingId === selected.id && updatingStatus === 'REJECTED'
+                                  ? 'Rejecting…'
+                                  : 'Reject Registration'}
+                              </Button>
+                            )}
                           </div>
               
                           <h3 className="mt-8 text-xl font-semibold">Payment Transactions</h3>
