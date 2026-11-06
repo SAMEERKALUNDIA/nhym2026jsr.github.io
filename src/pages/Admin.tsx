@@ -1298,9 +1298,20 @@ async function exportParticipantsPdf() {
 
     if (row.status === 'PENDING' && hasTransactionLedger) {
       return (
-        <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
-          View / Verify Transactions
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
+            View / Verify Transactions
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            aria-busy={busyStatus === 'REJECTED'}
+            disabled={busy}
+            onClick={() => changeStatus(row, 'REJECTED')}
+          >
+            {busyStatus === 'REJECTED' ? 'Updating…' : 'Reject'}
+          </Button>
+        </div>
       )
     }
 
@@ -1375,6 +1386,86 @@ async function exportParticipantsPdf() {
     }
 
     return null
+  }
+
+  function registrationDetailsActions(row: Row) {
+    const busy = updatingId === row.id
+    const payments = (row.payments || []).filter(payment => !payment.legacy && payment.id !== null)
+    const normalizedStatus = String(row.status ?? '').trim().toUpperCase()
+
+    if (normalizedStatus === 'APPROVED') {
+      return <div className="text-sm font-medium">✓ Registration complete</div>
+    }
+    if (normalizedStatus === 'REJECTED') {
+      return <div className="text-sm font-medium">Registration rejected</div>
+    }
+
+    if (payments.length > 0) {
+      const hasRejectedTransaction = payments.some(payment =>
+        String(payment.status ?? '').trim().toUpperCase() === 'REJECTED'
+      )
+      const allTransactionsVerified = payments.every(payment =>
+        String(payment.status ?? '').trim().toUpperCase() === 'VERIFIED'
+      )
+
+      if (hasRejectedTransaction) {
+        return (
+          <Button
+            type="button"
+            disabled={busy}
+            aria-busy={busy && updatingStatus === 'REJECTED'}
+            onClick={() => void changeStatus(row, 'REJECTED')}
+          >
+            {busy && updatingStatus === 'REJECTED' ? 'Rejecting…' : 'Reject Registration'}
+          </Button>
+        )
+      }
+
+      if (allTransactionsVerified) {
+        return (
+          <Button
+            type="button"
+            disabled={busy}
+            aria-busy={busy && updatingStatus === 'APPROVED'}
+            onClick={() => void changeStatus(row, 'APPROVED')}
+          >
+            {busy && updatingStatus === 'APPROVED' ? 'Approving…' : 'Approve Registration'}
+          </Button>
+        )
+      }
+
+      return (
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
+          View / Verify Transactions
+        </Button>
+      )
+    }
+
+    // The registration list may not include the payment ledger. Keep pending
+    // registrations on the transaction review step instead of exposing a second
+    // registration-level Reject action here.
+    if (normalizedStatus === 'PENDING') {
+      return (
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
+          View / Verify Transactions
+        </Button>
+      )
+    }
+
+    if (normalizedStatus === 'PAYMENT_VERIFIED') {
+      return (
+        <Button
+          type="button"
+          disabled={busy}
+          aria-busy={busy && updatingStatus === 'APPROVED'}
+          onClick={() => void changeStatus(row, 'APPROVED')}
+        >
+          {busy && updatingStatus === 'APPROVED' ? 'Approving…' : 'Approve Registration'}
+        </Button>
+      )
+    }
+
+    return actionButtons(row)
   }
 
 if (checkingSession) {
@@ -2188,7 +2279,7 @@ if (!authenticated) {
           </td>
 
           <td className="p-3">
-            {actionButtons(row)}
+            {registrationDetailsActions(row)}
           </td>
 
           <td className="p-3">
@@ -2295,7 +2386,7 @@ if (!authenticated) {
                               Registration Actions
                             </div>
               
-                            {actionButtons(selected)}
+                            {registrationDetailsActions(selected)}
                           </div>
               
                           <h3 className="mt-8 text-xl font-semibold">Payment Transactions</h3>
