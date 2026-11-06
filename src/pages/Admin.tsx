@@ -1388,6 +1388,63 @@ async function exportParticipantsPdf() {
     return null
   }
 
+  function registrationDetailsActions(row: Row) {
+    const busy = updatingId === row.id
+    const payments = (row.payments || []).filter(payment => !payment.legacy && payment.id !== null)
+    const normalizedStatus = String(row.status ?? '').trim().toUpperCase()
+
+    if (normalizedStatus === 'APPROVED') {
+      return <div className="text-sm font-medium">✓ Registration complete</div>
+    }
+    if (normalizedStatus === 'REJECTED') {
+      return <div className="text-sm font-medium">Registration rejected</div>
+    }
+
+    if (payments.length > 0) {
+      const hasRejectedTransaction = payments.some(payment =>
+        String(payment.status ?? '').trim().toUpperCase() === 'REJECTED'
+      )
+      const allTransactionsVerified = payments.every(payment =>
+        String(payment.status ?? '').trim().toUpperCase() === 'VERIFIED'
+      )
+
+      if (hasRejectedTransaction) {
+        return (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            aria-busy={busy && updatingStatus === 'REJECTED'}
+            onClick={() => void changeStatus(row, 'REJECTED')}
+          >
+            {busy && updatingStatus === 'REJECTED' ? 'Rejecting…' : 'Reject Registration'}
+          </Button>
+        )
+      }
+
+      if (allTransactionsVerified || normalizedStatus === 'PAYMENT_VERIFIED') {
+        return (
+          <Button
+            type="button"
+            disabled={busy}
+            aria-busy={busy && updatingStatus === 'APPROVED'}
+            onClick={() => void changeStatus(row, 'APPROVED')}
+          >
+            {busy && updatingStatus === 'APPROVED' ? 'Approving…' : 'Approve Registration'}
+          </Button>
+        )
+      }
+
+      return (
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
+          View / Verify Transactions
+        </Button>
+      )
+    }
+
+    return actionButtons(row)
+  }
+
 if (checkingSession) {
   return (
     <main className="grid min-h-dvh place-items-center bg-background px-gutter">
@@ -2306,20 +2363,7 @@ if (!authenticated) {
                               Registration Actions
                             </div>
               
-                            {actionButtons(selected)}
-                            {String(selected.status ?? '').trim().toUpperCase() === 'PENDING' && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                disabled={updatingId === selected.id}
-                                aria-busy={updatingId === selected.id && updatingStatus === 'REJECTED'}
-                                onClick={() => void changeStatus(selected, 'REJECTED')}
-                              >
-                                {updatingId === selected.id && updatingStatus === 'REJECTED'
-                                  ? 'Rejecting…'
-                                  : 'Reject Registration'}
-                              </Button>
-                            )}
+                            {registrationDetailsActions(selected)}
                           </div>
               
                           <h3 className="mt-8 text-xl font-semibold">Payment Transactions</h3>
