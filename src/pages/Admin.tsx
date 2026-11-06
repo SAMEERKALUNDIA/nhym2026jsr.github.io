@@ -1298,9 +1298,20 @@ async function exportParticipantsPdf() {
 
     if (row.status === 'PENDING' && hasTransactionLedger) {
       return (
-        <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
-          View / Verify Transactions
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
+            View / Verify Transactions
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            aria-busy={busyStatus === 'REJECTED'}
+            disabled={busy}
+            onClick={() => changeStatus(row, 'REJECTED')}
+          >
+            {busyStatus === 'REJECTED' ? 'Updating…' : 'Reject'}
+          </Button>
+        </div>
       )
     }
 
