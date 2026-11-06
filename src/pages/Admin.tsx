@@ -1421,7 +1421,7 @@ async function exportParticipantsPdf() {
         )
       }
 
-      if (allTransactionsVerified || normalizedStatus === 'PAYMENT_VERIFIED') {
+      if (allTransactionsVerified) {
         return (
           <Button
             type="button"
