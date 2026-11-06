@@ -1441,6 +1441,30 @@ async function exportParticipantsPdf() {
       )
     }
 
+    // The registration list may not include the payment ledger. Keep pending
+    // registrations on the transaction review step instead of exposing a second
+    // registration-level Reject action here.
+    if (normalizedStatus === 'PENDING') {
+      return (
+        <Button type="button" variant="outline" disabled={busy} onClick={() => setSelected(row)}>
+          View / Verify Transactions
+        </Button>
+      )
+    }
+
+    if (normalizedStatus === 'PAYMENT_VERIFIED') {
+      return (
+        <Button
+          type="button"
+          disabled={busy}
+          aria-busy={busy && updatingStatus === 'APPROVED'}
+          onClick={() => void changeStatus(row, 'APPROVED')}
+        >
+          {busy && updatingStatus === 'APPROVED' ? 'Approving…' : 'Approve Registration'}
+        </Button>
+      )
+    }
+
     return actionButtons(row)
   }
 
