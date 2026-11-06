@@ -2255,7 +2255,7 @@ if (!authenticated) {
           </td>
 
           <td className="p-3">
-            {actionButtons(row)}
+            {registrationDetailsActions(row)}
           </td>
 
           <td className="p-3">
