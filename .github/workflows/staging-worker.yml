@@ -36,6 +36,7 @@ on:
           - feature/finance-stall-booking-income-type
           - fix/admin-reject-after-payment-rejected
           - fix/finance-registers-collapsed-by-default
+          - feature/finance-register-search
 
 permissions:
   contents: read
