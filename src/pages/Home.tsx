@@ -339,6 +339,18 @@ export default function Home() {
           </div>
         </section>
 
+        <section aria-labelledby="registration-deadline-title" className="border-y border-amber-400/60 bg-amber-50 px-gutter py-6 text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+          <div className="mx-auto flex max-w-content flex-col items-start gap-3 rounded-xl border border-amber-500/50 bg-background/70 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-label text-xs font-bold tracking-[0.16em] uppercase">📢 महत्वपूर्ण सूचना · Important Notice</p>
+              <h2 id="registration-deadline-title" className="mt-2 text-xl font-bold sm:text-2xl">NHYM 2026 पंजीकरण 27 नवंबर 2026 को बंद हो जाएगा</h2>
+              <p className="mt-2 max-w-3xl text-sm sm:text-base">सभी इच्छुक प्रतिभागी कृपया अंतिम तिथि से पहले अपना पंजीकरण पूरा कर लें। 27 नवंबर 2026 के बाद पंजीकरण स्वीकार नहीं किए जाएँगे।</p>
+              <p className="mt-2 text-sm font-semibold">Registration closes: 27 November 2026 · कार्यक्रम: 28–29 नवंबर 2026, जमशेदपुर</p>
+            </div>
+            <a href="/register" className="inline-flex shrink-0 items-center justify-center rounded-md bg-amber-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700">अभी पंजीकरण करें</a>
+          </div>
+        </section>
+
         {homepageSections.importantNotice && <section id="important-notice"><FeedbackCampaign mode="notice" /></section>}
         {homepageSections.publicFeedback && <FeedbackCampaign mode="feedback" />}
 
