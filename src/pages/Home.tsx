@@ -288,6 +288,37 @@ export default function Home() {
   )}
 </header>
 
+      <section aria-labelledby="registration-deadline-title" className="relative isolate overflow-hidden border-b-4 border-amber-400 bg-[#5b1d18] px-gutter py-7 text-white sm:py-9">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full border-[28px] border-amber-300/10" />
+        <div className="relative mx-auto grid max-w-content items-center gap-6 lg:grid-cols-[1fr_auto] lg:gap-10">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/50 bg-amber-300/15 px-3 py-1.5 text-xs font-bold tracking-[0.12em] text-amber-100 uppercase">
+              <span aria-hidden="true" className="size-2 animate-pulse rounded-full bg-amber-300" />
+              महत्वपूर्ण सूचना · Registration Alert
+            </div>
+            <h2 id="registration-deadline-title" className="mt-4 text-2xl font-extrabold leading-tight sm:text-3xl lg:text-4xl">
+              NHYM 2026 पंजीकरण की अंतिम तिथि
+            </h2>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <p className="font-display text-4xl font-black tracking-tight text-amber-300 sm:text-5xl">27 नवंबर 2026</p>
+              <span className="rounded-md bg-amber-300 px-3 py-1.5 text-sm font-extrabold text-[#5b1d18]">अंतिम तिथि</span>
+            </div>
+            <p className="mt-4 max-w-3xl text-base leading-relaxed text-white/90 sm:text-lg">
+              सभी इच्छुक प्रतिभागी अपना पंजीकरण अंतिम तिथि से पहले पूरा कर लें। 27 नवंबर 2026 के बाद पंजीकरण स्वीकार नहीं किए जाएँगे।
+            </p>
+            <p className="mt-2 text-sm font-semibold text-amber-100 sm:text-base">
+              Registration closes on 27 November 2026 · NHYM 2026: 28–29 November, Jamshedpur
+            </p>
+          </div>
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row lg:min-w-52 lg:flex-col">
+            <a href="/register" data-glow-link="true" className="inline-flex min-h-14 items-center justify-center rounded-lg bg-amber-300 px-7 py-4 text-base font-extrabold text-[#4b1713] shadow-lg transition hover:bg-amber-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200 sm:text-lg">
+              अभी पंजीकरण करें <span aria-hidden="true" className="ml-2">→</span>
+            </a>
+            <p className="text-center text-xs font-medium text-white/75">अपना फॉर्म समय रहते जमा करें</p>
+          </div>
+        </div>
+      </section>
+
       <main id="top">
         <section className="relative isolate overflow-hidden px-gutter pb-section">
           <div
@@ -339,17 +370,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section aria-labelledby="registration-deadline-title" className="border-y border-amber-400/60 bg-amber-50 px-gutter py-6 text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
-          <div className="mx-auto flex max-w-content flex-col items-start gap-3 rounded-xl border border-amber-500/50 bg-background/70 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-label text-xs font-bold tracking-[0.16em] uppercase">📢 महत्वपूर्ण सूचना · Important Notice</p>
-              <h2 id="registration-deadline-title" className="mt-2 text-xl font-bold sm:text-2xl">NHYM 2026 पंजीकरण 27 नवंबर 2026 को बंद हो जाएगा</h2>
-              <p className="mt-2 max-w-3xl text-sm sm:text-base">सभी इच्छुक प्रतिभागी कृपया अंतिम तिथि से पहले अपना पंजीकरण पूरा कर लें। 27 नवंबर 2026 के बाद पंजीकरण स्वीकार नहीं किए जाएँगे।</p>
-              <p className="mt-2 text-sm font-semibold">Registration closes: 27 November 2026 · कार्यक्रम: 28–29 नवंबर 2026, जमशेदपुर</p>
-            </div>
-            <a href="/register" className="inline-flex shrink-0 items-center justify-center rounded-md bg-amber-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700">अभी पंजीकरण करें</a>
-          </div>
-        </section>
+
 
         {homepageSections.importantNotice && <section id="important-notice"><FeedbackCampaign mode="notice" /></section>}
         {homepageSections.publicFeedback && <FeedbackCampaign mode="feedback" />}
