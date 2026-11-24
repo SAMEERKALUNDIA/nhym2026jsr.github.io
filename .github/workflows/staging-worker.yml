@@ -58,9 +58,8 @@ jobs:
     runs-on: ubuntu-24.04
     environment: staging
     steps:
+      # actions/checkout defaults to github.ref, which is the branch selected in Run workflow.
       - uses: actions/checkout@v4
-        with:
-          # Use the branch selected in GitHub's Run workflow menu as the deployed code ref.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
