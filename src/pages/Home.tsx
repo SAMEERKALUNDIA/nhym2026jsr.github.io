@@ -311,7 +311,7 @@ export default function Home() {
             </p>
           </div>
           <div className="flex flex-col items-stretch gap-3 sm:flex-row lg:min-w-52 lg:flex-col">
-            <a href="/register" data-glow-link="true" className="inline-flex min-h-14 items-center justify-center rounded-lg bg-amber-300 px-7 py-4 text-base font-extrabold text-[#4b1713] shadow-lg transition hover:bg-amber-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200 sm:text-lg">
+            <a href="/register" data-glow-link="true" className="inline-flex w-full min-h-14 items-center justify-center rounded-lg bg-amber-300 px-7 py-4 text-base font-extrabold text-[#4b1713] shadow-lg transition hover:bg-amber-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200 sm:w-auto sm:text-lg">
               अभी पंजीकरण करें <span aria-hidden="true" className="ml-2">→</span>
             </a>
             <p className="text-center text-xs font-medium text-white/75">अपना फॉर्म समय रहते जमा करें</p>
