@@ -26,7 +26,7 @@
     "r2_buckets": [
       {
         "binding": "GALLERY",
-        "bucket_name": "nhym-gallery-preview"
+        "bucket_name": "nhym-gallery-staging"
       }
     ]
   }
