@@ -538,10 +538,10 @@ export default function Finance() {
       money(x.approved_amount_paise), x.approval_status, x.payment_status,
     ])
     const incomeColumns = [
-      { label: 'S. No.', width: '6%' }, { label: 'Income ID', width: '12%' },
-      { label: 'Received Date', width: '12%' }, { label: 'Income Type', width: '13%' },
-      { label: 'Received From', width: '17%' }, { label: 'Amount', width: '12%' },
-      { label: 'Mode', width: '10%' }, { label: 'Reference / Receipt', width: '18%' },
+      { label: 'S. No.', width: '5%' }, { label: 'Income ID', width: '19%' },
+      { label: 'Received Date', width: '11%' }, { label: 'Income Type', width: '12%' },
+      { label: 'Received From', width: '16%' }, { label: 'Amount', width: '11%' },
+      { label: 'Mode', width: '8%' }, { label: 'Reference / Receipt', width: '18%' },
     ]
     const incomeRows = data.incomes.map((x, i) => [
       String(i + 1), String(x.income_no ?? ''), formatFinanceDate(x.received_at), String(x.income_type ?? ''),
