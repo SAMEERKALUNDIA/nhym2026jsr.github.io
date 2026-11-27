@@ -538,7 +538,7 @@ export default function Finance() {
       money(x.approved_amount_paise), x.approval_status, x.payment_status,
     ])
     const incomeColumns = [
-      { label: 'S. No.', width: '5%' }, { label: 'Income ID', width: '19%' },
+      { label: 'S. No.', width: '5%' }, { label: 'Income ID', width: '19%', noWrap: true },
       { label: 'Received Date', width: '11%' }, { label: 'Income Type', width: '12%' },
       { label: 'Received From', width: '16%' }, { label: 'Amount', width: '11%' },
       { label: 'Mode', width: '8%' }, { label: 'Reference / Receipt', width: '18%' },
