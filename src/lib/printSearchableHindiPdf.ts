@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
 
-export type PrintablePdfColumn = { label: string; width?: string; align?: 'left' | 'center' | 'right' }
+export type PrintablePdfColumn = { label: string; width?: string; align?: 'left' | 'center' | 'right'; noWrap?: boolean }
 export type PrintablePdfSection = { title: string; rows: string[][] }
 export type PrintablePdfTable = { columns: PrintablePdfColumn[]; rows: string[][] }
 
@@ -452,7 +452,7 @@ export async function printSearchableHindiPdf(options: PdfOptions) {
         const context = canvas.getContext('2d')
         if (!context) return ['—']
         context.font = `400 ${fontSize * 96 / 72 * 2}px "${FONT_FAMILY}", "Noto Sans Devanagari", sans-serif`
-        return wrapText(context, text, (widths[index] - cellPadding * 2) * 96 / 25.4 * 2)
+        return table.columns[index].noWrap ? [text] : wrapText(context, text, (widths[index] - cellPadding * 2) * 96 / 25.4 * 2)
       })
       const maxLines = Math.max(1, ...cells.map(lines => lines.length))
       const rowHeight = Math.max(6.2, maxLines * lineHeight + 2.2)
